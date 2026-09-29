@@ -67,7 +67,7 @@ public sealed class SettingsViewModel(SettingsStore store, Translator translator
             logger.LogError(exception, "Could not save the settings");
             // The sender reads the file, so show what the file really holds.
             Set(ref _ignoreCertificateErrors, _saved.IgnoreCertificateErrors, nameof(IgnoreCertificateErrors));
-            Problem = translator.Format("Settings.SaveFailed", exception.Message);
+            Problem = translator.Format("Settings.SaveFailed", translator.DetailsOf(exception));
         }
     }
 }

@@ -39,29 +39,11 @@ public sealed class RequestLibrary(AppFolder folder, ILogger<RequestLibrary> log
 
     public async Task SaveFolderAsync(string name, FolderSettings settings, CancellationToken cancellationToken) => await FolderFileOf(name).SaveAsync(settings, cancellationToken).ConfigureAwait(false);
 
-    // A folder copied in Explorer takes its settings along, so two folders can share an id and with it their secrets.
-    public async Task<bool> SharesFolderIdAsync(string name, Guid id, CancellationToken cancellationToken)
-    {
-        foreach (var other in await FoldersAsync(cancellationToken).ConfigureAwait(false))
-        {
-            if (other.Equals(name, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-            try
-            {
-                if ((await LoadFolderAsync(other, cancellationToken).ConfigureAwait(false))?.Id == id)
-                {
-                    return true;
-                }
-            }
-            catch (Exception exception) when (FileProblem.Is(exception))
-            {
-                logger.LogWarning(exception, "Skipped the folder {Folder} while looking for a shared id", other);
-            }
-        }
-        return false;
-    }
+    public Task<bool> SharesFolderIdAsync(string name, Guid id, CancellationToken cancellationToken) =>
+        SharesIdAsync(FoldersAsync, async (other, token) => (await LoadFolderAsync(other, token).ConfigureAwait(false))?.Id, name, id, cancellationToken);
+
+    public Task<bool> SharesRequestIdAsync(string name, Guid id, CancellationToken cancellationToken) =>
+        SharesIdAsync(NamesAsync, async (other, token) => (await LoadAsync(other, token).ConfigureAwait(false))?.Id, name, id, cancellationToken);
 
     // The nearest folder wins, like in Postman, so a subfolder can override the auth of the folder it is in.
     public async Task<AuthSource> AuthOfAsync(string? name, ApiRequest request, CancellationToken cancellationToken)
@@ -120,6 +102,30 @@ public sealed class RequestLibrary(AppFolder folder, ILogger<RequestLibrary> log
             return true;
         }
         logger.LogWarning("{Name} is left out, because it cannot be used as a request name", name);
+        return false;
+    }
+
+    // A request or folder copied in Explorer takes its id along, and with it the secrets saved under that id.
+    async Task<bool> SharesIdAsync(Func<CancellationToken, Task<IReadOnlyList<string>>> list, Func<string, CancellationToken, Task<Guid?>> idOf, string name, Guid id, CancellationToken cancellationToken)
+    {
+        foreach (var other in await list(cancellationToken).ConfigureAwait(false))
+        {
+            if (other.Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            try
+            {
+                if (await idOf(other, cancellationToken).ConfigureAwait(false) == id)
+                {
+                    return true;
+                }
+            }
+            catch (Exception exception) when (FileProblem.Is(exception))
+            {
+                logger.LogWarning(exception, "Skipped {Name} while looking for a shared id", other);
+            }
+        }
         return false;
     }
 

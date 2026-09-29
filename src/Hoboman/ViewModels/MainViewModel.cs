@@ -94,7 +94,7 @@ public sealed class MainViewModel(
         catch (Exception exception) when (FileProblem.Is(exception))
         {
             logger.LogError(exception, "Could not open {Name}", node.Path);
-            dialogs.Tell(translator.Of("Open.Failed"), exception.Message);
+            dialogs.Tell(translator.Of("Open.Failed"), translator.DetailsOf(exception));
         }
         finally
         {
@@ -167,7 +167,7 @@ public sealed class MainViewModel(
         catch (Exception exception) when (FileProblem.Is(exception))
         {
             logger.LogError(exception, "Could not create the folder {Name}", name);
-            dialogs.Tell(translator.Of("Folder.Failed"), exception.Message);
+            dialogs.Tell(translator.Of("Folder.Failed"), translator.DetailsOf(exception));
         }
     }
 
@@ -186,7 +186,7 @@ public sealed class MainViewModel(
         catch (Exception exception) when (FileProblem.Is(exception))
         {
             logger.LogError(exception, "Could not rename {Name}", node.Path);
-            dialogs.Tell(translator.Of("Rename.Failed"), exception.Message);
+            dialogs.Tell(translator.Of("Rename.Failed"), translator.DetailsOf(exception));
         }
     }
 
@@ -209,14 +209,14 @@ public sealed class MainViewModel(
                 await secrets.DeleteAsync(id, CancellationToken.None);
                 foreach (var open in Tabs.Where(open => open.Id == id))
                 {
-                    open.ForgetSavedSecrets();
+                    open.Auth.ForgetSavedSecrets();
                 }
             }
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
             logger.LogError(exception, "Could not delete {Name}", node.Path);
-            dialogs.Tell(translator.Of("Delete.Failed"), exception.Message);
+            dialogs.Tell(translator.Of("Delete.Failed"), translator.DetailsOf(exception));
         }
     }
 
@@ -250,7 +250,7 @@ public sealed class MainViewModel(
             catch (Exception exception) when (FileProblem.Is(exception))
             {
                 logger.LogWarning(exception, "Could not reload {Name}", tab.Name);
-                tab.ShowFileProblem(exception.Message);
+                tab.ShowFileProblem(translator.DetailsOf(exception));
             }
         }
     }

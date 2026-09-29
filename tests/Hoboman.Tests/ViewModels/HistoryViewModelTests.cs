@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Time.Testing;
+
 namespace Hoboman.Tests.ViewModels;
 
 public sealed class HistoryViewModelTests
@@ -6,6 +8,14 @@ public sealed class HistoryViewModelTests
 
     static readonly DateTimeOffset _noon = new(new DateTime(2026, 9, 29, 12, 0, 0));
 
+    // Entries are placed in Windows' time zone, so the clock uses it too. The fake clock takes its start as UTC.
+    static FakeTimeProvider ClockAt(DateTimeOffset now)
+    {
+        var clock = new FakeTimeProvider(now.ToUniversalTime());
+        clock.SetLocalTimeZone(TimeZoneInfo.Local);
+        return clock;
+    }
+
     static HistoryEntry Entry(string address, DateTimeOffset? at = null) => new(at ?? _noon, HistorySource.App, address, ApiRequest.New());
 
     [Fact]
@@ -13,7 +23,7 @@ public sealed class HistoryViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        var history = new HistoryViewModel(harness.History(), new Translator(Translation.English), new FixedClock(_noon), NullLogger<HistoryViewModel>.Instance);
+        var history = new HistoryViewModel(harness.History(), new Translator(Translation.English), ClockAt(_noon), NullLogger<HistoryViewModel>.Instance);
         await harness.History().AddAsync(Entry("first.local", _noon.AddHours(-1)), Cancellation);
         await history.RefreshAsync(Cancellation);
         await harness.History().AddAsync(Entry("second.local", _noon), Cancellation);
@@ -30,7 +40,7 @@ public sealed class HistoryViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        var history = new HistoryViewModel(harness.History(), new Translator(Translation.English), new FixedClock(_noon), NullLogger<HistoryViewModel>.Instance);
+        var history = new HistoryViewModel(harness.History(), new Translator(Translation.English), ClockAt(_noon), NullLogger<HistoryViewModel>.Instance);
         await harness.History().AddAsync(Entry("dev.local"), Cancellation);
 
         // Act
@@ -45,7 +55,7 @@ public sealed class HistoryViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        var history = new HistoryViewModel(harness.History(), new Translator(Translation.English), new FixedClock(_noon), NullLogger<HistoryViewModel>.Instance);
+        var history = new HistoryViewModel(harness.History(), new Translator(Translation.English), ClockAt(_noon), NullLogger<HistoryViewModel>.Instance);
         await harness.History().AddAsync(Entry("dev.local", _noon.AddDays(-1)), Cancellation);
 
         // Act
@@ -60,7 +70,7 @@ public sealed class HistoryViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        var history = new HistoryViewModel(harness.History(), new Translator(Translation.Danish), new FixedClock(_noon), NullLogger<HistoryViewModel>.Instance);
+        var history = new HistoryViewModel(harness.History(), new Translator(Translation.Danish), ClockAt(_noon), NullLogger<HistoryViewModel>.Instance);
         await harness.History().AddAsync(Entry("dev.local", new DateTimeOffset(2025, 3, 5, 12, 0, 0, TimeSpan.Zero)), Cancellation);
 
         // Act
@@ -75,11 +85,11 @@ public sealed class HistoryViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        var clock = new FixedClock(_noon);
+        var clock = ClockAt(_noon);
         var history = new HistoryViewModel(harness.History(), new Translator(Translation.English), clock, NullLogger<HistoryViewModel>.Instance);
         await harness.History().AddAsync(Entry("first.local"), Cancellation);
         await history.RefreshAsync(Cancellation);
-        clock.Now = _noon.AddDays(1);
+        clock.Advance(TimeSpan.FromDays(1));
         await harness.History().AddAsync(Entry("second.local", _noon.AddDays(1)), Cancellation);
 
         // Act
@@ -87,5 +97,23 @@ public sealed class HistoryViewModelTests
 
         // Assert
         Assert.Equal("Yesterday", history.Items.Single(item => item.Address == "first.local").Day);
+    }
+
+    [Fact]
+    public async Task RefreshAsync_WhenMidnightPasses_ThenTellsThatTheDayChanged()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var clock = ClockAt(new(new DateTime(2026, 9, 29, 23, 0, 0)));
+        var history = new HistoryViewModel(harness.History(), new Translator(Translation.English), clock, NullLogger<HistoryViewModel>.Instance);
+        var changed = false;
+        history.DayChanged += () => changed = true;
+        await history.RefreshAsync(Cancellation);
+
+        // Act
+        clock.Advance(TimeSpan.FromHours(2));
+
+        // Assert
+        Assert.True(changed);
     }
 }

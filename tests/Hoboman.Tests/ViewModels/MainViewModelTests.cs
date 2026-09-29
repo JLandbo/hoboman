@@ -379,7 +379,7 @@ public sealed class MainViewModelTests
         await main.EditFolderAuthAsync(main.Tree.Nodes.Single());
 
         // Assert
-        Assert.Equal(AuthKind.Bearer, Assert.IsType<FolderAuthViewModel>(harness.Dialogs.Shown).AuthKind);
+        Assert.Equal(AuthKind.Bearer, Assert.IsType<FolderAuthViewModel>(harness.Dialogs.Shown).Auth.Kind);
     }
 
     [Fact]

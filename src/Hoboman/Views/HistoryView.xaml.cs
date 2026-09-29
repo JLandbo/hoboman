@@ -20,10 +20,21 @@ public partial class HistoryView : UserControl
         };
     }
 
-    // Opening on click, like the tree, so moving through the list with the arrow keys does not open a tab for every call.
-    async void Entries_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    // Opening on click or Enter, like the tree, so moving through the list with the arrow keys does not open a tab for every call.
+    async void Entries_MouseLeftButtonUp(object sender, MouseButtonEventArgs e) => await OpenAsync((DependencyObject)e.OriginalSource);
+
+    async void Entries_KeyDown(object sender, KeyEventArgs e)
     {
-        if (ItemsControl.ContainerFromElement(Entries, (DependencyObject)e.OriginalSource) is not ListBoxItem { DataContext: HistoryItemViewModel item })
+        if (e.Key == Key.Enter)
+        {
+            e.Handled = true;
+            await OpenAsync((DependencyObject)e.OriginalSource);
+        }
+    }
+
+    async Task OpenAsync(DependencyObject source)
+    {
+        if (ItemsControl.ContainerFromElement(Entries, source) is not ListBoxItem { DataContext: HistoryItemViewModel item })
         {
             return;
         }

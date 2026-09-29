@@ -33,7 +33,7 @@ public sealed class JsonFileTests : IDisposable
         var loading = Store().LoadAsync(Cancellation);
 
         // Assert
-        Assert.Contains(FilePath, (await Assert.ThrowsAsync<InvalidDataException>(() => loading)).Message);
+        Assert.Contains(FilePath, (await Assert.ThrowsAsync<InvalidFileException>(() => loading)).Message);
     }
 
     [Fact]
@@ -47,7 +47,7 @@ public sealed class JsonFileTests : IDisposable
         var updating = Store().UpdateAsync(settings => settings with { EnvironmentName = "Test" }, Cancellation);
 
         // Assert
-        await Assert.ThrowsAsync<InvalidDataException>(() => updating);
+        await Assert.ThrowsAsync<InvalidFileException>(() => updating);
     }
 
     [Fact]
@@ -232,7 +232,7 @@ public sealed class JsonFileTests : IDisposable
         var loading = Store().LoadAsync(Cancellation);
 
         // Assert
-        await Assert.ThrowsAsync<InvalidDataException>(() => loading);
+        await Assert.ThrowsAsync<InvalidFileException>(() => loading);
     }
 
     [Fact]

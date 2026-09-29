@@ -40,7 +40,7 @@ public sealed class EnvironmentEditorViewModel(EnvironmentStore store, Environme
         catch (Exception exception) when (FileProblem.Is(exception))
         {
             logger.LogError(exception, "Could not load the environments for editing");
-            Problem = translator.Format("Environments.LoadFailed", exception.Message);
+            Problem = translator.Format("Environments.LoadFailed", translator.DetailsOf(exception));
         }
     }
 
@@ -94,7 +94,7 @@ public sealed class EnvironmentEditorViewModel(EnvironmentStore store, Environme
         catch (Exception exception) when (FileProblem.Is(exception))
         {
             logger.LogError(exception, "Could not save the environments");
-            Problem = translator.Format("Environments.SaveFailed", exception.Message);
+            Problem = translator.Format("Environments.SaveFailed", translator.DetailsOf(exception));
             return false;
         }
     }

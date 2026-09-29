@@ -99,8 +99,8 @@
                     </StackPanel>
                 </ToggleButton>
                 <Popup x:Name="EnvironmentPopup" DockPanel.Dock="Right" IsOpen="{Binding IsChecked, ElementName=EnvironmentToggle}" PlacementTarget="{Binding ElementName=EnvironmentToggle}"
-                       StaysOpen="False" AllowsTransparency="True">
-                    <Border Style="{StaticResource Menu}" MinWidth="220" TextElement.FontSize="12">
+                       StaysOpen="False" AllowsTransparency="True" Opened="EnvironmentPopup_Opened">
+                    <Border x:Name="EnvironmentMenu" Style="{StaticResource Menu}" MinWidth="220" TextElement.FontSize="12" PreviewKeyDown="EnvironmentMenu_PreviewKeyDown">
                         <StackPanel>
                             <Button Style="{StaticResource MenuButton}" Click="NoEnvironment_Click">
                                 <DockPanel>
@@ -118,7 +118,7 @@
                                     <TextBlock Text="{DynamicResource Environment.None}" />
                                 </DockPanel>
                             </Button>
-                            <ItemsControl ItemsSource="{Binding Environments.Items}">
+                            <ItemsControl ItemsSource="{Binding Environments.Items}" Focusable="False">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate DataType="{x:Type environments:ApiEnvironment}">
                                         <Button Style="{StaticResource MenuButton}" Click="Environment_Click" HorizontalAlignment="Stretch">

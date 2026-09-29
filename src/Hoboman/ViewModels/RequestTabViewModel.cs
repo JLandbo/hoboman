@@ -11,15 +11,10 @@ using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
 
-public sealed class RequestTabViewModel : ObservableObject, IAuthFields
+public sealed class RequestTabViewModel : ObservableObject
 {
     readonly RequestTabServices _services;
-    Guid _id;
-    bool _ownsId;
-    OAuthSettings? _oauth;
     string _savedJson = "";
-    string _savedPassword = "";
-    string _savedToken = "";
     ProblemMessage? _fileProblem;
     bool _loading;
     CancellationTokenSource? _sending;
@@ -30,7 +25,9 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
         Name = name;
         SuggestedName = suggestedName;
         HistoryName = historyName;
-        _ownsId = historyName is null;
+        OwnsId = historyName is null;
+        Auth = new(services.Secrets);
+        Auth.Changed += MarkDirty;
         Query.Changed += MarkDirty;
         Headers.Changed += MarkDirty;
         Send = new AsyncCommand(SendAsync);
@@ -65,11 +62,11 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
         }
     }
 
-    public Guid Id => _id;
+    public Guid Id { get; private set; }
 
     // A tab owns its id when the file and the secrets under that id are its own. A tab opened from the history borrows the id of the request it ran,
     // so it can send with that request's secrets, but gets its own id before it changes a secret or is saved.
-    public bool OwnsId => _ownsId;
+    public bool OwnsId { get; private set; }
 
     // The history file the tab was opened from, so opening that call again shows this tab.
     public string? HistoryName
@@ -102,13 +99,7 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
 
     public string Body { get; set => Change(ref field, value); } = "";
 
-    public AuthKind AuthKind { get; set => Change(ref field, value); }
-
-    public string UserName { get; set => Change(ref field, value); } = "";
-
-    public string Password { get; set => Change(ref field, value); } = "";
-
-    public string Token { get; set => Change(ref field, value); } = "";
+    public AuthViewModel Auth { get; }
 
     public bool IsDirty { get; private set => Set(ref field, value); }
 
@@ -125,7 +116,7 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
     // Changes on disk win over unsaved changes, but the tab's own saves must not reload it.
     public bool ReloadIfChanged(ApiRequest request)
     {
-        if (Problem is not null && Problem == _fileProblem)
+        if (Problem == _fileProblem)
         {
             Problem = null;
         }
@@ -149,29 +140,19 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
 
     public async Task LoadSecretsAsync(CancellationToken cancellationToken)
     {
-        string? password = null;
-        string? token = null;
-        if (_id == Guid.Empty)
+        if (Id == Guid.Empty)
         {
             _services.Logger.LogInformation("{Name} has no id, so it has no saved secrets", Name);
         }
-        else
+        try
         {
-            try
-            {
-                password = await _services.Secrets.OfAsync(_id, SecretKind.Password, cancellationToken);
-                token = await _services.Secrets.OfAsync(_id, SecretKind.Token, cancellationToken);
-            }
-            catch (Exception exception) when (FileProblem.Is(exception))
-            {
-                _services.Logger.LogError(exception, "Could not load the secrets for {Name}", Name);
-                Problem = new(_services.Translator.Of("Response.SecretsFailed"), exception.Message);
-            }
+            await Auth.LoadSecretsAsync(Id, cancellationToken);
         }
-        _loading = true;
-        Password = _savedPassword = password ?? "";
-        Token = _savedToken = token ?? "";
-        _loading = false;
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            _services.Logger.LogError(exception, "Could not load the secrets for {Name}", Name);
+            Problem = new(_services.Translator.Of("Response.SecretsFailed"), _services.Translator.DetailsOf(exception));
+        }
     }
 
     public async Task SaveAsync()
@@ -197,7 +178,7 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
         catch (Exception exception) when (FileProblem.Is(exception))
         {
             _services.Logger.LogError(exception, "Could not save {Name}", name);
-            Problem = new(translator.Of("Save.Failed"), exception.Message);
+            Problem = new(translator.Of("Save.Failed"), translator.DetailsOf(exception));
         }
     }
 
@@ -212,19 +193,16 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
         IsDirty = true;
     }
 
-    // Once the secrets are deleted, a later save writes the ones shown again.
-    public void ForgetSavedSecrets() => _savedPassword = _savedToken = "";
-
-    public ApiRequest ToRequest() => new()
+    ApiRequest ToRequest() => new()
     {
-        Id = _id,
+        Id = Id,
         Method = Method,
         Url = Url,
         Query = Query.ToList(),
         Headers = Headers.ToList(),
         BodyKind = BodyKind,
         Body = Body,
-        Auth = new(AuthKind, UserName, _oauth),
+        Auth = Auth.ToSettings(),
     };
 
     public async Task SendAsync()
@@ -260,8 +238,8 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
     string ProblemOf(Exception exception)
     {
         var translator = _services.Translator;
-        // A file problem already names the file, which the inner exception leaves out.
-        var cause = FileProblem.Is(exception) ? exception.Message : exception.GetBaseException().Message;
+        // A file problem names the file, which the inner exception leaves out.
+        var cause = FileProblem.Is(exception) ? translator.DetailsOf(exception) : exception.GetBaseException().Message;
         return exception switch
         {
             MissingSecretException { Kind: SecretKind.Password } => translator.Of("Response.MissingPassword"),
@@ -279,41 +257,39 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
         string WithCause(string reason) => $"{reason}{Environment.NewLine}{cause}";
     }
 
-    // Each secret is saved on its own and only marked as saved afterwards, so a value typed while saving is saved next time.
     async Task SaveSecretsAsync(CancellationToken cancellationToken)
     {
-        if (Password == _savedPassword && Token == _savedToken)
+        if (!Auth.HasUnsavedSecrets)
         {
             return;
         }
+        if (Name is { } name && OwnsId && await _services.Library.SharesRequestIdAsync(name, Id, cancellationToken))
+        {
+            _services.Logger.LogWarning("{Name} shares its id with another request, so it gets its own", name);
+            TakeNewId();
+        }
         EnsureOwnId();
-        var (password, token) = (Password, Token);
-        if (password != _savedPassword)
-        {
-            await _services.Secrets.SaveAsync(_id, SecretKind.Password, password, cancellationToken);
-            _savedPassword = password;
-        }
-        if (token != _savedToken)
-        {
-            await _services.Secrets.SaveAsync(_id, SecretKind.Token, token, cancellationToken);
-            _savedToken = token;
-        }
+        await Auth.SaveSecretsAsync(Id, cancellationToken);
     }
 
     void EnsureOwnId()
     {
-        if (_ownsId && _id != Guid.Empty)
+        if (!OwnsId || Id == Guid.Empty)
         {
-            return;
+            TakeNewId();
         }
-        _id = Guid.NewGuid();
-        _ownsId = true;
+    }
+
+    void TakeNewId()
+    {
+        Id = Guid.NewGuid();
+        OwnsId = true;
         // A new id has no secrets yet, so the ones shown are saved under it.
-        _savedPassword = _savedToken = "";
+        Auth.ForgetSavedSecrets();
         MarkDirty();
     }
 
-    bool HasUnsavedChanges() => SavedJsonOf(ToRequest()) != _savedJson || Password != _savedPassword || Token != _savedToken;
+    bool HasUnsavedChanges() => SavedJsonOf(ToRequest()) != _savedJson || Auth.HasUnsavedSecrets;
 
     // The lists leave blank rows out, so a file with blank rows is compared the same way.
     static string SavedJsonOf(ApiRequest request) =>
@@ -323,28 +299,24 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
     {
         _loading = true;
         _savedJson = SavedJsonOf(request);
-        _id = request.Id;
-        _oauth = request.Auth.OAuth;
+        Id = request.Id;
         Method = request.Method;
         Url = request.Url;
         Query.Load(request.Query);
         Headers.Load(request.Headers);
         BodyKind = request.BodyKind;
         Body = request.Body;
-        AuthKind = request.Auth.Kind;
-        UserName = request.Auth.UserName;
+        Auth.Load(request.Auth);
         _loading = false;
         IsDirty = false;
     }
 
-    bool Change<T>(ref T storage, T value, [CallerMemberName] string? name = null)
+    void Change<T>(ref T storage, T value, [CallerMemberName] string? name = null)
     {
-        if (!Set(ref storage, value, name))
+        if (Set(ref storage, value, name))
         {
-            return false;
+            MarkDirty();
         }
-        MarkDirty();
-        return true;
     }
 
     void MarkDirty()

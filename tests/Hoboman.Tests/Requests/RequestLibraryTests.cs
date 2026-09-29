@@ -65,7 +65,7 @@ public sealed class RequestLibraryTests : IDisposable
         var loading = Library().LoadAsync("Ping", Cancellation);
 
         // Assert
-        await Assert.ThrowsAsync<InvalidDataException>(() => loading);
+        await Assert.ThrowsAsync<InvalidFileException>(() => loading);
     }
 
     [Fact]
@@ -312,7 +312,7 @@ public sealed class RequestLibraryTests : IDisposable
         var loading = Library().LoadAsync("Ping", Cancellation);
 
         // Assert
-        await Assert.ThrowsAsync<InvalidDataException>(() => loading);
+        await Assert.ThrowsAsync<InvalidFileException>(() => loading);
     }
 
     [Fact]

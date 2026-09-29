@@ -17,6 +17,7 @@
             <TreeView.ItemContainerStyle>
                 <Style TargetType="TreeViewItem" BasedOn="{StaticResource TreeItem}">
                     <EventSetter Event="MouseLeftButtonUp" Handler="Item_MouseLeftButtonUp" />
+                    <EventSetter Event="KeyDown" Handler="Item_KeyDown" />
                     <Setter Property="ContextMenu" Value="{StaticResource FolderMenu}" />
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding IsFolder}" Value="False">

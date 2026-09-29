@@ -7,22 +7,14 @@ using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
 
-public sealed class FolderAuthViewModel(RequestLibrary library, SecretStore secrets, Translator translator, ILogger<FolderAuthViewModel> logger) : ObservableObject, IAuthFields
+public sealed class FolderAuthViewModel(RequestLibrary library, SecretStore secrets, Translator translator, ILogger<FolderAuthViewModel> logger) : ObservableObject
 {
     string _folder = "";
     FolderSettings _settings = new();
-    string _savedPassword = "";
-    string _savedToken = "";
 
     public string Title { get; private set => Set(ref field, value); } = "";
 
-    public AuthKind AuthKind { get; set => Set(ref field, value); }
-
-    public string UserName { get; set => Set(ref field, value); } = "";
-
-    public string Password { get; set => Set(ref field, value); } = "";
-
-    public string Token { get; set => Set(ref field, value); } = "";
+    public AuthViewModel Auth { get; } = new(secrets);
 
     public string? Problem { get; private set => Set(ref field, value); }
 
@@ -38,16 +30,14 @@ public sealed class FolderAuthViewModel(RequestLibrary library, SecretStore secr
         try
         {
             _settings = await library.LoadFolderAsync(folder, cancellationToken) ?? new();
-            AuthKind = _settings.Auth.Kind;
-            UserName = _settings.Auth.UserName;
-            Password = _savedPassword = await SecretOfAsync(SecretKind.Password, cancellationToken);
-            Token = _savedToken = await SecretOfAsync(SecretKind.Token, cancellationToken);
+            Auth.Load(_settings.Auth);
+            await Auth.LoadSecretsAsync(_settings.Id, cancellationToken);
             CanSave = true;
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
             logger.LogError(exception, "Could not load the auth of the folder {Folder}", folder);
-            Problem = translator.Format("FolderAuth.LoadFailed", exception.Message);
+            Problem = translator.Format("FolderAuth.LoadFailed", translator.DetailsOf(exception));
         }
     }
 
@@ -70,31 +60,24 @@ public sealed class FolderAuthViewModel(RequestLibrary library, SecretStore secr
             {
                 logger.LogWarning("{Folder} shares its id with another folder, so it gets its own", _folder);
             }
-            var settings = _settings with { Id = _settings.Id == Guid.Empty || shared ? Guid.NewGuid() : _settings.Id, Auth = _settings.Auth with { Kind = AuthKind, UserName = UserName } };
-            // A new id has no secrets yet, so the ones shown are saved under it.
-            var (savedPassword, savedToken) = settings.Id == _settings.Id ? (_savedPassword, _savedToken) : ("", "");
+            var settings = _settings with { Id = _settings.Id == Guid.Empty || shared ? Guid.NewGuid() : _settings.Id, Auth = Auth.ToSettings() };
+            if (settings.Id != _settings.Id)
+            {
+                // A new id has no secrets yet, so the ones shown are saved under it.
+                Auth.ForgetSavedSecrets();
+            }
             // The secrets go first, so a failure leaves no folder file behind that points at secrets that were never saved.
-            if (Password != savedPassword)
-            {
-                await secrets.SaveAsync(settings.Id, SecretKind.Password, Password, CancellationToken.None);
-            }
-            if (Token != savedToken)
-            {
-                await secrets.SaveAsync(settings.Id, SecretKind.Token, Token, CancellationToken.None);
-            }
+            await Auth.SaveSecretsAsync(settings.Id, CancellationToken.None);
             await library.SaveFolderAsync(_folder, settings, CancellationToken.None);
-            (_settings, _savedPassword, _savedToken) = (settings, Password, Token);
+            _settings = settings;
             logger.LogInformation("Saved the auth of the folder {Folder}", _folder);
             return true;
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
             logger.LogError(exception, "Could not save the auth of the folder {Folder}", _folder);
-            Problem = translator.Format("FolderAuth.SaveFailed", exception.Message);
+            Problem = translator.Format("FolderAuth.SaveFailed", translator.DetailsOf(exception));
             return false;
         }
     }
-
-    async Task<string> SecretOfAsync(SecretKind kind, CancellationToken cancellationToken) =>
-        _settings.Id == Guid.Empty ? "" : await secrets.OfAsync(_settings.Id, kind, cancellationToken) ?? "";
 }

@@ -14,8 +14,11 @@ public sealed class HistoryViewModel(HistoryStore store, Translator translator, 
     string? _newest;
     bool _relabel = true;
     DateTime _labelledDay;
+    ITimer? _midnight;
 
     public ObservableCollection<HistoryItemViewModel> Items { get; } = [];
+
+    public event Action? DayChanged;
 
     public bool IsFull => Items.Count >= LatestCount;
 
@@ -24,10 +27,14 @@ public sealed class HistoryViewModel(HistoryStore store, Translator translator, 
 
     public async Task RefreshAsync(CancellationToken cancellationToken)
     {
-        // "Today" and "Yesterday" move at midnight, so the labels are built again on the first refresh of a new day.
-        var today = clock.GetLocalNow().Date;
+        // "Today" and "Yesterday" move at midnight, so the labels are built again on the first refresh of a new day,
+        // and the view is told when midnight passes, so that refresh also happens when nothing else does.
+        var now = clock.GetLocalNow();
+        var today = now.Date;
         var relabel = _relabel || today != _labelledDay;
         (_relabel, _labelledDay) = (false, today);
+        _midnight?.Dispose();
+        _midnight = clock.CreateTimer(_ => DayChanged?.Invoke(), null, today.AddDays(1) - now.DateTime, Timeout.InfiniteTimeSpan);
         try
         {
             var files = await store.LatestAsync(LatestCount, relabel ? null : _newest, cancellationToken);

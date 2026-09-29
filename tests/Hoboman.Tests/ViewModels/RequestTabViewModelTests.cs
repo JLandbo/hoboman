@@ -171,7 +171,7 @@ public sealed class RequestTabViewModelTests
         await tab.LoadSecretsAsync(Cancellation);
 
         // Assert
-        Assert.Equal("token", tab.Token);
+        Assert.Equal("token", tab.Auth.Token);
     }
 
     [Fact]
@@ -180,13 +180,13 @@ public sealed class RequestTabViewModelTests
         // Arrange
         using var harness = new Harness();
         var tab = harness.Tab(new ApiRequest { Url = "https://dev.local" }, "Ping");
-        tab.Token = "old";
+        tab.Auth.Token = "old";
 
         // Act
         await tab.LoadSecretsAsync(Cancellation);
 
         // Assert
-        Assert.Empty(tab.Token);
+        Assert.Empty(tab.Auth.Token);
     }
 
     [Fact]
@@ -196,7 +196,7 @@ public sealed class RequestTabViewModelTests
         using var harness = new Harness();
         var request = ApiRequest.New() with { Auth = new(AuthKind.Bearer) };
         var tab = harness.Tab(request, "Ping");
-        tab.Token = "token";
+        tab.Auth.Token = "token";
 
         // Act
         await tab.SaveAsync();
@@ -214,7 +214,7 @@ public sealed class RequestTabViewModelTests
         await harness.Secrets.SaveAsync(original.Id, SecretKind.Token, "original", Cancellation);
         var tab = new RequestTabViewModel(harness.Services, original, historyName: "call.json");
         await tab.LoadSecretsAsync(Cancellation);
-        tab.Token = "changed";
+        tab.Auth.Token = "changed";
 
         // Act
         await tab.SendAsync();
@@ -232,7 +232,7 @@ public sealed class RequestTabViewModelTests
         await harness.Secrets.SaveAsync(original.Id, SecretKind.Token, "original", Cancellation);
         var tab = new RequestTabViewModel(harness.Services, original, historyName: "call.json");
         await tab.LoadSecretsAsync(Cancellation);
-        tab.Token = "changed";
+        tab.Auth.Token = "changed";
 
         // Act
         await tab.SendAsync();
@@ -283,7 +283,7 @@ public sealed class RequestTabViewModelTests
         Directory.CreateDirectory(harness.Folder.Root);
         File.WriteAllText(harness.Folder.Secrets, "{");
         var tab = harness.Tab();
-        tab.Token = "token";
+        tab.Auth.Token = "token";
 
         // Act
         await tab.SaveAsync();
@@ -300,7 +300,7 @@ public sealed class RequestTabViewModelTests
         Directory.CreateDirectory(harness.Folder.Root);
         File.WriteAllText(harness.Folder.Secrets, "{");
         var tab = harness.Tab();
-        tab.Token = "token";
+        tab.Auth.Token = "token";
 
         // Act
         await tab.SaveAsync();
@@ -463,14 +463,14 @@ public sealed class RequestTabViewModelTests
         using var harness = new Harness();
         var request = ApiRequest.New() with { Auth = new(AuthKind.Basic, "hobo") };
         var tab = harness.Tab(request, "Ping");
-        tab.Password = "first";
+        tab.Auth.Password = "first";
         Directory.CreateDirectory(harness.Folder.Root);
         File.WriteAllText(harness.Folder.Secrets, "{}");
         Task saving;
         using (new FileStream(harness.Folder.Secrets, FileMode.Open, FileAccess.Read, FileShare.None))
         {
             saving = tab.SaveAsync();
-            tab.Password = "second";
+            tab.Auth.Password = "second";
         }
         await saving;
 
@@ -488,7 +488,7 @@ public sealed class RequestTabViewModelTests
         using var harness = new Harness();
         var request = ApiRequest.New() with { Auth = new(AuthKind.Basic, "hobo") };
         var tab = harness.Tab(request, "Ping");
-        tab.Password = "hemmelig";
+        tab.Auth.Password = "hemmelig";
 
         // Act
         await tab.SaveAsync();
@@ -526,25 +526,78 @@ public sealed class RequestTabViewModelTests
     }
 
     [Fact]
-    public async Task SaveAsync_WhenAPasswordIsTypedWhileSaving_ThenStaysUnsaved()
+    public void ReloadIfChanged_WhenAPasswordIsTypedButNotSaved_ThenStaysUnsaved()
     {
         // Arrange
         using var harness = new Harness();
-        var tab = harness.Tab(ApiRequest.New() with { Auth = new(AuthKind.Basic, "hobo") }, "Ping");
-        tab.Password = "first";
-        Directory.CreateDirectory(harness.Folder.Root);
-        File.WriteAllText(harness.Folder.Secrets, "{}");
-        Task saving;
+        var request = ApiRequest.New() with { Auth = new(AuthKind.Basic, "hobo") };
+        var tab = harness.Tab(request, "Ping");
+        tab.Auth.Password = "typed";
 
         // Act
-        using (new FileStream(harness.Folder.Secrets, FileMode.Open, FileAccess.Read, FileShare.None))
-        {
-            saving = tab.SaveAsync();
-            tab.Password = "second";
-        }
-        await saving;
+        tab.ReloadIfChanged(request);
 
         // Assert
         Assert.True(tab.IsDirty);
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenACopySharesTheId_ThenLeavesTheOriginalsTokenAlone()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var request = ApiRequest.New() with { Auth = new(AuthKind.Bearer) };
+        await harness.Library.SaveAsync("Ping", request, Cancellation);
+        await harness.Library.SaveAsync("Copy", request, Cancellation);
+        await harness.Secrets.SaveAsync(request.Id, SecretKind.Token, "ping", Cancellation);
+        var tab = harness.Tab(request, "Copy");
+        await tab.LoadSecretsAsync(Cancellation);
+        tab.Auth.Token = "copy";
+
+        // Act
+        await tab.SaveAsync();
+
+        // Assert
+        Assert.Equal("ping", await harness.Secrets.OfAsync(request.Id, SecretKind.Token, Cancellation));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenACopySharesTheId_ThenGetsItsOwnId()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var request = ApiRequest.New() with { Auth = new(AuthKind.Bearer) };
+        await harness.Library.SaveAsync("Ping", request, Cancellation);
+        await harness.Library.SaveAsync("Copy", request, Cancellation);
+        await harness.Secrets.SaveAsync(request.Id, SecretKind.Token, "ping", Cancellation);
+        var tab = harness.Tab(request, "Copy");
+        await tab.LoadSecretsAsync(Cancellation);
+        tab.Auth.Token = "copy";
+
+        // Act
+        await tab.SaveAsync();
+
+        // Assert
+        Assert.NotEqual(request.Id, (await harness.Library.LoadAsync("Copy", Cancellation))?.Id);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenACopySharesTheId_ThenLeavesTheOriginalsTokenAlone()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var request = ApiRequest.New() with { Auth = new(AuthKind.Bearer) };
+        await harness.Library.SaveAsync("Ping", request, Cancellation);
+        await harness.Library.SaveAsync("Copy", request, Cancellation);
+        await harness.Secrets.SaveAsync(request.Id, SecretKind.Token, "ping", Cancellation);
+        var tab = harness.Tab(request, "Copy");
+        await tab.LoadSecretsAsync(Cancellation);
+        tab.Auth.Token = "copy";
+
+        // Act
+        await tab.SendAsync();
+
+        // Assert
+        Assert.Equal("ping", await harness.Secrets.OfAsync(request.Id, SecretKind.Token, Cancellation));
     }
 }

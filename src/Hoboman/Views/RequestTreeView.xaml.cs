@@ -14,16 +14,30 @@ public partial class RequestTreeView : UserControl
     async void Item_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
+        await ActivateAsync(sender);
+    }
+
+    async void Item_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            e.Handled = true;
+            await ActivateAsync(sender);
+        }
+    }
+
+    Task ActivateAsync(object sender)
+    {
         if (NodeOf(sender) is not { } node)
         {
-            return;
+            return Task.CompletedTask;
         }
         if (node.IsFolder)
         {
             node.IsExpanded = !node.IsExpanded;
-            return;
+            return Task.CompletedTask;
         }
-        await ViewModel.OpenAsync(node);
+        return ViewModel.OpenAsync(node);
     }
 
     async void Rename_Click(object sender, RoutedEventArgs e)

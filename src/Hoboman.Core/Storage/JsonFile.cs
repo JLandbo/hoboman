@@ -44,7 +44,7 @@ public sealed class JsonFile<T>(string path, T empty, ILogger logger)
             }
             catch (JsonException exception)
             {
-                throw new InvalidDataException($"{path} is not valid: {exception.Message}", exception);
+                throw new InvalidFileException(path, exception);
             }
         }
     }

@@ -47,6 +47,6 @@ public sealed class EnvironmentStoreTests : IDisposable
         var loading = Store().AllAsync(Cancellation);
 
         // Assert
-        await Assert.ThrowsAsync<InvalidDataException>(() => loading);
+        await Assert.ThrowsAsync<InvalidFileException>(() => loading);
     }
 }

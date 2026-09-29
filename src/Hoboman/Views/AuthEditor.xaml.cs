@@ -7,47 +7,45 @@ namespace Hoboman.Views;
 
 public partial class AuthEditor : UserControl
 {
-    IAuthFields? _fields;
+    AuthViewModel? _auth;
 
     // Listening only while shown keeps a closed dialog from being held in memory by the view model it edited.
     public AuthEditor()
     {
         InitializeComponent();
-        Loaded += (_, _) => Follow(DataContext as IAuthFields);
+        Loaded += (_, _) => Follow(DataContext as AuthViewModel);
         Unloaded += (_, _) => Follow(null);
         DataContextChanged += (_, e) =>
         {
             if (IsLoaded)
             {
-                Follow(e.NewValue as IAuthFields);
+                Follow(e.NewValue as AuthViewModel);
             }
         };
     }
 
-    IAuthFields Fields => (IAuthFields)DataContext;
-
-    void Follow(IAuthFields? fields)
+    void Follow(AuthViewModel? auth)
     {
-        if (_fields is not null)
+        if (_auth is not null)
         {
-            _fields.PropertyChanged -= Fields_PropertyChanged;
+            _auth.PropertyChanged -= Auth_PropertyChanged;
         }
-        _fields = fields;
-        if (fields is not null)
+        _auth = auth;
+        if (auth is not null)
         {
-            fields.PropertyChanged += Fields_PropertyChanged;
-            PasswordBox.Password = fields.Password;
+            auth.PropertyChanged += Auth_PropertyChanged;
+            PasswordBox.Password = auth.Password;
         }
     }
 
     // A password box cannot be bound, so it is kept in step with the view model by hand.
-    void Fields_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    void Auth_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(IAuthFields.Password) && PasswordBox.Password != Fields.Password)
+        if (e.PropertyName == nameof(AuthViewModel.Password) && _auth is { } auth && PasswordBox.Password != auth.Password)
         {
-            PasswordBox.Password = Fields.Password;
+            PasswordBox.Password = auth.Password;
         }
     }
 
-    void PasswordBox_PasswordChanged(object sender, RoutedEventArgs e) => Fields.Password = PasswordBox.Password;
+    void PasswordBox_PasswordChanged(object sender, RoutedEventArgs e) => _auth?.Password = PasswordBox.Password;
 }

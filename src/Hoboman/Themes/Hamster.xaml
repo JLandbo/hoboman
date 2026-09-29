@@ -41,6 +41,17 @@
     <converters:IsEqual x:Key="IsEqual" />
     <converters:Not x:Key="Not" />
 
+    <!-- Shown only when the keyboard is used, so clicking looks the same as before. -->
+    <Style x:Key="FocusRing">
+        <Setter Property="Control.Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Rectangle Margin="-2" RadiusX="8" RadiusY="8" Stroke="{DynamicResource Attention}" StrokeThickness="1.5" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="Panel" TargetType="Border">
         <Setter Property="Background" Value="{DynamicResource Surface}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Edge}" />
@@ -54,7 +65,7 @@
         <Setter Property="Background" Value="{DynamicResource Button}" />
         <Setter Property="Padding" Value="14,5" />
         <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="Focusable" Value="False" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -92,7 +103,7 @@
 
     <Style x:Key="Segment" TargetType="ToggleButton">
         <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="Focusable" Value="False" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
         <Setter Property="Foreground" Value="{DynamicResource Muted}" />
         <Setter Property="FontSize" Value="12" />
         <Setter Property="Template">
@@ -195,7 +206,7 @@
     <Style TargetType="CheckBox">
         <Setter Property="Foreground" Value="{DynamicResource Text}" />
         <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="Focusable" Value="False" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="CheckBox">
@@ -334,7 +345,7 @@
         <Setter Property="Background" Value="{DynamicResource Button}" />
         <Setter Property="Padding" Value="12,5" />
         <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="Focusable" Value="False" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ToggleButton">
@@ -357,7 +368,7 @@
     <Style x:Key="MenuButton" TargetType="Button">
         <Setter Property="Foreground" Value="{DynamicResource Text}" />
         <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="Focusable" Value="False" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
         <Setter Property="Template">
             <Setter.Value>
@@ -485,7 +496,7 @@
         <Setter Property="ItemContainerStyle">
             <Setter.Value>
                 <Style TargetType="ListBoxItem">
-                    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                    <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
                     <Setter Property="Cursor" Value="Hand" />
                     <Setter Property="Foreground" Value="{DynamicResource Muted}" />
                     <Setter Property="Template">
@@ -524,7 +535,7 @@
             <Setter.Value>
                 <Style TargetType="ListBoxItem">
                     <Setter Property="Cursor" Value="Hand" />
-                    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                    <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
                     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                     <Setter Property="Template">
                         <Setter.Value>
@@ -552,12 +563,12 @@
         <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
         <Setter Property="Foreground" Value="{DynamicResource Text}" />
         <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="Focusable" Value="False" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TreeViewItem">
                     <StackPanel>
-                        <Border x:Name="Row" CornerRadius="6" Padding="8,5" Background="Transparent">
+                        <Border x:Name="Row" CornerRadius="6" Padding="7,4" Background="Transparent" BorderThickness="1" BorderBrush="Transparent">
                             <ContentPresenter ContentSource="Header" />
                         </Border>
                         <ItemsPresenter x:Name="Items" Margin="16,0,0,0" />
@@ -568,6 +579,9 @@
                         </Trigger>
                         <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
                             <Setter TargetName="Row" Property="Background" Value="{DynamicResource Card}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Row" Property="BorderBrush" Value="{DynamicResource Attention}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

@@ -12,8 +12,8 @@ public sealed class FolderAuthViewModelTests
         await harness.Library.CreateFolderAsync("Users", Cancellation);
         var folderAuth = harness.FolderAuth();
         await folderAuth.LoadAsync("Users", Cancellation);
-        folderAuth.AuthKind = AuthKind.Bearer;
-        folderAuth.Token = "token";
+        folderAuth.Auth.Kind = AuthKind.Bearer;
+        folderAuth.Auth.Token = "token";
 
         // Act
         await folderAuth.SaveAsync();
@@ -30,8 +30,8 @@ public sealed class FolderAuthViewModelTests
         await harness.Library.CreateFolderAsync("Users", Cancellation);
         var folderAuth = harness.FolderAuth();
         await folderAuth.LoadAsync("Users", Cancellation);
-        folderAuth.AuthKind = AuthKind.Bearer;
-        folderAuth.Token = "token";
+        folderAuth.Auth.Kind = AuthKind.Bearer;
+        folderAuth.Auth.Token = "token";
 
         // Act
         await folderAuth.SaveAsync();
@@ -54,7 +54,7 @@ public sealed class FolderAuthViewModelTests
         await folderAuth.LoadAsync("Users", Cancellation);
 
         // Assert
-        Assert.Equal("token", folderAuth.Token);
+        Assert.Equal("token", folderAuth.Auth.Token);
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public sealed class FolderAuthViewModelTests
         await folderAuth.LoadAsync("Users", Cancellation);
 
         // Assert
-        Assert.Equal(AuthKind.Inherit, folderAuth.AuthKind);
+        Assert.Equal(AuthKind.Inherit, folderAuth.Auth.Kind);
     }
 
     [Fact]
@@ -82,7 +82,7 @@ public sealed class FolderAuthViewModelTests
         File.WriteAllText(file, "{");
         var folderAuth = harness.FolderAuth();
         await folderAuth.LoadAsync("Users", Cancellation);
-        folderAuth.AuthKind = AuthKind.Bearer;
+        folderAuth.Auth.Kind = AuthKind.Bearer;
 
         // Act
         await folderAuth.SaveAsync();
@@ -101,7 +101,7 @@ public sealed class FolderAuthViewModelTests
         var folderAuth = harness.FolderAuth();
         await folderAuth.LoadAsync("Users", Cancellation);
         await harness.Library.SaveFolderAsync("Users", users with { Auth = new(AuthKind.Basic, "agent") }, Cancellation);
-        folderAuth.Token = "token";
+        folderAuth.Auth.Token = "token";
 
         // Act
         await folderAuth.SaveAsync();
@@ -139,7 +139,7 @@ public sealed class FolderAuthViewModelTests
         await harness.Secrets.SaveAsync(users.Id, SecretKind.Token, "users", Cancellation);
         var folderAuth = harness.FolderAuth();
         await folderAuth.LoadAsync("Copy", Cancellation);
-        folderAuth.Token = "copy";
+        folderAuth.Auth.Token = "copy";
 
         // Act
         await folderAuth.SaveAsync();
@@ -159,7 +159,7 @@ public sealed class FolderAuthViewModelTests
         await harness.Secrets.SaveAsync(users.Id, SecretKind.Token, "users", Cancellation);
         var folderAuth = harness.FolderAuth();
         await folderAuth.LoadAsync("Copy", Cancellation);
-        folderAuth.Token = "copy";
+        folderAuth.Auth.Token = "copy";
 
         // Act
         await folderAuth.SaveAsync();
@@ -176,8 +176,8 @@ public sealed class FolderAuthViewModelTests
         await harness.Library.CreateFolderAsync("Users", Cancellation);
         var folderAuth = harness.FolderAuth();
         await folderAuth.LoadAsync("Users", Cancellation);
-        folderAuth.AuthKind = AuthKind.Basic;
-        folderAuth.Password = "hemmelig";
+        folderAuth.Auth.Kind = AuthKind.Basic;
+        folderAuth.Auth.Password = "hemmelig";
 
         // Act
         await folderAuth.SaveAsync();
@@ -194,8 +194,8 @@ public sealed class FolderAuthViewModelTests
         await harness.Library.CreateFolderAsync("Users", Cancellation);
         var folderAuth = harness.FolderAuth();
         await folderAuth.LoadAsync("Users", Cancellation);
-        folderAuth.AuthKind = AuthKind.Basic;
-        folderAuth.UserName = "hobo";
+        folderAuth.Auth.Kind = AuthKind.Basic;
+        folderAuth.Auth.UserName = "hobo";
 
         // Act
         await folderAuth.SaveAsync();
@@ -212,10 +212,10 @@ public sealed class FolderAuthViewModelTests
         await harness.Library.CreateFolderAsync("Users", Cancellation);
         var folderAuth = harness.FolderAuth();
         await folderAuth.LoadAsync("Users", Cancellation);
-        folderAuth.AuthKind = AuthKind.Bearer;
+        folderAuth.Auth.Kind = AuthKind.Bearer;
         await folderAuth.SaveAsync();
         var id = (await harness.Library.LoadFolderAsync("Users", Cancellation))!.Id;
-        folderAuth.UserName = "again";
+        folderAuth.Auth.UserName = "again";
 
         // Act
         await folderAuth.SaveAsync();
@@ -233,8 +233,8 @@ public sealed class FolderAuthViewModelTests
         var folderAuth = harness.FolderAuth();
         await folderAuth.LoadAsync("Users", Cancellation);
         File.WriteAllText(harness.Folder.Secrets, "{");
-        folderAuth.AuthKind = AuthKind.Bearer;
-        folderAuth.Token = "token";
+        folderAuth.Auth.Kind = AuthKind.Bearer;
+        folderAuth.Auth.Token = "token";
 
         // Act
         await folderAuth.SaveAsync();
@@ -257,7 +257,7 @@ public sealed class FolderAuthViewModelTests
         await folderAuth.LoadAsync("Users", Cancellation);
 
         // Assert
-        Assert.Equal("hemmelig", folderAuth.Password);
+        Assert.Equal("hemmelig", folderAuth.Auth.Password);
     }
 
     [Fact]
@@ -286,12 +286,28 @@ public sealed class FolderAuthViewModelTests
         File.WriteAllText(Path.Combine(harness.Folder.Requests, "B", ".folder.json"), "{");
         var folderAuth = harness.FolderAuth();
         await folderAuth.LoadAsync("A", Cancellation);
-        folderAuth.Token = "token";
+        folderAuth.Auth.Token = "token";
 
         // Act
         var saved = await folderAuth.SaveAsync();
 
         // Assert
         Assert.True(saved);
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenTheFileIsInvalid_ThenSaysSoInTheChosenLanguage()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.CreateFolderAsync("Users", Cancellation);
+        File.WriteAllText(Path.Combine(harness.Folder.Requests, "Users", ".folder.json"), "{");
+        var folderAuth = new FolderAuthViewModel(harness.Library, harness.Secrets, new Translator(Translation.Danish), NullLogger<FolderAuthViewModel>.Instance);
+
+        // Act
+        await folderAuth.LoadAsync("Users", Cancellation);
+
+        // Assert
+        Assert.DoesNotContain("is not valid", folderAuth.Problem);
     }
 }

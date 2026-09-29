@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Threading;
 using Hoboman.Core.Environments;
 using Hoboman.ViewModels;
 
@@ -38,14 +40,33 @@ public partial class MainWindow : Window
 
     async void EditEnvironments_Click(object sender, RoutedEventArgs e)
     {
-        EnvironmentToggle.IsChecked = false;
+        CloseEnvironmentMenu();
         await _viewModel.EditEnvironmentsAsync();
     }
 
     Task ChooseAsync(ApiEnvironment? environment)
     {
-        EnvironmentToggle.IsChecked = false;
+        CloseEnvironmentMenu();
         return _viewModel.Environments.ChooseAsync(environment);
+    }
+
+    // A menu is a window of its own, so the keyboard only gets into it when focus is moved there, once its items are made.
+    void EnvironmentPopup_Opened(object sender, EventArgs e) =>
+        Dispatcher.InvokeAsync(() => EnvironmentMenu.MoveFocus(new TraversalRequest(FocusNavigationDirection.First)), DispatcherPriority.Loaded);
+
+    void EnvironmentMenu_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            CloseEnvironmentMenu();
+        }
+    }
+
+    void CloseEnvironmentMenu()
+    {
+        EnvironmentToggle.IsChecked = false;
+        EnvironmentToggle.Focus();
     }
 
     void Window_Closing(object? sender, CancelEventArgs e) => e.Cancel = !_viewModel.CanClose();

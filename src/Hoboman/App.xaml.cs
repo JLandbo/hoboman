@@ -55,6 +55,7 @@ public partial class App : Application
         watcher.RequestsChanged += () => OnUi(main.RequestsChangedAsync);
         watcher.HistoryChanged += () => OnUi(main.HistoryChangedAsync);
         watcher.EnvironmentsChanged += () => OnUi(main.EnvironmentsChangedAsync);
+        main.History.DayChanged += () => OnUi(main.HistoryChangedAsync);
         watcher.Start();
         await main.LoadAsync();
         _services.GetRequiredService<MainWindow>().Show();

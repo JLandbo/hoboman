@@ -53,9 +53,9 @@
                 </ToggleButton>
                 <Popup x:Name="MethodPopup" IsOpen="{Binding IsChecked, ElementName=MethodToggle}" PlacementTarget="{Binding ElementName=MethodToggle}"
                        StaysOpen="False" AllowsTransparency="True" Opened="MethodPopup_Opened">
-                    <Border Style="{StaticResource Menu}" Width="220">
+                    <Border x:Name="MethodMenu" Style="{StaticResource Menu}" Width="220" PreviewKeyDown="MethodMenu_PreviewKeyDown">
                         <StackPanel>
-                            <ItemsControl ItemsSource="{x:Static viewModels:RequestTabViewModel.Methods}">
+                            <ItemsControl ItemsSource="{x:Static viewModels:RequestTabViewModel.Methods}" Focusable="False">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <Button Style="{StaticResource MenuButton}" Click="Method_Click" HorizontalAlignment="Stretch">
@@ -120,7 +120,7 @@
                     </TextBox>
                 </DockPanel>
 
-                <local:AuthEditor Visibility="{Binding IsChecked, ElementName=AuthSection, Converter={StaticResource VisibleWhenTrue}}" />
+                <local:AuthEditor DataContext="{Binding Auth}" Visibility="{Binding IsChecked, ElementName=AuthSection, Converter={StaticResource VisibleWhenTrue}}" />
             </Grid>
         </DockPanel>
     </Border>

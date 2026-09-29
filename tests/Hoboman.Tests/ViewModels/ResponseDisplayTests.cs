@@ -31,4 +31,24 @@ public sealed class ResponseDisplayTests
         // Assert
         Assert.Equal("2 KB", size);
     }
+
+    [Fact]
+    public void Of_WhenTheBodyIsVeryLarge_ThenShowsOnlyTheStart()
+    {
+        // Act
+        var display = ResponseDisplay.Of(new ApiResponse(200, "OK", 5, 3_000_000, [], new string('x', 3_000_000)));
+
+        // Assert
+        Assert.Equal(ResponseDisplay.ShownLength, display.Body.Length);
+    }
+
+    [Fact]
+    public void Of_WhenTheBodyIsVeryLarge_ThenSaysItIsCut()
+    {
+        // Act
+        var display = ResponseDisplay.Of(new ApiResponse(200, "OK", 5, 3_000_000, [], new string('x', 3_000_000)));
+
+        // Assert
+        Assert.True(display.IsCut);
+    }
 }

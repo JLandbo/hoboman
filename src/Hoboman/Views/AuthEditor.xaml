@@ -6,13 +6,13 @@
         <Border DockPanel.Dock="Top" Style="{StaticResource SegmentGroup}" Margin="0,0,0,12">
             <StackPanel Orientation="Horizontal">
                 <RadioButton Content="{DynamicResource Auth.Inherit}" GroupName="AuthKind" Style="{StaticResource Segment}"
-                             IsChecked="{Binding AuthKind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:AuthKind.Inherit}}" />
+                             IsChecked="{Binding Kind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:AuthKind.Inherit}}" />
                 <RadioButton Content="{DynamicResource Auth.None}" GroupName="AuthKind" Style="{StaticResource Segment}"
-                             IsChecked="{Binding AuthKind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:AuthKind.None}}" />
+                             IsChecked="{Binding Kind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:AuthKind.None}}" />
                 <RadioButton Content="{DynamicResource Auth.Basic}" GroupName="AuthKind" Style="{StaticResource Segment}"
-                             IsChecked="{Binding AuthKind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:AuthKind.Basic}}" />
+                             IsChecked="{Binding Kind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:AuthKind.Basic}}" />
                 <RadioButton Content="{DynamicResource Auth.Bearer}" GroupName="AuthKind" Style="{StaticResource Segment}"
-                             IsChecked="{Binding AuthKind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:AuthKind.Bearer}}" />
+                             IsChecked="{Binding Kind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:AuthKind.Bearer}}" />
             </StackPanel>
         </Border>
         <StackPanel HorizontalAlignment="Left" Width="420">
@@ -21,7 +21,7 @@
                     <Style TargetType="TextBlock">
                         <Setter Property="Visibility" Value="Collapsed" />
                         <Style.Triggers>
-                            <DataTrigger Binding="{Binding AuthKind}" Value="{x:Static auth:AuthKind.Inherit}">
+                            <DataTrigger Binding="{Binding Kind}" Value="{x:Static auth:AuthKind.Inherit}">
                                 <Setter Property="Visibility" Value="Visible" />
                             </DataTrigger>
                         </Style.Triggers>
@@ -33,7 +33,7 @@
                     <Style TargetType="StackPanel">
                         <Setter Property="Visibility" Value="Collapsed" />
                         <Style.Triggers>
-                            <DataTrigger Binding="{Binding AuthKind}" Value="{x:Static auth:AuthKind.Basic}">
+                            <DataTrigger Binding="{Binding Kind}" Value="{x:Static auth:AuthKind.Basic}">
                                 <Setter Property="Visibility" Value="Visible" />
                             </DataTrigger>
                         </Style.Triggers>
@@ -53,7 +53,7 @@
                     <Style TargetType="StackPanel">
                         <Setter Property="Visibility" Value="Collapsed" />
                         <Style.Triggers>
-                            <DataTrigger Binding="{Binding AuthKind}" Value="{x:Static auth:AuthKind.Bearer}">
+                            <DataTrigger Binding="{Binding Kind}" Value="{x:Static auth:AuthKind.Bearer}">
                                 <Setter Property="Visibility" Value="Visible" />
                             </DataTrigger>
                         </Style.Triggers>

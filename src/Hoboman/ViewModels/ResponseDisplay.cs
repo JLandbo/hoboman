@@ -4,18 +4,27 @@ using Hoboman.Core.Sending;
 
 namespace Hoboman.ViewModels;
 
-public sealed record ResponseDisplay(string Status, bool IsSuccess, string Elapsed, string Size, string Body, string Headers, int HeaderCount)
+public sealed record ResponseDisplay(string Status, bool IsSuccess, string Elapsed, string Size, string Body, string Headers, int HeaderCount, bool IsCut)
 {
+    // WPF lays out the whole text on the UI thread, which freezes the window for bodies of many megabytes.
+    public const int ShownLength = 1_000_000;
+
     static readonly JsonSerializerOptions _pretty = new() { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
-    public static ResponseDisplay Of(ApiResponse response) => new(
-        $"{response.StatusCode} {response.Reason}".Trim(),
-        response.IsSuccess,
-        $"{response.ElapsedMs} ms",
-        SizeOf(response.Size),
-        PrettyOf(response.Body),
-        string.Join(Environment.NewLine, response.Headers.Select(header => $"{header.Name}: {header.Value}")),
-        response.Headers.Count);
+    public static ResponseDisplay Of(ApiResponse response)
+    {
+        var body = PrettyOf(response.Body);
+        var isCut = body.Length > ShownLength;
+        return new(
+            $"{response.StatusCode} {response.Reason}".Trim(),
+            response.IsSuccess,
+            $"{response.ElapsedMs} ms",
+            SizeOf(response.Size),
+            isCut ? body[..ShownLength] : body,
+            string.Join(Environment.NewLine, response.Headers.Select(header => $"{header.Name}: {header.Value}")),
+            response.Headers.Count,
+            isCut);
+    }
 
     internal static string SizeOf(long size) => size switch
     {
