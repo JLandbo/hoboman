@@ -41,7 +41,9 @@ public sealed class KeyValueListViewModel : ObservableObject
         OnChanged();
     }
 
-    public IReadOnlyList<KeyValue> ToList() => [.. Rows.Where(row => !row.IsBlank).Select(row => new KeyValue(row.Name, row.Value, row.Enabled))];
+    public IReadOnlyList<KeyValue> ToList() => WithoutBlanks(Rows.Select(row => new KeyValue(row.Name, row.Value, row.Enabled)));
+
+    public static IReadOnlyList<KeyValue> WithoutBlanks(IEnumerable<KeyValue> values) => [.. values.Where(value => value is not { Name: "", Value: "" })];
 
     void Add(KeyValueRowViewModel row)
     {

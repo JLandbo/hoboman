@@ -86,6 +86,7 @@ public partial class App : Application
             new LoggerConfiguration().MinimumLevel.Debug().WriteTo.File(Path.Combine(folder.Logs, "hoboman-.log"), rollingInterval: RollingInterval.Day, outputTemplate: _logLine).CreateLogger(),
             dispose: true));
         services.AddSingleton(folder);
+        services.AddSingleton(TimeProvider.System);
         services.AddSingleton<AppFolderWatcher>();
         services.AddSingleton<SettingsStore>();
         services.AddSingleton(_ => new Translator(Translation.Danish));

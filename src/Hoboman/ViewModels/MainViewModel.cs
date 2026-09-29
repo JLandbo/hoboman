@@ -112,8 +112,8 @@ public sealed class MainViewModel(
         logger.LogInformation("Opened the call to {Address} from the history", item.Address);
         var entry = item.File.Entry;
         var tab = new RequestTabViewModel(tabServices, entry.Request, suggestedName: entry.Name, historyName: item.File.Name);
-        await tab.ShowAsync(entry);
         Add(tab);
+        await tab.ShowAsync(entry);
         await tab.LoadSecretsAsync(CancellationToken.None);
     }
 
@@ -207,7 +207,10 @@ public sealed class MainViewModel(
             if (id != Guid.Empty && !tree.IsUsed(id))
             {
                 await secrets.DeleteAsync(id, CancellationToken.None);
-                tab?.ForgetSavedSecrets();
+                foreach (var open in Tabs.Where(open => open.Id == id))
+                {
+                    open.ForgetSavedSecrets();
+                }
             }
         }
         catch (Exception exception) when (FileProblem.Is(exception))

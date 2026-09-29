@@ -605,4 +605,180 @@ public sealed class MainViewModelTests
         // Assert
         Assert.Equal("https://dev.local", main.SelectedTab?.Url);
     }
+
+    [Fact]
+    public async Task RequestsChangedAsync_WhenARequestWithACopyIsDeleted_ThenTheTabKeepsItsEdits()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(accept: true));
+        var request = ApiRequest.New() with { Url = "https://a.local" };
+        await harness.Library.SaveAsync("A", request, Cancellation);
+        await harness.Library.SaveAsync("B", request with { Url = "https://b.local" }, Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.OpenAsync(main.Tree.Nodes.Single(node => node.Path == "A"));
+        var tab = main.SelectedTab!;
+        tab.Url = "https://edited.local";
+        await main.DeleteAsync(main.Tree.Nodes.Single(node => node.Path == "A"));
+
+        // Act
+        await main.RequestsChangedAsync();
+
+        // Assert
+        Assert.Equal("https://edited.local", tab.Url);
+    }
+
+    [Fact]
+    public async Task RequestsChangedAsync_WhenTheOriginalOfACopyIsDeletedOnDisk_ThenTheTabDoesNotJumpToTheCopy()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var request = ApiRequest.New();
+        await harness.Library.SaveAsync("A", request, Cancellation);
+        await harness.Library.SaveAsync("B", request, Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.OpenAsync(main.Tree.Nodes.Single(node => node.Path == "A"));
+        var tab = main.SelectedTab!;
+        File.Delete(Path.Combine(harness.Folder.Requests, "A.json"));
+
+        // Act
+        await main.RequestsChangedAsync();
+
+        // Assert
+        Assert.Null(tab.Name);
+    }
+
+    [Fact]
+    public async Task OpenAsync_WhenAHistoryItemIsOpenedTwiceAtOnce_ThenOpensOneTab()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var entry = new HistoryEntry(DateTimeOffset.Now, HistorySource.App, "dev.local", ApiRequest.New(), Response: new(200, "OK", 5, 2, [], "{}"));
+        var main = harness.Main();
+
+        // Act
+        var first = main.OpenAsync(new HistoryItemViewModel(new("call.json", entry), "Today"));
+        var second = main.OpenAsync(new HistoryItemViewModel(new("call.json", entry), "Today"));
+        await first;
+        await second;
+
+        // Assert
+        Assert.Single(main.Tabs, tab => tab.HistoryName == "call.json");
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenAHistoryTabUsesTheRequest_ThenItSavesItsSecretsAgainWhenSending()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(accept: true));
+        var request = ApiRequest.New() with { Auth = new(AuthKind.Bearer) };
+        await harness.Library.SaveAsync("Ping", request, Cancellation);
+        await harness.Secrets.SaveAsync(request.Id, SecretKind.Token, "secret", Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.OpenAsync(new HistoryItemViewModel(new("call.json", new(DateTimeOffset.Now, HistorySource.App, "dev.local", request, "Ping")), "Today"));
+        var tab = main.SelectedTab!;
+        await main.DeleteAsync(main.Tree.Nodes.Single());
+
+        // Act
+        await tab.SendAsync();
+
+        // Assert
+        Assert.Equal("secret", await harness.Secrets.OfAsync(harness.Sender.Auth!.SecretsId, SecretKind.Token, Cancellation));
+    }
+
+    [Fact]
+    public async Task RequestsChangedAsync_WhenTheFileHasABlankHeader_ThenTheTabStaysSaved()
+    {
+        // Arrange
+        using var harness = new Harness();
+        Directory.CreateDirectory(harness.Folder.Requests);
+        File.WriteAllText(Path.Combine(harness.Folder.Requests, "Ping.json"), $$"""{"id": "{{Guid.NewGuid()}}", "url": "https://dev.local", "headers": [{"name": ""}]}""");
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.OpenAsync(main.Tree.Nodes.Single());
+
+        // Act
+        await main.RequestsChangedAsync();
+
+        // Assert
+        Assert.False(main.SelectedTab!.IsDirty);
+    }
+
+    [Fact]
+    public async Task RequestsChangedAsync_WhenTheFileHasABlankHeader_ThenKeepsTheEdits()
+    {
+        // Arrange
+        using var harness = new Harness();
+        Directory.CreateDirectory(harness.Folder.Requests);
+        File.WriteAllText(Path.Combine(harness.Folder.Requests, "Ping.json"), $$"""{"id": "{{Guid.NewGuid()}}", "url": "https://dev.local", "headers": [{"name": ""}]}""");
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.OpenAsync(main.Tree.Nodes.Single());
+        main.SelectedTab!.Url = "https://edited.local";
+
+        // Act
+        await main.RequestsChangedAsync();
+
+        // Assert
+        Assert.Equal("https://edited.local", main.SelectedTab!.Url);
+    }
+
+    [Fact]
+    public async Task RequestsChangedAsync_WhenTheTabSavedItselfAndWasEditedAfter_ThenStaysUnsaved()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("Ping", ApiRequest.New() with { Url = "https://dev.local" }, Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.OpenAsync(main.Tree.Nodes.Single());
+        var tab = main.SelectedTab!;
+        tab.Url = "https://saved.local";
+        await tab.SaveAsync();
+        tab.Url = "https://newer.local";
+
+        // Act
+        await main.RequestsChangedAsync();
+
+        // Assert
+        Assert.True(tab.IsDirty);
+    }
+
+    [Fact]
+    public async Task OpenAsync_WhenAnotherHistoryItemIsOpen_ThenOpensTheClickedOne()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var main = harness.Main();
+        await main.OpenAsync(new HistoryItemViewModel(new("a.json", new(DateTimeOffset.Now, HistorySource.App, "a.local", ApiRequest.New() with { Url = "https://a.local" })), "Today"));
+
+        // Act
+        await main.OpenAsync(new HistoryItemViewModel(new("b.json", new(DateTimeOffset.Now, HistorySource.App, "b.local", ApiRequest.New() with { Url = "https://b.local" })), "Today"));
+
+        // Assert
+        Assert.Equal("https://b.local", main.SelectedTab?.Url);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenTheTabIsSavedAgain_ThenSavesItsPasswordAgain()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(answer: "Ping", accept: true));
+        var request = ApiRequest.New() with { Auth = new(AuthKind.Basic, "hobo") };
+        await harness.Library.SaveAsync("Ping", request, Cancellation);
+        await harness.Secrets.SaveAsync(request.Id, SecretKind.Password, "hemmelig", Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.OpenAsync(main.Tree.Nodes.Single());
+        var tab = main.SelectedTab!;
+        await main.DeleteAsync(main.Tree.Nodes.Single());
+
+        // Act
+        await tab.SaveAsync();
+
+        // Assert
+        Assert.Equal("hemmelig", await harness.Secrets.OfAsync(request.Id, SecretKind.Password, Cancellation));
+    }
 }

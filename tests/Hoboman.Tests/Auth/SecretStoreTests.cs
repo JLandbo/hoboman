@@ -128,4 +128,18 @@ public sealed class SecretStoreTests : IDisposable
         // Assert
         Assert.Null(secret);
     }
+
+    [Fact]
+    public async Task DeleteAsync_WhenCalled_ThenRemovesThePasswordToo()
+    {
+        // Arrange
+        var id = Guid.NewGuid();
+        await Store().SaveAsync(id, SecretKind.Password, "hemmelig", Cancellation);
+
+        // Act
+        await Store().DeleteAsync(id, Cancellation);
+
+        // Assert
+        Assert.Null(await Store().OfAsync(id, SecretKind.Password, Cancellation));
+    }
 }

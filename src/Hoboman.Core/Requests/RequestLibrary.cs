@@ -44,9 +44,20 @@ public sealed class RequestLibrary(AppFolder folder, ILogger<RequestLibrary> log
     {
         foreach (var other in await FoldersAsync(cancellationToken).ConfigureAwait(false))
         {
-            if (!other.Equals(name, StringComparison.OrdinalIgnoreCase) && (await LoadFolderAsync(other, cancellationToken).ConfigureAwait(false))?.Id == id)
+            if (other.Equals(name, StringComparison.OrdinalIgnoreCase))
             {
-                return true;
+                continue;
+            }
+            try
+            {
+                if ((await LoadFolderAsync(other, cancellationToken).ConfigureAwait(false))?.Id == id)
+                {
+                    return true;
+                }
+            }
+            catch (Exception exception) when (FileProblem.Is(exception))
+            {
+                logger.LogWarning(exception, "Skipped the folder {Folder} while looking for a shared id", other);
             }
         }
         return false;

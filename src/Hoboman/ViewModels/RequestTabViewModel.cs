@@ -129,7 +129,7 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
         {
             Problem = null;
         }
-        if (JsonSerializer.Serialize(request) == _savedJson)
+        if (SavedJsonOf(request) == _savedJson)
         {
             // A tab that got its file back is only unsaved if it was edited.
             IsDirty = HasUnsavedChanges();
@@ -189,7 +189,7 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
             await SaveSecretsAsync(CancellationToken.None);
             var request = ToRequest();
             await _services.Library.SaveAsync(name, request, CancellationToken.None);
-            _savedJson = JsonSerializer.Serialize(request);
+            _savedJson = SavedJsonOf(request);
             Name = name;
             // Edits made while the file was being written are still unsaved.
             IsDirty = HasUnsavedChanges();
@@ -229,6 +229,8 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
 
     public async Task SendAsync()
     {
+        // Sending makes a new call, so the history entry opens the old one again.
+        HistoryName = null;
         Problem = null;
         Response = null;
         IsSending = true;
@@ -311,12 +313,16 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
         MarkDirty();
     }
 
-    bool HasUnsavedChanges() => JsonSerializer.Serialize(ToRequest()) != _savedJson || Password != _savedPassword || Token != _savedToken;
+    bool HasUnsavedChanges() => SavedJsonOf(ToRequest()) != _savedJson || Password != _savedPassword || Token != _savedToken;
+
+    // The lists leave blank rows out, so a file with blank rows is compared the same way.
+    static string SavedJsonOf(ApiRequest request) =>
+        JsonSerializer.Serialize(request with { Query = KeyValueListViewModel.WithoutBlanks(request.Query), Headers = KeyValueListViewModel.WithoutBlanks(request.Headers) });
 
     void Load(ApiRequest request)
     {
         _loading = true;
-        _savedJson = JsonSerializer.Serialize(request);
+        _savedJson = SavedJsonOf(request);
         _id = request.Id;
         _oauth = request.Auth.OAuth;
         Method = request.Method;

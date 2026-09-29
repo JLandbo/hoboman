@@ -14,7 +14,10 @@ public partial class RequestTreeView : UserControl
     async void Item_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
-        var node = NodeOf(sender);
+        if (NodeOf(sender) is not { } node)
+        {
+            return;
+        }
         if (node.IsFolder)
         {
             node.IsExpanded = !node.IsExpanded;
@@ -23,11 +26,30 @@ public partial class RequestTreeView : UserControl
         await ViewModel.OpenAsync(node);
     }
 
-    async void Rename_Click(object sender, RoutedEventArgs e) => await ViewModel.RenameAsync(NodeOf(sender));
+    async void Rename_Click(object sender, RoutedEventArgs e)
+    {
+        if (NodeOf(sender) is { } node)
+        {
+            await ViewModel.RenameAsync(node);
+        }
+    }
 
-    async void Delete_Click(object sender, RoutedEventArgs e) => await ViewModel.DeleteAsync(NodeOf(sender));
+    async void Delete_Click(object sender, RoutedEventArgs e)
+    {
+        if (NodeOf(sender) is { } node)
+        {
+            await ViewModel.DeleteAsync(node);
+        }
+    }
 
-    async void FolderAuth_Click(object sender, RoutedEventArgs e) => await ViewModel.EditFolderAuthAsync(NodeOf(sender));
+    async void FolderAuth_Click(object sender, RoutedEventArgs e)
+    {
+        if (NodeOf(sender) is { } node)
+        {
+            await ViewModel.EditFolderAuthAsync(node);
+        }
+    }
 
-    static RequestNodeViewModel NodeOf(object sender) => (RequestNodeViewModel)((FrameworkElement)sender).DataContext;
+    // A menu left open while the tree reloads points at a node that is no longer in the tree.
+    static RequestNodeViewModel? NodeOf(object sender) => ((FrameworkElement)sender).DataContext as RequestNodeViewModel;
 }

@@ -275,4 +275,23 @@ public sealed class FolderAuthViewModelTests
         // Assert
         Assert.StartsWith("The folder's auth could not be loaded", folderAuth.Problem);
     }
+
+    [Fact]
+    public async Task SaveAsync_WhenAnotherFolderFileIsInvalid_ThenStillSaves()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveFolderAsync("A", new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) }, Cancellation);
+        await harness.Library.CreateFolderAsync("B", Cancellation);
+        File.WriteAllText(Path.Combine(harness.Folder.Requests, "B", ".folder.json"), "{");
+        var folderAuth = harness.FolderAuth();
+        await folderAuth.LoadAsync("A", Cancellation);
+        folderAuth.Token = "token";
+
+        // Act
+        var saved = await folderAuth.SaveAsync();
+
+        // Assert
+        Assert.True(saved);
+    }
 }

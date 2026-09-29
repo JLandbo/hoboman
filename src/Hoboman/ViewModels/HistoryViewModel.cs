@@ -7,12 +7,13 @@ using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
 
-public sealed class HistoryViewModel(HistoryStore store, Translator translator, ILogger<HistoryViewModel> logger) : ObservableObject
+public sealed class HistoryViewModel(HistoryStore store, Translator translator, TimeProvider clock, ILogger<HistoryViewModel> logger) : ObservableObject
 {
     public const int LatestCount = 100;
 
     string? _newest;
     bool _relabel = true;
+    DateTime _labelledDay;
 
     public ObservableCollection<HistoryItemViewModel> Items { get; } = [];
 
@@ -23,8 +24,10 @@ public sealed class HistoryViewModel(HistoryStore store, Translator translator, 
 
     public async Task RefreshAsync(CancellationToken cancellationToken)
     {
-        var relabel = _relabel;
-        _relabel = false;
+        // "Today" and "Yesterday" move at midnight, so the labels are built again on the first refresh of a new day.
+        var today = clock.GetLocalNow().Date;
+        var relabel = _relabel || today != _labelledDay;
+        (_relabel, _labelledDay) = (false, today);
         try
         {
             var files = await store.LatestAsync(LatestCount, relabel ? null : _newest, cancellationToken);
@@ -34,7 +37,7 @@ public sealed class HistoryViewModel(HistoryStore store, Translator translator, 
             }
             foreach (var file in files.Reverse())
             {
-                Items.Insert(0, new(file, DayOf(file.Entry.At.LocalDateTime.Date, DateTime.Today)));
+                Items.Insert(0, new(file, DayOf(file.Entry.At.LocalDateTime.Date, today)));
             }
             while (Items.Count > LatestCount)
             {

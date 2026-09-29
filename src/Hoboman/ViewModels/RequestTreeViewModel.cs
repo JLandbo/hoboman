@@ -9,11 +9,14 @@ public sealed class RequestTreeViewModel(RequestLibrary library, ILogger<Request
 {
     IReadOnlyDictionary<Guid, string> _nameById = new Dictionary<Guid, string>();
     IReadOnlyDictionary<string, Guid> _idByName = new Dictionary<string, Guid>();
+    IReadOnlySet<string> _names = new HashSet<string>();
+    IReadOnlySet<string> _earlierNames = new HashSet<string>();
 
     public ObservableCollection<RequestNodeViewModel> Nodes { get; } = [];
 
-    // Moving a file shows up as a delete and a create, so open tabs find their file again by its id.
-    public string? NameOf(Guid id) => _nameById.GetValueOrDefault(id);
+    // Moving a file shows up as a delete and a create, so open tabs find their file again by its id, under a name that is new since the last load.
+    // A copy that is left with the id after its original is deleted was there before, so it is not taken for a move.
+    public string? NameOf(Guid id) => _nameById.GetValueOrDefault(id) is { } name && !_earlierNames.Contains(name) ? name : null;
 
     public Guid IdOf(string name) => _idByName.GetValueOrDefault(name);
 
@@ -49,6 +52,7 @@ public sealed class RequestTreeViewModel(RequestLibrary library, ILogger<Request
             ChildrenOf(name).Add(new(name, request?.Method, isFolder: false));
         }
         _nameById = UniqueIds(names, requests);
+        (_earlierNames, _names) = (_names, names.ToHashSet(StringComparer.OrdinalIgnoreCase));
         _idByName = names.Zip(requests).Where(pair => pair.Second is not null).ToDictionary(pair => pair.First, pair => pair.Second!.Id, StringComparer.OrdinalIgnoreCase);
 
         ObservableCollection<RequestNodeViewModel> ChildrenOf(string path) => RequestLibrary.ParentOf(path) is { } parent ? FolderOf(parent).Children : Nodes;

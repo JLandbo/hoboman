@@ -510,4 +510,41 @@ public sealed class RequestTabViewModelTests
         // Assert
         Assert.False(tab.FromHistory);
     }
+
+    [Fact]
+    public async Task SendAsync_WhenTheTabIsFromTheHistory_ThenNoLongerStandsForThatCall()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), historyName: "call.json");
+
+        // Act
+        await tab.SendAsync();
+
+        // Assert
+        Assert.False(tab.FromHistory);
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenAPasswordIsTypedWhileSaving_ThenStaysUnsaved()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var tab = harness.Tab(ApiRequest.New() with { Auth = new(AuthKind.Basic, "hobo") }, "Ping");
+        tab.Password = "first";
+        Directory.CreateDirectory(harness.Folder.Root);
+        File.WriteAllText(harness.Folder.Secrets, "{}");
+        Task saving;
+
+        // Act
+        using (new FileStream(harness.Folder.Secrets, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            saving = tab.SaveAsync();
+            tab.Password = "second";
+        }
+        await saving;
+
+        // Assert
+        Assert.True(tab.IsDirty);
+    }
 }

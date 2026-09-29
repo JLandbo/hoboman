@@ -41,7 +41,7 @@ public sealed class Harness : IDisposable
 
     public MainViewModel Main() => new(
         new(Library, NullLogger<RequestTreeViewModel>.Instance),
-        new(History(), _translator, NullLogger<HistoryViewModel>.Instance),
+        new(History(), _translator, TimeProvider.System, NullLogger<HistoryViewModel>.Instance),
         Environments,
         new(SettingsStore, _translator, NullLogger<SettingsViewModel>.Instance),
         EnvironmentEditor(),
