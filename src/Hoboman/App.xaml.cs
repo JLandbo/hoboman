@@ -42,6 +42,7 @@ public partial class App : Application
         services.AddSingleton<RequestEditorViewModel>();
         services.AddSingleton<ResponseViewModel>();
         services.AddSingleton<MainViewModel>();
+        services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<MainWindow>();
         return services;
     }

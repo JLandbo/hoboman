@@ -1,5 +1,6 @@
 {
   "texts": {
+    "Common.Close": "Luk",
     "Edit.Cut": "Klip",
     "Edit.Copy": "Kopiér",
     "Edit.Paste": "Sæt ind",
@@ -12,6 +13,9 @@
     "Editor.Auth": "Auth",
     "Response.Title": "Svar",
     "Response.Body": "Body",
-    "Response.Headers": "Headers"
+    "Response.Headers": "Headers",
+    "Settings.Title": "Indstillinger",
+    "Settings.Language": "Sprog",
+    "Settings.IgnoreCertificateErrors": "Ignorér certifikatfejl"
   }
 }

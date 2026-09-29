@@ -108,6 +108,34 @@
         </Setter>
     </Style>
 
+    <Style x:Key="Segments" TargetType="ListBox">
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBox">
+                    <Border Padding="2" CornerRadius="8" Background="{DynamicResource Input}">
+                        <StackPanel Orientation="Horizontal" IsItemsHost="True" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Setter Property="ItemContainerStyle">
+            <Setter.Value>
+                <Style TargetType="ListBoxItem">
+                    <Setter Property="Focusable" Value="False" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ListBoxItem">
+                                <RadioButton Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" ContentTemplateSelector="{TemplateBinding ContentTemplateSelector}"
+                                             IsChecked="{Binding IsSelected, RelativeSource={RelativeSource TemplatedParent}}" Style="{StaticResource Segment}" />
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style TargetType="ScrollBar">
         <Setter Property="Width" Value="6" />
         <Setter Property="ContextMenu" Value="{x:Null}" />

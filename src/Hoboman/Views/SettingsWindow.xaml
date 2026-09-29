@@ -1,0 +1,23 @@
+<Window x:Class="Hoboman.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="{DynamicResource Settings.Title}" Width="440" SizeToContent="Height"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent" ResizeMode="NoResize"
+        ShowInTaskbar="False" WindowStartupLocation="CenterOwner" UseLayoutRounding="True"
+        Foreground="{DynamicResource Text}" FontFamily="{StaticResource UiFont}" FontSize="13">
+    <Border Margin="12" Padding="20,16,20,20" CornerRadius="16" Background="{DynamicResource Surface}"
+            BorderBrush="{DynamicResource Edge}" BorderThickness="1" Effect="{StaticResource Shadow}"
+            MouseLeftButtonDown="Border_MouseLeftButtonDown">
+        <StackPanel>
+            <DockPanel Margin="0,0,0,16">
+                <Button DockPanel.Dock="Right" Content="&#xE711;" ToolTip="{DynamicResource Common.Close}" Click="Close_Click" IsCancel="True" Style="{StaticResource SmallIconButton}" FontSize="12" VerticalAlignment="Center" />
+                <TextBlock Text="{DynamicResource Settings.Title}" FontSize="18" FontWeight="SemiBold" />
+            </DockPanel>
+            <DockPanel Margin="0,0,0,16">
+                <ListBox DockPanel.Dock="Right" ItemsSource="{Binding Languages}" SelectedItem="{Binding Language}" DisplayMemberPath="Name" Style="{StaticResource Segments}" />
+                <TextBlock Text="{DynamicResource Settings.Language}" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" />
+            </DockPanel>
+            <CheckBox Content="{DynamicResource Settings.IgnoreCertificateErrors}" IsChecked="{Binding IgnoreCertificateErrors}" />
+        </StackPanel>
+    </Border>
+</Window>

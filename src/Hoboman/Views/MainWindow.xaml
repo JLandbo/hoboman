@@ -11,7 +11,11 @@
             <ColumnDefinition Width="12" />
             <ColumnDefinition MinWidth="360" />
         </Grid.ColumnDefinitions>
-        <local:RequestTreeView DataContext="{Binding Tree}" />
+        <DockPanel>
+            <Button DockPanel.Dock="Bottom" Content="&#xE713;" ToolTip="{DynamicResource Settings.Title}" Click="Settings_Click"
+                    Style="{StaticResource IconButton}" Foreground="{DynamicResource Muted}" HorizontalAlignment="Left" Margin="0,8,0,0" />
+            <local:RequestTreeView DataContext="{Binding Tree}" />
+        </DockPanel>
         <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" Background="Transparent" />
         <Grid Grid.Column="2">
             <Grid.RowDefinitions>

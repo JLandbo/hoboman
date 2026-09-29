@@ -1,0 +1,56 @@
+# Hoboman CLI (planlagt)
+
+Et konsolprogram, så AI-agenter og scripts kan sende requests uden GUI'en, med de samme gemte requests, environments og hemmeligheder.
+
+## Opbygning
+
+- Eget projekt: `src/Hoboman.Cli` (konsolapp), som kun refererer `Hoboman.Core`.
+- Udgives som `hoboman-cli.exe` i samme mappe som `Hoboman.exe` og deler derfor `requests\`, `environments.json`, `secrets.json` og `settings.json`. Navnet kan ikke være `hoboman.exe`, fordi Windows ikke skelner mellem store og små bogstaver.
+- Forudsætning allerede nu: al logik (indlæsning af requests, `{{variabler}}`, auth, hemmeligheder, afsendelse) ligger i `Hoboman.Core` uden WPF. GUI'en er kun visning.
+
+## Kommandoer
+
+```
+hoboman-cli list
+hoboman-cli send <gemt request> [--env <navn>]
+hoboman-cli send <METODE> <url> [--env <navn>] [-H "Navn: Værdi"]... [--json <tekst|@fil>] [--text <tekst|@fil>]
+```
+
+- `list` viser de gemte requests som stier relativt til `requests\`, fx `Brugere/Hent bruger`.
+- `send <gemt request>` sender en gemt request med dens egne headers, body og auth.
+- `send GET https://…` sender et direkte kald. Auth angives med `-H "Authorization: …"`.
+- `--env` vælger environment. Uden den bruges `EnvironmentName` fra `settings.json`.
+- `@fil` læser body fra en fil.
+
+## Output
+
+Svaret skrives som JSON på stdout:
+
+```json
+{
+  "status": 200,
+  "reason": "OK",
+  "elapsedMs": 123,
+  "size": 456,
+  "headers": [{ "name": "Content-Type", "value": "application/json" }],
+  "body": "..."
+}
+```
+
+Fejl skrives som `{ "error": "..." }` på stderr.
+
+| Exit code | Betydning |
+|---|---|
+| 0 | Svar med status 2xx |
+| 1 | Svar med anden status |
+| 2 | Fejl: forkerte argumenter, ukendt request, netværksfejl eller manglende token |
+
+## Regler
+
+- CLI'et ændrer aldrig filer.
+- `IgnoreCertificateErrors` fra `settings.json` gælder også her.
+- OAuth bruger det token, der er gemt i `secrets.json`. Mangler det, fejler kaldet med besked om at hente et token i Hoboman. CLI'et åbner aldrig en browser.
+
+## Åbne spørgsmål
+
+- Skal GUI'en vise svar på kald sendt fra CLI'et, eller er stdout nok?

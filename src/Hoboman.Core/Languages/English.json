@@ -1,5 +1,6 @@
 {
   "texts": {
+    "Common.Close": "Close",
     "Edit.Cut": "Cut",
     "Edit.Copy": "Copy",
     "Edit.Paste": "Paste",
@@ -12,6 +13,9 @@
     "Editor.Auth": "Auth",
     "Response.Title": "Response",
     "Response.Body": "Body",
-    "Response.Headers": "Headers"
+    "Response.Headers": "Headers",
+    "Settings.Title": "Settings",
+    "Settings.Language": "Language",
+    "Settings.IgnoreCertificateErrors": "Ignore certificate errors"
   }
 }
