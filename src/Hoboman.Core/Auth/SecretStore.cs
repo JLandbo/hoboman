@@ -7,13 +7,14 @@ namespace Hoboman.Core.Auth;
 
 public sealed class SecretStore(AppFolder folder, ILogger<SecretStore> logger)
 {
-    readonly JsonFile<IReadOnlyDictionary<Guid, string>> _file = new(folder.Secrets, new Dictionary<Guid, string>(), logger);
+    readonly JsonFile<IReadOnlyDictionary<string, string>> _file = new(folder.Secrets, new Dictionary<string, string>(), logger);
 
-    public async Task<string> OfAsync(Guid id, CancellationToken cancellationToken)
+    public async Task<string?> OfAsync(Guid id, SecretKind kind, CancellationToken cancellationToken)
     {
-        if (!(await _file.LoadAsync(cancellationToken).ConfigureAwait(false)).TryGetValue(id, out var secret))
+        if (!(await _file.LoadAsync(cancellationToken).ConfigureAwait(false)).TryGetValue(KeyOf(id, kind), out var secret))
         {
-            return "";
+            logger.LogDebug("No {Kind} is saved for {Id}", kind, id);
+            return null;
         }
         try
         {
@@ -21,16 +22,20 @@ public sealed class SecretStore(AppFolder folder, ILogger<SecretStore> logger)
         }
         catch (Exception exception) when (exception is CryptographicException or FormatException)
         {
-            logger.LogWarning(exception, "Could not decrypt the secret for {Id}", id);
-            return "";
+            logger.LogWarning(exception, "Could not decrypt the {Kind} for {Id}", kind, id);
+            return null;
         }
     }
 
-    public async Task SaveAsync(Guid id, string secret, CancellationToken cancellationToken)
+    public async Task SaveAsync(Guid id, SecretKind kind, string secret, CancellationToken cancellationToken)
     {
+        // Requests without an id would otherwise share one secret.
+        ArgumentOutOfRangeException.ThrowIfEqual(id, Guid.Empty);
         await _file.UpdateAsync(
-            secrets => new Dictionary<Guid, string>(secrets) { [id] = Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(secret), null, DataProtectionScope.CurrentUser)) },
+            secrets => new Dictionary<string, string>(secrets) { [KeyOf(id, kind)] = Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(secret), null, DataProtectionScope.CurrentUser)) },
             cancellationToken).ConfigureAwait(false);
-        logger.LogInformation("Saved the secret for {Id}", id);
+        logger.LogInformation("Saved the {Kind} for {Id}", kind, id);
     }
+
+    static string KeyOf(Guid id, SecretKind kind) => $"{id}/{kind}";
 }

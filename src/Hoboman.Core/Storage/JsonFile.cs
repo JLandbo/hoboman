@@ -12,6 +12,7 @@ public sealed class JsonFile<T>(string path, T empty, ILogger logger)
     static readonly JsonSerializerOptions _options = new()
     {
         WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true,
         RespectRequiredConstructorParameters = true,
         RespectNullableAnnotations = true,
@@ -29,9 +30,13 @@ public sealed class JsonFile<T>(string path, T empty, ILogger logger)
             {
                 return await ReadAsync(cancellationToken).ConfigureAwait(false);
             }
-            catch (Exception exception) when (IsBusy(exception, attempt))
+            catch (Exception exception) when (CanRetry(exception, attempt))
             {
                 await PauseAsync(exception, cancellationToken).ConfigureAwait(false);
+            }
+            catch (JsonException exception)
+            {
+                throw new InvalidDataException($"{path} is not valid: {exception.Message}", exception);
             }
         }
     }
@@ -50,13 +55,15 @@ public sealed class JsonFile<T>(string path, T empty, ILogger logger)
         }
     }
 
-    public async Task UpdateAsync(Func<T, T> change, CancellationToken cancellationToken)
+    public async Task<T> UpdateAsync(Func<T, T> change, CancellationToken cancellationToken)
     {
         await LeaveCallersThread();
         await _writing.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await WriteAsync(change(await LoadAsync(cancellationToken).ConfigureAwait(false)), cancellationToken).ConfigureAwait(false);
+            var value = change(await LoadAsync(cancellationToken).ConfigureAwait(false));
+            await WriteAsync(value, cancellationToken).ConfigureAwait(false);
+            return value;
         }
         finally
         {
@@ -71,17 +78,9 @@ public sealed class JsonFile<T>(string path, T empty, ILogger logger)
             logger.LogDebug("{Path} does not exist yet", path);
             return empty;
         }
-        try
-        {
-            var value = JsonSerializer.Deserialize<T>(await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false), _options) ?? empty;
-            logger.LogDebug("Loaded {Path}", path);
-            return value;
-        }
-        catch (JsonException exception)
-        {
-            logger.LogWarning(exception, "{Path} is not valid", path);
-            return empty;
-        }
+        var value = JsonSerializer.Deserialize<T>(await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false), _options) ?? empty;
+        logger.LogDebug("Loaded {Path}", path);
+        return value;
     }
 
     async Task WriteAsync(T value, CancellationToken cancellationToken)
@@ -101,7 +100,7 @@ public sealed class JsonFile<T>(string path, T empty, ILogger logger)
                 logger.LogDebug("Saved {Path}", path);
                 return;
             }
-            catch (Exception exception) when (IsBusy(exception, attempt))
+            catch (Exception exception) when (CanRetry(exception, attempt))
             {
                 await PauseAsync(exception, cancellationToken).ConfigureAwait(false);
             }
@@ -111,11 +110,12 @@ public sealed class JsonFile<T>(string path, T empty, ILogger logger)
     // Small files are read and written synchronously even through async calls, so this keeps the disk work off the UI thread.
     static ConfiguredTaskAwaitable LeaveCallersThread() => Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
 
-    static bool IsBusy(Exception exception, int attempt) => exception is IOException or UnauthorizedAccessException && attempt < _attempts;
+    // Invalid JSON is retried too, because another program may be halfway through writing the file.
+    static bool CanRetry(Exception exception, int attempt) => exception is IOException or UnauthorizedAccessException or JsonException && attempt < _attempts;
 
     Task PauseAsync(Exception exception, CancellationToken cancellationToken)
     {
-        logger.LogDebug(exception, "{Path} is busy, trying again", path);
+        logger.LogDebug(exception, "{Path} could not be used, trying again", path);
         return Task.Delay(_retryDelay, cancellationToken);
     }
 }

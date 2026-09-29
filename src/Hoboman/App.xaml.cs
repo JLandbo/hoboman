@@ -28,10 +28,19 @@ public partial class App : Application
         base.OnStartup(e);
         _services = Services(new AppFolder(AppContext.BaseDirectory)).BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true });
         var logger = _services.GetRequiredService<ILogger<App>>();
+        var translator = _services.GetRequiredService<Translator>();
         AppDomain.CurrentDomain.UnhandledException += (_, args) => logger.LogCritical(args.ExceptionObject as Exception, "Unhandled exception");
         TaskScheduler.UnobservedTaskException += (_, args) => logger.LogError(args.Exception, "Unobserved task exception");
+        DispatcherUnhandledException += (_, args) =>
+        {
+            logger.LogError(args.Exception, "Unhandled exception on the UI thread");
+            if (MainWindow?.IsVisible == true)
+            {
+                args.Handled = true;
+                MessageBox.Show(MainWindow, translator.Format("Common.UnexpectedError", args.Exception.Message), "Hoboman", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        };
         logger.LogInformation("Hoboman started in {Folder}", AppContext.BaseDirectory);
-        var translator = _services.GetRequiredService<Translator>();
         Use(translator.Current);
         translator.Changed += () => Use(translator.Current);
         await _services.GetRequiredService<SettingsViewModel>().LoadAsync(CancellationToken.None);
@@ -54,9 +63,10 @@ public partial class App : Application
         services.AddSingleton(folder);
         services.AddSingleton(provider => new JsonFile<AppSettings>(folder.Settings, AppSettings.Default, provider.GetRequiredService<ILogger<AppSettings>>()));
         services.AddSingleton(_ => new Translator(Translation.Danish));
-        services.AddSingleton(provider => new JsonFile<IReadOnlyList<ApiEnvironment>>(folder.Environments, [], provider.GetRequiredService<ILogger<ApiEnvironment>>()));
+        services.AddSingleton<EnvironmentStore>();
         services.AddSingleton<RequestLibrary>();
         services.AddSingleton<SecretStore>();
+        services.AddSingleton<HttpClients>();
         services.AddSingleton<IRequestSender, HttpRequestSender>();
         services.AddSingleton<IBrowser, ShellBrowser>();
         services.AddSingleton<RequestTreeViewModel>();

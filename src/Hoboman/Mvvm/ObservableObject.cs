@@ -14,7 +14,9 @@ public abstract class ObservableObject : INotifyPropertyChanged
             return false;
         }
         storage = value;
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        OnPropertyChanged(name);
         return true;
     }
+
+    protected void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }

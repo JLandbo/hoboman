@@ -9,6 +9,7 @@ namespace Hoboman.ViewModels;
 
 public sealed class SettingsViewModel(JsonFile<AppSettings> file, Translator translator, ILogger<SettingsViewModel> logger) : ObservableObject
 {
+    AppSettings _saved = AppSettings.Default;
     bool _ignoreCertificateErrors;
 
     public IReadOnlyList<Translation> Languages => Translation.All;
@@ -29,10 +30,9 @@ public sealed class SettingsViewModel(JsonFile<AppSettings> file, Translator tra
         get => _ignoreCertificateErrors;
         set
         {
-            var previous = _ignoreCertificateErrors;
             _ignoreCertificateErrors = value;
             logger.LogInformation("Ignore certificate errors changed to {Ignore}", value);
-            Saving = SaveAsync(settings => settings with { IgnoreCertificateErrors = value }, undo: () => Set(ref _ignoreCertificateErrors, previous, nameof(IgnoreCertificateErrors)));
+            Saving = SaveAsync(settings => settings with { IgnoreCertificateErrors = value });
         }
     }
 
@@ -45,29 +45,32 @@ public sealed class SettingsViewModel(JsonFile<AppSettings> file, Translator tra
         Problem = null;
         try
         {
-            var settings = await file.LoadAsync(cancellationToken);
-            _ignoreCertificateErrors = settings.IgnoreCertificateErrors;
-            translator.Use(Translation.Find(settings.LanguageName));
+            _saved = await file.LoadAsync(cancellationToken);
+            _ignoreCertificateErrors = _saved.IgnoreCertificateErrors;
+            translator.Use(Translation.Find(_saved.LanguageName));
             logger.LogInformation("Using {Language}", translator.Current.Name);
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        catch (Exception exception) when (IsFileProblem(exception))
         {
             logger.LogError(exception, "Could not load the settings, keeping the current ones");
         }
     }
 
-    async Task SaveAsync(Func<AppSettings, AppSettings> change, Action? undo = null)
+    async Task SaveAsync(Func<AppSettings, AppSettings> change)
     {
         try
         {
-            await file.UpdateAsync(change, CancellationToken.None);
+            _saved = await file.UpdateAsync(change, CancellationToken.None);
             Problem = null;
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        catch (Exception exception) when (IsFileProblem(exception))
         {
             logger.LogError(exception, "Could not save the settings");
-            undo?.Invoke();
+            // The sender reads the file, so show what the file really holds.
+            Set(ref _ignoreCertificateErrors, _saved.IgnoreCertificateErrors, nameof(IgnoreCertificateErrors));
             Problem = translator.Format("Settings.SaveFailed", exception.Message);
         }
     }
+
+    static bool IsFileProblem(Exception exception) => exception is IOException or UnauthorizedAccessException or InvalidDataException;
 }

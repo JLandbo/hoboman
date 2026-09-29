@@ -1,6 +1,7 @@
 {
   "texts": {
     "Common.Close": "Luk",
+    "Common.UnexpectedError": "Der skete en uventet fejl: {0}",
     "Edit.Cut": "Klip",
     "Edit.Copy": "Kopiér",
     "Edit.Paste": "Sæt ind",

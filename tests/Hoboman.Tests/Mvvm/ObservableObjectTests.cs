@@ -2,33 +2,55 @@ namespace Hoboman.Tests.Mvvm;
 
 public sealed class ObservableObjectTests
 {
+    sealed class Sample : ObservableObject
+    {
+        public string Name { get; set => Set(ref field, value); } = "";
+
+        public void Refresh() => OnPropertyChanged("Summary");
+    }
+
     [Fact]
     public void Set_WhenTheValueChanges_ThenTellsWhichPropertyChanged()
     {
         // Arrange
-        var editor = new RequestEditorViewModel();
+        var sample = new Sample();
         string? changed = null;
-        editor.PropertyChanged += (_, e) => changed = e.PropertyName;
+        sample.PropertyChanged += (_, e) => changed = e.PropertyName;
 
         // Act
-        editor.Url = "https://localhost";
+        sample.Name = "Hobo";
 
         // Assert
-        Assert.Equal(nameof(RequestEditorViewModel.Url), changed);
+        Assert.Equal(nameof(Sample.Name), changed);
     }
 
     [Fact]
     public void Set_WhenTheValueIsTheSame_ThenDoesNotNotify()
     {
         // Arrange
-        var editor = new RequestEditorViewModel();
+        var sample = new Sample();
         var notified = false;
-        editor.PropertyChanged += (_, _) => notified = true;
+        sample.PropertyChanged += (_, _) => notified = true;
 
         // Act
-        editor.Method = "GET";
+        sample.Name = "";
 
         // Assert
         Assert.False(notified);
+    }
+
+    [Fact]
+    public void OnPropertyChanged_WhenCalled_ThenTellsWhichPropertyChanged()
+    {
+        // Arrange
+        var sample = new Sample();
+        string? changed = null;
+        sample.PropertyChanged += (_, e) => changed = e.PropertyName;
+
+        // Act
+        sample.Refresh();
+
+        // Assert
+        Assert.Equal("Summary", changed);
     }
 }

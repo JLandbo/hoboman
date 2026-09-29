@@ -29,17 +29,42 @@ public sealed class JsonFileTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_WhenTheFileIsCorrupt_ThenReturnsTheEmptyValue()
+    public async Task LoadAsync_WhenTheFileIsInvalid_ThenThrowsWithThePath()
     {
         // Arrange
         Directory.CreateDirectory(_directory);
         File.WriteAllText(FilePath, "{");
 
         // Act
-        var settings = await Store().LoadAsync(Cancellation);
+        var loading = Store().LoadAsync(Cancellation);
 
         // Assert
-        Assert.Same(AppSettings.Default, settings);
+        Assert.Contains(FilePath, (await Assert.ThrowsAsync<InvalidDataException>(() => loading)).Message);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenTheFileIsInvalid_ThenLeavesItUntouched()
+    {
+        // Arrange
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(FilePath, "{");
+
+        // Act
+        var updating = Store().UpdateAsync(settings => settings with { EnvironmentName = "Test" }, Cancellation);
+
+        // Assert
+        await Assert.ThrowsAsync<InvalidDataException>(() => updating);
+        Assert.Equal("{", File.ReadAllText(FilePath));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenCalled_ThenWritesCamelCaseNames()
+    {
+        // Act
+        await Store().SaveAsync(new AppSettings("Test"), Cancellation);
+
+        // Assert
+        Assert.Contains("\"environmentName\": \"Test\"", File.ReadAllText(FilePath));
     }
 
     [Fact]

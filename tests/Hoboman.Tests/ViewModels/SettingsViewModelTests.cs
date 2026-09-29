@@ -83,6 +83,24 @@ public sealed class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task IgnoreCertificateErrors_WhenTwoSavesFail_ThenShowsWhatTheFileHolds()
+    {
+        // Arrange
+        await Store().SaveAsync(new AppSettings(IgnoreCertificateErrors: true), Cancellation);
+        var settings = Settings(new Translator(Translation.English));
+        await settings.LoadAsync(Cancellation);
+        using var locked = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.None);
+
+        // Act
+        settings.IgnoreCertificateErrors = false;
+        settings.IgnoreCertificateErrors = true;
+        await settings.Saving;
+
+        // Assert
+        Assert.True(settings.IgnoreCertificateErrors);
+    }
+
+    [Fact]
     public async Task LoadAsync_WhenTheFileIsLocked_ThenKeepsTheCurrentLanguage()
     {
         // Arrange

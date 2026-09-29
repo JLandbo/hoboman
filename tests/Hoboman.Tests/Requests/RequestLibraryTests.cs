@@ -4,6 +4,8 @@ public sealed class RequestLibraryTests : IDisposable
 {
     readonly string _directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
 
+    string RequestsFolder => Path.Combine(_directory, "requests");
+
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
     RequestLibrary Library() => new(new AppFolder(_directory), NullLogger<RequestLibrary>.Instance);
@@ -31,33 +33,31 @@ public sealed class RequestLibraryTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_WhenTheFileOnlyHasAUrl_ThenFillsInTheRest()
+    public async Task LoadAsync_WhenTheFileOnlyHasAUrl_ThenFillsInTheRestWithoutAnId()
     {
         // Arrange
-        Directory.CreateDirectory(Path.Combine(_directory, "requests"));
-        File.WriteAllText(Path.Combine(_directory, "requests", "Ping.json"), """{"url": "https://dev.local"}""");
+        Directory.CreateDirectory(RequestsFolder);
+        File.WriteAllText(Path.Combine(RequestsFolder, "Ping.json"), """{"url": "https://dev.local"}""");
 
         // Act
         var loaded = await Library().LoadAsync("Ping", Cancellation);
 
         // Assert
-        Assert.NotNull(loaded);
-        Assert.NotEqual(Guid.Empty, loaded.Id);
-        Assert.Equivalent(ApiRequest.New() with { Id = loaded.Id, Url = "https://dev.local" }, loaded, strict: true);
+        Assert.Equivalent(new ApiRequest { Url = "https://dev.local" }, loaded, strict: true);
     }
 
     [Fact]
-    public async Task LoadAsync_WhenTheFileHasNoUrl_ThenGivesNull()
+    public async Task LoadAsync_WhenTheFileHasNoUrl_ThenThrows()
     {
         // Arrange
-        Directory.CreateDirectory(Path.Combine(_directory, "requests"));
-        File.WriteAllText(Path.Combine(_directory, "requests", "Ping.json"), """{"method": "GET"}""");
+        Directory.CreateDirectory(RequestsFolder);
+        File.WriteAllText(Path.Combine(RequestsFolder, "Ping.json"), """{"method": "GET"}""");
 
         // Act
-        var loaded = await Library().LoadAsync("Ping", Cancellation);
+        var loading = Library().LoadAsync("Ping", Cancellation);
 
         // Assert
-        Assert.Null(loaded);
+        await Assert.ThrowsAsync<InvalidDataException>(() => loading);
     }
 
     [Fact]
@@ -70,27 +70,82 @@ public sealed class RequestLibraryTests : IDisposable
         Assert.Null(loaded);
     }
 
+    [Theory]
+    [InlineData("/api/users")]
+    [InlineData("../settings")]
+    [InlineData("Auth: get token")]
+    [InlineData("Users//Get user")]
+    [InlineData("Users./Get user")]
+    public async Task SaveAsync_WhenTheNameIsInvalid_ThenThrowsWithoutWriting(string name)
+    {
+        // Act
+        var saving = Library().SaveAsync(name, ApiRequest.New(), Cancellation);
+
+        // Assert
+        await Assert.ThrowsAsync<ArgumentException>(() => saving);
+        Assert.False(Directory.Exists(_directory));
+    }
+
     [Fact]
-    public async Task Names_WhenRequestsAreInSubfolders_ThenGivesTheirPaths()
+    public async Task NamesAsync_WhenRequestsAreInSubfolders_ThenGivesTheirPaths()
     {
         // Arrange
         await Library().SaveAsync("Ping", ApiRequest.New(), Cancellation);
         await Library().SaveAsync("Users/Get user", ApiRequest.New(), Cancellation);
 
         // Act
-        var names = Library().Names();
+        var names = await Library().NamesAsync(Cancellation);
 
         // Assert
         Assert.Equal(["Ping", "Users/Get user"], names.Order());
     }
 
     [Fact]
-    public void Names_WhenTheFolderIsMissing_ThenGivesNothing()
+    public async Task NamesAsync_WhenTheFolderIsMissing_ThenGivesNothing()
     {
         // Act
-        var names = Library().Names();
+        var names = await Library().NamesAsync(Cancellation);
 
         // Assert
         Assert.Empty(names);
+    }
+
+    [Fact]
+    public async Task FoldersAsync_WhenAFolderIsEmpty_ThenGivesItToo()
+    {
+        // Arrange
+        await Library().CreateFolderAsync("Users/Admin", Cancellation);
+
+        // Act
+        var folders = await Library().FoldersAsync(Cancellation);
+
+        // Assert
+        Assert.Equal(["Users", "Users/Admin"], folders.Order());
+    }
+
+    [Fact]
+    public async Task RenameAsync_WhenCalled_ThenMovesTheRequest()
+    {
+        // Arrange
+        await Library().SaveAsync("Ping", ApiRequest.New(), Cancellation);
+
+        // Act
+        await Library().RenameAsync("Ping", "Health/Ping", Cancellation);
+
+        // Assert
+        Assert.Equal(["Health/Ping"], await Library().NamesAsync(Cancellation));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenCalled_ThenRemovesTheRequest()
+    {
+        // Arrange
+        await Library().SaveAsync("Ping", ApiRequest.New(), Cancellation);
+
+        // Act
+        await Library().DeleteAsync("Ping", Cancellation);
+
+        // Assert
+        Assert.Empty(await Library().NamesAsync(Cancellation));
     }
 }

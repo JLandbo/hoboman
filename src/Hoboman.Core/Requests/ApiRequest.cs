@@ -8,7 +8,7 @@ public sealed record KeyValue(string Name, string Value, bool Enabled = true);
 
 public sealed record ApiRequest
 {
-    public Guid Id { get; init; } = Guid.NewGuid();
+    public Guid Id { get; init; }
 
     public string Method { get; init; } = "GET";
 
@@ -24,5 +24,5 @@ public sealed record ApiRequest
 
     public AuthSettings Auth { get; init; } = AuthSettings.None;
 
-    public static ApiRequest New() => new() { Url = "" };
+    public static ApiRequest New() => new() { Id = Guid.NewGuid(), Url = "" };
 }

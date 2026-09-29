@@ -47,6 +47,10 @@ public sealed class EchoServer : IAsyncLifetime
 
     static async Task EchoAsync(HttpContext context)
     {
+        if (context.Request.Path == "/slow")
+        {
+            await Task.Delay(Timeout.Infinite, context.RequestAborted);
+        }
         using var reader = new StreamReader(context.Request.Body);
         context.Response.Cookies.Append("session", "1");
         var headers = context.Request.Headers.ToDictionary(header => header.Key, header => header.Value.ToString(), StringComparer.OrdinalIgnoreCase);

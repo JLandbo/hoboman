@@ -1,6 +1,7 @@
 {
   "texts": {
     "Common.Close": "Close",
+    "Common.UnexpectedError": "An unexpected error happened: {0}",
     "Edit.Cut": "Cut",
     "Edit.Copy": "Copy",
     "Edit.Paste": "Paste",

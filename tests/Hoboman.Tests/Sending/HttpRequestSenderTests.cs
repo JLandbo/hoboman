@@ -8,6 +8,7 @@ namespace Hoboman.Tests.Sending;
 public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<EchoServer>, IDisposable
 {
     readonly string _directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+    HttpClients? _clients;
 
     AppFolder Folder => new(_directory);
 
@@ -15,6 +16,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
 
     public void Dispose()
     {
+        _clients?.Dispose();
         if (Directory.Exists(_directory))
         {
             Directory.Delete(_directory, recursive: true);
@@ -23,18 +25,19 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
 
     SecretStore Secrets() => new(Folder, NullLogger<SecretStore>.Instance);
 
+    JsonFile<AppSettings> Settings() => new(Folder.Settings, AppSettings.Default, NullLogger.Instance);
+
     async Task<HttpRequestSender> SenderAsync(bool ignoreCertificateErrors = false, ILogger<HttpRequestSender>? logger = null)
     {
-        var settings = new JsonFile<AppSettings>(Folder.Settings, AppSettings.Default, NullLogger.Instance);
-        await settings.SaveAsync(new AppSettings(IgnoreCertificateErrors: ignoreCertificateErrors), Cancellation);
-        return new(Secrets(), settings, logger ?? NullLogger<HttpRequestSender>.Instance);
+        await Settings().SaveAsync(new AppSettings(IgnoreCertificateErrors: ignoreCertificateErrors), Cancellation);
+        return new(Secrets(), _clients ??= new(Settings()), logger ?? NullLogger<HttpRequestSender>.Instance);
     }
 
     ApiRequest Request() => ApiRequest.New() with { Url = server.Http.ToString() };
 
     async Task<Echo> EchoOf(ApiRequest request, ApiEnvironment? environment = null)
     {
-        using var sender = await SenderAsync();
+        var sender = await SenderAsync();
         return EchoIn(await sender.SendAsync(request, environment, Cancellation));
     }
 
@@ -55,6 +58,19 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
 
         // Assert
         Assert.Equal("/items?x=1&a=b%20c", echo.Target);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheUrlHasAFragment_ThenStillSendsTheQuery()
+    {
+        // Arrange
+        var request = Request() with { Url = $"{server.Http}items#top", Query = [new("page", "2")] };
+
+        // Act
+        var echo = await EchoOf(request);
+
+        // Assert
+        Assert.Equal("/items?page=2", echo.Target);
     }
 
     [Fact]
@@ -101,11 +117,37 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
     }
 
     [Fact]
+    public async Task SendAsync_WhenAHeaderHasNoName_ThenSkipsIt()
+    {
+        // Arrange
+        var request = Request() with { Method = "POST", BodyKind = BodyKind.Text, Body = "hej", Headers = [new("", "")] };
+
+        // Act
+        var echo = await EchoOf(request);
+
+        // Assert
+        Assert.Equal("hej", echo.Body);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenAHeaderNameIsInvalid_ThenThrows()
+    {
+        // Arrange
+        var sender = await SenderAsync();
+
+        // Act
+        var sending = sender.SendAsync(Request() with { Headers = [new("X Key", "1")] }, null, Cancellation);
+
+        // Assert
+        await Assert.ThrowsAsync<FormatException>(() => sending);
+    }
+
+    [Fact]
     public async Task SendAsync_WhenTheAuthIsBasic_ThenSendsTheUserNameAndSavedPassword()
     {
         // Arrange
         var request = Request() with { Auth = new(AuthKind.Basic, "hobo") };
-        await Secrets().SaveAsync(request.Id, "hemmelig", Cancellation);
+        await Secrets().SaveAsync(request.Id, SecretKind.Password, "hemmelig", Cancellation);
 
         // Act
         var echo = await EchoOf(request);
@@ -119,7 +161,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
     {
         // Arrange
         var request = Request() with { Auth = new(AuthKind.Bearer) };
-        await Secrets().SaveAsync(request.Id, "token", Cancellation);
+        await Secrets().SaveAsync(request.Id, SecretKind.Token, "token", Cancellation);
 
         // Act
         var echo = await EchoOf(request);
@@ -129,10 +171,23 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
     }
 
     [Fact]
+    public async Task SendAsync_WhenTheTokenIsMissing_ThenThrows()
+    {
+        // Arrange
+        var sender = await SenderAsync();
+
+        // Act
+        var sending = sender.SendAsync(Request() with { Auth = new(AuthKind.Bearer) }, null, Cancellation);
+
+        // Assert
+        Assert.Equal(SecretKind.Token, (await Assert.ThrowsAsync<MissingSecretException>(() => sending)).Kind);
+    }
+
+    [Fact]
     public async Task SendAsync_WhenTheServerAnswers_ThenGivesStatusSizeHeadersAndBody()
     {
         // Arrange
-        using var sender = await SenderAsync();
+        var sender = await SenderAsync();
 
         // Act
         var response = await sender.SendAsync(Request(), null, Cancellation);
@@ -147,7 +202,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
     public async Task SendAsync_WhenTheServerSetsACookie_ThenDoesNotSendItBack()
     {
         // Arrange
-        using var sender = await SenderAsync();
+        var sender = await SenderAsync();
         await sender.SendAsync(Request(), null, Cancellation);
 
         // Act
@@ -158,16 +213,30 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
     }
 
     [Fact]
-    public async Task SendAsync_WhenCancelled_ThenDoesNotLogItAsAFailure()
+    public async Task SendAsync_WhenTheUrlHoldsSecrets_ThenLeavesThemOutOfTheLog()
     {
         // Arrange
         var logger = new RecordingLogger<HttpRequestSender>();
-        using var sender = await SenderAsync(logger: logger);
-        using var cancellation = new CancellationTokenSource();
-        await cancellation.CancelAsync();
+        var sender = await SenderAsync(logger: logger);
 
         // Act
-        var sending = sender.SendAsync(Request(), null, cancellation.Token);
+        await sender.SendAsync(Request() with { Url = $"http://bob:pa55@{server.Http.Authority}/items?api_key=k3y" }, null, Cancellation);
+
+        // Assert
+        Assert.NotEmpty(logger.Entries);
+        Assert.DoesNotContain(logger.Entries, entry => entry.Message.Contains("pa55") || entry.Message.Contains("k3y"));
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenCancelledWhileWaiting_ThenDoesNotLogItAsAFailure()
+    {
+        // Arrange
+        var logger = new RecordingLogger<HttpRequestSender>();
+        var sender = await SenderAsync(logger: logger);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
+
+        // Act
+        var sending = sender.SendAsync(Request() with { Url = $"{server.Http}slow" }, null, cancellation.Token);
 
         // Assert
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => sending);
@@ -178,7 +247,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
     public async Task SendAsync_WhenTheCertificateIsUntrusted_ThenFails()
     {
         // Arrange
-        using var sender = await SenderAsync();
+        var sender = await SenderAsync();
 
         // Act
         var sending = sender.SendAsync(ApiRequest.New() with { Url = server.Https.ToString() }, null, Cancellation);
@@ -191,7 +260,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
     public async Task SendAsync_WhenCertificateErrorsAreIgnored_ThenGetsTheAnswer()
     {
         // Arrange
-        using var sender = await SenderAsync(ignoreCertificateErrors: true);
+        var sender = await SenderAsync(ignoreCertificateErrors: true);
 
         // Act
         var response = await sender.SendAsync(ApiRequest.New() with { Url = server.Https.ToString() }, null, Cancellation);
