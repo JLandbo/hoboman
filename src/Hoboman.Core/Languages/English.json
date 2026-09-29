@@ -48,6 +48,7 @@
     "Environments.Invalid": "Every environment needs a name, and the names must be different.",
     "Environments.LoadFailed": "The environments could not be loaded: {0}",
     "Environments.SaveFailed": "The environments could not be saved: {0}",
+    "Environments.ChangedOnDisk": "The environments changed on disk while this window was open. Close the window and open it again.",
     "Folder.Title": "New folder",
     "Folder.Create": "Create",
     "Folder.Failed": "The folder could not be created",

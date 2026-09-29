@@ -101,6 +101,20 @@ public sealed class RequestLibraryTests : IDisposable
     }
 
     [Fact]
+    public async Task NamesAsync_WhenAFileNameEndsWithASpace_ThenLeavesItOut()
+    {
+        // Arrange
+        Directory.CreateDirectory(RequestsFolder);
+        File.WriteAllText(Path.Combine(RequestsFolder, "Ping .json"), """{"url": "https://dev.local"}""");
+
+        // Act
+        var names = await Library().NamesAsync(Cancellation);
+
+        // Assert
+        Assert.Empty(names);
+    }
+
+    [Fact]
     public async Task NamesAsync_WhenTheFolderIsMissing_ThenGivesNothing()
     {
         // Act

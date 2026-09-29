@@ -1,28 +1,15 @@
 namespace Hoboman.Tests.ViewModels;
 
-public sealed class EnvironmentEditorViewModelTests : IDisposable
+public sealed class EnvironmentEditorViewModelTests
 {
-    readonly string _directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
-
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
-
-    EnvironmentStore Store() => new(new AppFolder(_directory), NullLogger<EnvironmentStore>.Instance);
-
-    EnvironmentEditorViewModel Editor() => new(Store(), new Translator(Translation.English), NullLogger<EnvironmentEditorViewModel>.Instance);
-
-    public void Dispose()
-    {
-        if (Directory.Exists(_directory))
-        {
-            Directory.Delete(_directory, recursive: true);
-        }
-    }
 
     [Fact]
     public async Task SaveAsync_WhenAnEnvironmentWasAdded_ThenSavesItWithItsVariables()
     {
         // Arrange
-        var editor = Editor();
+        using var harness = new Harness();
+        var editor = harness.EnvironmentEditor();
         await editor.LoadAsync(Cancellation);
         editor.Add();
         editor.Selected!.Name = "Dev";
@@ -34,15 +21,16 @@ public sealed class EnvironmentEditorViewModelTests : IDisposable
 
         // Assert
         Assert.True(saved);
-        Assert.Equal("https://dev.local", (await Store().FindAsync("Dev", Cancellation))?.Resolve("{{baseUrl}}"));
+        Assert.Equal("https://dev.local", (await harness.EnvironmentStore.FindAsync("Dev", Cancellation))?.Resolve("{{baseUrl}}"));
     }
 
     [Fact]
     public async Task SaveAsync_WhenTwoEnvironmentsHaveTheSameName_ThenShowsTheProblem()
     {
         // Arrange
-        await Store().SaveAsync([new("Dev", [])], Cancellation);
-        var editor = Editor();
+        using var harness = new Harness();
+        await harness.EnvironmentStore.SaveAsync([new("Dev", [])], Cancellation);
+        var editor = harness.EnvironmentEditor();
         await editor.LoadAsync(Cancellation);
         editor.Add();
         editor.Selected!.Name = "dev";
@@ -56,11 +44,69 @@ public sealed class EnvironmentEditorViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAsync_WhenTheFileCouldNotBeRead_ThenLeavesItUntouched()
+    {
+        // Arrange
+        using var harness = new Harness();
+        Directory.CreateDirectory(harness.Folder.Root);
+        File.WriteAllText(harness.Folder.Environments, "[{");
+        var editor = harness.EnvironmentEditor();
+        await editor.LoadAsync(Cancellation);
+        editor.Add();
+
+        // Act
+        var saved = await editor.SaveAsync();
+
+        // Assert
+        Assert.False(saved);
+        Assert.Equal("[{", File.ReadAllText(harness.Folder.Environments));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenTheFileChangedWhileEditing_ThenLeavesTheChangeAlone()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.EnvironmentStore.SaveAsync([new("Dev", [])], Cancellation);
+        var editor = harness.EnvironmentEditor();
+        await editor.LoadAsync(Cancellation);
+        await harness.EnvironmentStore.SaveAsync([new("Dev", []), new("Agent", [])], Cancellation);
+        editor.Add();
+
+        // Act
+        var saved = await editor.SaveAsync();
+
+        // Assert
+        Assert.False(saved);
+        Assert.NotNull(await harness.EnvironmentStore.FindAsync("Agent", Cancellation));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenTheChosenEnvironmentIsRenamed_ThenTheChoiceFollows()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.EnvironmentStore.SaveAsync([new("Dev", [])], Cancellation);
+        await harness.Environments.LoadAsync(Cancellation);
+        harness.Environments.Choose(harness.Environments.All.Single());
+        var editor = harness.EnvironmentEditor();
+        await editor.LoadAsync(Cancellation);
+        editor.Selected!.Name = "Development";
+
+        // Act
+        await editor.SaveAsync();
+
+        // Assert
+        Assert.Equal("Development", harness.Environments.Selected?.Name);
+    }
+
+    [Fact]
     public async Task Remove_WhenCalled_ThenSelectsTheNextEnvironment()
     {
         // Arrange
-        await Store().SaveAsync([new("Dev", []), new("Prod", [])], Cancellation);
-        var editor = Editor();
+        using var harness = new Harness();
+        await harness.EnvironmentStore.SaveAsync([new("Dev", []), new("Prod", [])], Cancellation);
+        var editor = harness.EnvironmentEditor();
         await editor.LoadAsync(Cancellation);
 
         // Act

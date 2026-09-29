@@ -64,6 +64,98 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public async Task OpenAsync_WhenOpenedTwiceAtOnce_ThenOpensOneTab()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync(Cancellation);
+        var node = main.Tree.Nodes.Single();
+
+        // Act
+        var first = main.OpenAsync(node);
+        var second = main.OpenAsync(node);
+        await first;
+        await second;
+
+        // Assert
+        Assert.Single(main.Tabs, tab => tab.Name == "Ping");
+    }
+
+    [Fact]
+    public async Task Close_WhenATabInTheBackgroundIsClosed_ThenKeepsTheSelection()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var main = harness.Main();
+        await main.LoadAsync(Cancellation);
+        var selected = main.SelectedTab;
+        main.NewTab();
+        var background = main.SelectedTab!;
+        main.SelectedTab = selected;
+
+        // Act
+        main.Close(background);
+
+        // Assert
+        Assert.Same(selected, main.SelectedTab);
+    }
+
+    [Fact]
+    public async Task RenameAsync_WhenOnlyTheCaseChanges_ThenRenamesTheFile()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(answer: "PING"));
+        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync(Cancellation);
+
+        // Act
+        await main.RenameAsync(main.Tree.Nodes.Single());
+
+        // Assert
+        Assert.Equal(["PING"], await harness.Library.NamesAsync(Cancellation));
+    }
+
+    [Fact]
+    public async Task RequestsChangedAsync_WhenAnOpenRequestIsMovedOnDisk_ThenTheTabFollows()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync(Cancellation);
+        await main.OpenAsync(main.Tree.Nodes.Single());
+        await harness.Library.RenameAsync("Ping", "Moved/Ping", Cancellation);
+
+        // Act
+        await main.RequestsChangedAsync();
+
+        // Assert
+        Assert.Equal("Moved/Ping", main.SelectedTab?.Name);
+    }
+
+    [Fact]
+    public async Task RequestsChangedAsync_WhenAnOpenRequestIsDeletedOnDisk_ThenTheTabKeepsItsTitle()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync(Cancellation);
+        await main.OpenAsync(main.Tree.Nodes.Single());
+        await harness.Library.DeleteAsync("Ping", Cancellation);
+
+        // Act
+        await main.RequestsChangedAsync();
+
+        // Assert
+        Assert.Null(main.SelectedTab?.Name);
+        Assert.Equal("Ping", main.SelectedTab?.Title);
+    }
+
+    [Fact]
     public async Task CanClose_WhenATabIsUnsaved_ThenAsksFirst()
     {
         // Arrange

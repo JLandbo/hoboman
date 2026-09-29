@@ -1,13 +1,17 @@
 using System.Collections.ObjectModel;
 using Hoboman.Core.Requests;
-using Hoboman.Mvvm;
 using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
 
 public sealed class RequestTreeViewModel(RequestLibrary library, ILogger<RequestTreeViewModel> logger)
 {
+    IReadOnlyDictionary<Guid, string> _nameById = new Dictionary<Guid, string>();
+
     public ObservableCollection<RequestNodeViewModel> Nodes { get; } = [];
+
+    // Moving a file shows up as a delete and a create, so open tabs find their file again by its id.
+    public string? NameOf(Guid id) => _nameById.GetValueOrDefault(id);
 
     public async Task LoadAsync(CancellationToken cancellationToken)
     {
@@ -15,9 +19,9 @@ public sealed class RequestTreeViewModel(RequestLibrary library, ILogger<Request
         {
             var folders = await library.FoldersAsync(cancellationToken);
             var names = await library.NamesAsync(cancellationToken);
-            var methods = new string?[names.Count];
-            await Parallel.ForEachAsync(Enumerable.Range(0, names.Count), cancellationToken, async (index, token) => methods[index] = await MethodOfAsync(names[index], token));
-            Show(folders, names.Zip(methods));
+            var requests = new ApiRequest?[names.Count];
+            await Parallel.ForEachAsync(Enumerable.Range(0, names.Count), cancellationToken, async (index, token) => requests[index] = await RequestOfAsync(names[index], token));
+            Show(folders, names, requests);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
@@ -25,26 +29,52 @@ public sealed class RequestTreeViewModel(RequestLibrary library, ILogger<Request
         }
     }
 
-    void Show(IEnumerable<string> folders, IEnumerable<(string Name, string? Method)> requests)
+    void Show(IEnumerable<string> folders, IReadOnlyList<string> names, IReadOnlyList<ApiRequest?> requests)
     {
-        var expanded = Flatten(Nodes).Where(node => node.IsExpanded).Select(node => node.Path).ToHashSet();
-        var byPath = new Dictionary<string, RequestNodeViewModel>();
+        var expanded = Flatten(Nodes).Where(node => node.IsExpanded).Select(node => node.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var byPath = new Dictionary<string, RequestNodeViewModel>(StringComparer.OrdinalIgnoreCase);
         Nodes.Clear();
         foreach (var folder in folders.Order(StringComparer.CurrentCultureIgnoreCase))
         {
-            var node = new RequestNodeViewModel(folder, null, isFolder: true) { IsExpanded = expanded.Contains(folder) };
-            ChildrenOf(folder).Add(node);
-            byPath[folder] = node;
+            FolderOf(folder);
         }
-        foreach (var (name, method) in requests.OrderBy(request => request.Name, StringComparer.CurrentCultureIgnoreCase))
+        foreach (var (name, request) in names.Zip(requests).OrderBy(pair => pair.First, StringComparer.CurrentCultureIgnoreCase))
         {
-            ChildrenOf(name).Add(new(name, method, isFolder: false));
+            ChildrenOf(name).Add(new(name, request?.Method, isFolder: false));
         }
+        _nameById = UniqueIds(names, requests);
 
-        ObservableCollection<RequestNodeViewModel> ChildrenOf(string path) => path.LastIndexOf('/') is var slash and > 0 ? byPath[path[..slash]].Children : Nodes;
+        ObservableCollection<RequestNodeViewModel> ChildrenOf(string path) => path.LastIndexOf('/') is var slash and > 0 ? FolderOf(path[..slash]).Children : Nodes;
+
+        // A folder can appear between listing the folders and the files, so missing parents are made on the way.
+        RequestNodeViewModel FolderOf(string path)
+        {
+            if (!byPath.TryGetValue(path, out var node))
+            {
+                node = new(path, null, isFolder: true) { IsExpanded = expanded.Contains(path) };
+                ChildrenOf(path).Add(node);
+                byPath[path] = node;
+            }
+            return node;
+        }
     }
 
-    async Task<string?> MethodOfAsync(string name, CancellationToken cancellationToken)
+    IReadOnlyDictionary<Guid, string> UniqueIds(IReadOnlyList<string> names, IReadOnlyList<ApiRequest?> requests)
+    {
+        var nameById = new Dictionary<Guid, string>();
+        foreach (var group in names.Zip(requests).Where(pair => pair.Second is { Id: var id } && id != Guid.Empty).GroupBy(pair => pair.Second!.Id))
+        {
+            if (group.Count() == 1)
+            {
+                nameById[group.Key] = group.First().First;
+                continue;
+            }
+            logger.LogWarning("{Names} share the id {Id}, so they share their secrets", string.Join(", ", group.Select(pair => pair.First)), group.Key);
+        }
+        return nameById;
+    }
+
+    async Task<ApiRequest?> RequestOfAsync(string name, CancellationToken cancellationToken)
     {
         try
         {
@@ -53,7 +83,7 @@ public sealed class RequestTreeViewModel(RequestLibrary library, ILogger<Request
             {
                 logger.LogInformation("{Name} has no id", name);
             }
-            return request?.Method;
+            return request;
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
@@ -63,19 +93,4 @@ public sealed class RequestTreeViewModel(RequestLibrary library, ILogger<Request
     }
 
     static IEnumerable<RequestNodeViewModel> Flatten(IEnumerable<RequestNodeViewModel> nodes) => nodes.SelectMany(node => Flatten(node.Children).Prepend(node));
-}
-
-public sealed class RequestNodeViewModel(string path, string? method, bool isFolder) : ObservableObject
-{
-    public string Path => path;
-
-    public string Name => path[(path.LastIndexOf('/') + 1)..];
-
-    public string? Method => method;
-
-    public bool IsFolder => isFolder;
-
-    public bool IsExpanded { get; set => Set(ref field, value); }
-
-    public ObservableCollection<RequestNodeViewModel> Children { get; } = [];
 }

@@ -2,6 +2,8 @@ namespace Hoboman.Tests.ViewModels;
 
 public sealed class RequestTabViewModelTests
 {
+    CancellationToken Cancellation => TestContext.Current.CancellationToken;
+
     [Fact]
     public async Task SendAsync_WhenTheCallSucceeds_ThenShowsTheResponse()
     {
@@ -78,6 +80,77 @@ public sealed class RequestTabViewModelTests
         // Assert
         Assert.True(reloaded);
         Assert.Equal(("https://agent.local", false), (tab.Url, tab.IsDirty));
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenAHistoryTabChangesTheToken_ThenLeavesTheOriginalTokenAlone()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var original = ApiRequest.New() with { Auth = new(AuthKind.Bearer) };
+        await harness.Secrets.SaveAsync(original.Id, SecretKind.Token, "original", Cancellation);
+        var tab = new RequestTabViewModel(harness.Services, original, fromHistory: true);
+        await tab.LoadSecretsAsync(Cancellation);
+        tab.Token = "changed";
+
+        // Act
+        await tab.SendAsync();
+
+        // Assert
+        Assert.Equal("original", await harness.Secrets.OfAsync(original.Id, SecretKind.Token, Cancellation));
+        Assert.Equal("changed", await harness.Secrets.OfAsync(tab.Id, SecretKind.Token, Cancellation));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenAHistoryTabIsSaved_ThenGetsItsOwnIdWithTheSecrets()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(answer: "Copy"));
+        var original = ApiRequest.New() with { Auth = new(AuthKind.Bearer) };
+        await harness.Secrets.SaveAsync(original.Id, SecretKind.Token, "token", Cancellation);
+        var tab = new RequestTabViewModel(harness.Services, original, fromHistory: true);
+        await tab.LoadSecretsAsync(Cancellation);
+
+        // Act
+        await tab.SaveAsync();
+
+        // Assert
+        var saved = await harness.Library.LoadAsync("Copy", Cancellation);
+        Assert.NotEqual(original.Id, saved?.Id);
+        Assert.Equal("token", await harness.Secrets.OfAsync(saved!.Id, SecretKind.Token, Cancellation));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenTheSecretsCannotBeSaved_ThenWritesNoRequestFile()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(answer: "Ping"));
+        Directory.CreateDirectory(harness.Folder.Root);
+        File.WriteAllText(harness.Folder.Secrets, "{");
+        var tab = harness.Tab();
+        tab.Token = "token";
+
+        // Act
+        var saved = await tab.SaveAsync();
+
+        // Assert
+        Assert.False(saved);
+        Assert.False(harness.Library.Exists("Ping"));
+    }
+
+    [Fact]
+    public async Task LoadSecretsAsync_WhenTheRequestHasNoId_ThenClearsTheSecrets()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var tab = harness.Tab(new ApiRequest { Url = "https://dev.local" }, "Ping");
+        tab.Token = "old";
+
+        // Act
+        await tab.LoadSecretsAsync(Cancellation);
+
+        // Assert
+        Assert.Empty(tab.Token);
     }
 
     [Fact]

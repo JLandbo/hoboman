@@ -41,9 +41,26 @@ public sealed class RequestLibrary(AppFolder folder, ILogger<RequestLibrary> log
         logger.LogInformation("Created the folder {Name}", name);
     }, cancellationToken);
 
+    // Cut the root off by hand, because Path.GetRelativePath trims trailing spaces and dots and would give names that do not match the files.
     Task<IReadOnlyList<string>> ListAsync(Func<string, IEnumerable<string>> list, CancellationToken cancellationToken) => Task.Run<IReadOnlyList<string>>(() =>
-        Directory.Exists(folder.Requests) ? [.. list(folder.Requests).Select(path => Path.GetRelativePath(folder.Requests, path).Replace('\\', '/'))] : [],
-        cancellationToken);
+    {
+        if (!Directory.Exists(folder.Requests))
+        {
+            return [];
+        }
+        var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder.Requests)) + Path.DirectorySeparatorChar;
+        return [.. list(root).Select(path => path[root.Length..].Replace('\\', '/')).Where(IsUsable)];
+    }, cancellationToken);
+
+    bool IsUsable(string name)
+    {
+        if (IsValidName(name))
+        {
+            return true;
+        }
+        logger.LogWarning("{Name} is left out, because it cannot be used as a request name", name);
+        return false;
+    }
 
     JsonFile<ApiRequest?> FileOf(string name) => new(PathOf(name), null, logger);
 

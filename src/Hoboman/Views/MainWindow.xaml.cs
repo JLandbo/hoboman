@@ -60,10 +60,7 @@ public partial class MainWindow : Window
     {
         var editor = _environmentEditor();
         await editor.LoadAsync(CancellationToken.None);
-        if (new EnvironmentsWindow(editor) { Owner = this }.ShowDialog() == true)
-        {
-            await _viewModel.Environments.LoadAsync(CancellationToken.None);
-        }
+        new EnvironmentsWindow(editor) { Owner = this }.ShowDialog();
     }
 
     void Window_Closing(object? sender, CancelEventArgs e) => e.Cancel = !_viewModel.CanClose();

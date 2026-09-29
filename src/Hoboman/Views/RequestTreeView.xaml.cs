@@ -14,7 +14,13 @@ public partial class RequestTreeView : UserControl
     async void Item_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
-        await ViewModel.OpenAsync(NodeOf(sender));
+        var node = NodeOf(sender);
+        if (node.IsFolder)
+        {
+            node.IsExpanded = !node.IsExpanded;
+            return;
+        }
+        await ViewModel.OpenAsync(node);
     }
 
     async void Rename_Click(object sender, RoutedEventArgs e) => await ViewModel.RenameAsync(NodeOf(sender));

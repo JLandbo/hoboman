@@ -24,6 +24,7 @@ public sealed class RequestTabViewModel : ObservableObject
 {
     readonly RequestTabServices _services;
     Guid _id;
+    bool _ownsId;
     OAuthSettings? _oauth;
     string _savedJson = "";
     bool _loading;
@@ -37,6 +38,7 @@ public sealed class RequestTabViewModel : ObservableObject
         Name = name;
         SuggestedName = suggestedName;
         FromHistory = fromHistory;
+        _ownsId = !fromHistory;
         Query.Changed += MarkDirty;
         Headers.Changed += MarkDirty;
         Send = new AsyncCommand(SendAsync, () => !IsSending);
@@ -60,7 +62,23 @@ public sealed class RequestTabViewModel : ObservableObject
         }
     }
 
-    public string? SuggestedName { get; }
+    public string? SuggestedName
+    {
+        get;
+        private set
+        {
+            if (Set(ref field, value))
+            {
+                OnPropertyChanged(nameof(Title));
+            }
+        }
+    }
+
+    public Guid Id => _id;
+
+    // A tab owns its id when the file and the secrets under that id are its own. A tab opened from the history borrows the id of the request it ran,
+    // so it can send with that request's secrets, but gets its own id before it changes a secret or is saved.
+    public bool OwnsId => _ownsId;
 
     public bool FromHistory { get; }
 
@@ -154,28 +172,29 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public async Task LoadSecretsAsync(CancellationToken cancellationToken)
     {
+        string? password = null;
+        string? token = null;
         if (_id == Guid.Empty)
         {
             _services.Logger.LogInformation("{Name} has no id, so it has no saved secrets", Name);
-            return;
         }
-        try
+        else
         {
-            var password = await _services.Secrets.OfAsync(_id, SecretKind.Password, cancellationToken);
-            var token = await _services.Secrets.OfAsync(_id, SecretKind.Token, cancellationToken);
-            _loading = true;
-            Password = password ?? "";
-            Token = token ?? "";
+            try
+            {
+                password = await _services.Secrets.OfAsync(_id, SecretKind.Password, cancellationToken);
+                token = await _services.Secrets.OfAsync(_id, SecretKind.Token, cancellationToken);
+            }
+            catch (Exception exception) when (FileProblem.Is(exception))
+            {
+                _services.Logger.LogError(exception, "Could not load the secrets for {Name}", Name);
+                Problem = new(_services.Translator.Of("Response.SecretsFailed"), exception.Message);
+            }
         }
-        catch (Exception exception) when (FileProblem.Is(exception))
-        {
-            _services.Logger.LogError(exception, "Could not load the secrets for {Name}", Name);
-            Problem = new(_services.Translator.Of("Response.SecretsFailed"), exception.Message);
-        }
-        finally
-        {
-            _loading = false;
-        }
+        _loading = true;
+        Password = password ?? "";
+        Token = token ?? "";
+        _loading = false;
     }
 
     public async Task<bool> SaveAsync()
@@ -186,12 +205,13 @@ public sealed class RequestTabViewModel : ObservableObject
         {
             return false;
         }
-        EnsureId();
+        EnsureOwnId();
         try
         {
+            // The secrets go first, so a failure leaves no request file behind that points at secrets that were never saved.
+            await SaveSecretsAsync(CancellationToken.None);
             var request = ToRequest();
             await _services.Library.SaveAsync(name, request, CancellationToken.None);
-            await SaveSecretsAsync(CancellationToken.None);
             _savedJson = JsonSerializer.Serialize(request);
             Name = name;
             IsDirty = false;
@@ -209,6 +229,7 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public void Unlink()
     {
+        SuggestedName = Name;
         Name = null;
         IsDirty = true;
     }
@@ -263,7 +284,7 @@ public sealed class RequestTabViewModel : ObservableObject
         {
             return;
         }
-        EnsureId();
+        EnsureOwnId();
         if (_passwordChanged)
         {
             await _services.Secrets.SaveAsync(_id, SecretKind.Password, Password, cancellationToken);
@@ -275,13 +296,17 @@ public sealed class RequestTabViewModel : ObservableObject
         _passwordChanged = _tokenChanged = false;
     }
 
-    void EnsureId()
+    void EnsureOwnId()
     {
-        if (_id == Guid.Empty)
+        if (_ownsId && _id != Guid.Empty)
         {
-            _id = Guid.NewGuid();
-            MarkDirty();
+            return;
         }
+        _id = Guid.NewGuid();
+        _ownsId = true;
+        _passwordChanged |= Password.Length > 0;
+        _tokenChanged |= Token.Length > 0;
+        MarkDirty();
     }
 
     void Load(ApiRequest request)

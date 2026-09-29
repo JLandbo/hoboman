@@ -17,6 +17,14 @@ public sealed class EnvironmentsViewModel(EnvironmentStore store, SettingsViewMo
         settings.EnvironmentName = environment?.Name;
     }
 
+    public void Renamed(string name, string newName)
+    {
+        if (Selected?.Name == name)
+        {
+            Choose(Selected with { Name = newName });
+        }
+    }
+
     public async Task LoadAsync(CancellationToken cancellationToken)
     {
         try

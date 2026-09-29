@@ -16,7 +16,7 @@
             <DockPanel DockPanel.Dock="Bottom" Margin="0,14,0,0">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                     <Button Content="{DynamicResource Common.Cancel}" Click="Cancel_Click" Style="{StaticResource PillButton}" Margin="0,0,8,0" />
-                    <Button Content="{DynamicResource Editor.Save}" Click="Save_Click" IsDefault="True" Style="{StaticResource PrimaryButton}" />
+                    <Button Content="{DynamicResource Editor.Save}" Click="Save_Click" IsDefault="True" IsEnabled="{Binding CanSave}" Style="{StaticResource PrimaryButton}" />
                 </StackPanel>
                 <TextBlock Text="{Binding Problem}" Foreground="{DynamicResource Error}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0" />
             </DockPanel>

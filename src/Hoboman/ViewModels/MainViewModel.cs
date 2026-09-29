@@ -8,6 +8,8 @@ namespace Hoboman.ViewModels;
 
 public sealed class MainViewModel(RequestTreeViewModel tree, HistoryViewModel history, EnvironmentsViewModel environments, RequestTabServices services, ILogger<MainViewModel> logger) : ObservableObject
 {
+    readonly HashSet<string> _opening = new(StringComparer.OrdinalIgnoreCase);
+
     RequestLibrary Library => services.Library;
 
     IDialogs Dialogs => services.Dialogs;
@@ -39,14 +41,13 @@ public sealed class MainViewModel(RequestTreeViewModel tree, HistoryViewModel hi
 
     public async Task OpenAsync(RequestNodeViewModel node)
     {
-        if (node.IsFolder)
-        {
-            node.IsExpanded = !node.IsExpanded;
-            return;
-        }
-        if (Tabs.FirstOrDefault(tab => tab.Name == node.Path) is { } open)
+        if (Tabs.FirstOrDefault(tab => SameName(tab.Name, node.Path)) is { } open)
         {
             SelectedTab = open;
+            return;
+        }
+        if (!_opening.Add(node.Path))
+        {
             return;
         }
         try
@@ -65,6 +66,10 @@ public sealed class MainViewModel(RequestTreeViewModel tree, HistoryViewModel hi
             logger.LogError(exception, "Could not open {Name}", node.Path);
             Dialogs.Tell(Translator.Of("Open.Failed"), exception.Message);
         }
+        finally
+        {
+            _opening.Remove(node.Path);
+        }
     }
 
     public async Task OpenAsync(HistoryItemViewModel item)
@@ -82,13 +87,16 @@ public sealed class MainViewModel(RequestTreeViewModel tree, HistoryViewModel hi
             return;
         }
         var index = Tabs.IndexOf(tab);
+        var wasSelected = SelectedTab == tab;
         Tabs.Remove(tab);
         if (Tabs.Count == 0)
         {
             NewTab();
-            return;
         }
-        SelectedTab = Tabs[Math.Min(index, Tabs.Count - 1)];
+        else if (wasSelected)
+        {
+            SelectedTab = Tabs[Math.Min(index, Tabs.Count - 1)];
+        }
     }
 
     public bool CanClose()
@@ -117,14 +125,14 @@ public sealed class MainViewModel(RequestTreeViewModel tree, HistoryViewModel hi
 
     public async Task RenameAsync(RequestNodeViewModel node)
     {
-        if (Dialogs.AskName(Translator.Of("Rename.Title"), node.Path, Translator.Of("Editor.Save"), name => name == node.Path ? null : services.ProblemOfName(name)) is not { } name || name == node.Path)
+        if (Dialogs.AskName(Translator.Of("Rename.Title"), node.Path, Translator.Of("Editor.Save"), candidate => SameName(candidate, node.Path) ? null : services.ProblemOfName(candidate)) is not { } name || name == node.Path)
         {
             return;
         }
         try
         {
             await Library.RenameAsync(node.Path, name, CancellationToken.None);
-            Tabs.FirstOrDefault(tab => tab.Name == node.Path)?.Rename(name);
+            Tabs.FirstOrDefault(tab => SameName(tab.Name, node.Path))?.Rename(name);
             await tree.LoadAsync(CancellationToken.None);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
@@ -143,7 +151,7 @@ public sealed class MainViewModel(RequestTreeViewModel tree, HistoryViewModel hi
         try
         {
             await Library.DeleteAsync(node.Path, CancellationToken.None);
-            Tabs.FirstOrDefault(tab => tab.Name == node.Path)?.Unlink();
+            Tabs.FirstOrDefault(tab => SameName(tab.Name, node.Path))?.Unlink();
             await tree.LoadAsync(CancellationToken.None);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
@@ -156,26 +164,48 @@ public sealed class MainViewModel(RequestTreeViewModel tree, HistoryViewModel hi
     public async Task RequestsChangedAsync()
     {
         await tree.LoadAsync(CancellationToken.None);
-        foreach (var tab in Tabs.Where(tab => tab.Name is not null).ToList())
+        foreach (var tab in Tabs.Where(tab => tab.Name is not null || tab.OwnsId).ToList())
         {
             try
             {
-                if (await Library.LoadAsync(tab.Name!, CancellationToken.None) is not { } request)
-                {
-                    logger.LogInformation("{Name} was removed on disk", tab.Name);
-                    tab.Unlink();
-                }
-                else if (tab.ReloadIfChanged(request))
-                {
-                    logger.LogInformation("{Name} changed on disk and was reloaded", tab.Name);
-                    await tab.LoadSecretsAsync(CancellationToken.None);
-                }
+                await FollowAsync(tab);
             }
             catch (Exception exception) when (FileProblem.Is(exception))
             {
                 logger.LogWarning(exception, "Could not reload {Name}", tab.Name);
                 tab.ShowProblem(new(Translator.Of("Open.Failed"), exception.Message));
             }
+        }
+    }
+
+    // The file wins over the tab, and a tab whose file was moved or renamed finds it again by its id.
+    async Task FollowAsync(RequestTabViewModel tab)
+    {
+        var name = tab.Name;
+        var request = name is null ? null : await Library.LoadAsync(name, CancellationToken.None);
+        if (request is null && tree.NameOf(tab.Id) is { } moved)
+        {
+            name = moved;
+            request = await Library.LoadAsync(moved, CancellationToken.None);
+        }
+        if (request is null)
+        {
+            if (tab.Name is not null)
+            {
+                logger.LogInformation("{Name} was removed on disk", tab.Name);
+                tab.Unlink();
+            }
+            return;
+        }
+        if (!SameName(name, tab.Name))
+        {
+            logger.LogInformation("{Name} was moved to {NewName} on disk", tab.Name, name);
+            tab.Rename(name!);
+        }
+        if (tab.ReloadIfChanged(request))
+        {
+            logger.LogInformation("{Name} changed on disk and was reloaded", name);
+            await tab.LoadSecretsAsync(CancellationToken.None);
         }
     }
 
@@ -188,4 +218,7 @@ public sealed class MainViewModel(RequestTreeViewModel tree, HistoryViewModel hi
     string TitleOf(RequestTabViewModel tab) => tab.Title ?? Translator.Of("Tab.New");
 
     string? ProblemOfFolder(string name) => RequestLibrary.IsValidName(name) ? null : Translator.Of("Save.Invalid");
+
+    // Windows does not tell upper and lower case apart in file names.
+    static bool SameName(string? name, string? other) => string.Equals(name, other, StringComparison.OrdinalIgnoreCase);
 }
