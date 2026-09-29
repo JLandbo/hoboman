@@ -226,7 +226,7 @@ public sealed class RequestLibraryTests : IDisposable
         var auth = await Library().AuthOfAsync("Users/Admin/Get user", ApiRequest.New(), Cancellation);
 
         // Assert
-        Assert.Equal(users.Id, auth.Id);
+        Assert.Equal(users.Id, auth.SecretsId);
 
     }
 
@@ -243,7 +243,7 @@ public sealed class RequestLibraryTests : IDisposable
         var auth = await Library().AuthOfAsync("Users/Admin/Get user", ApiRequest.New(), Cancellation);
 
         // Assert
-        Assert.Equal(admin.Id, auth.Id);
+        Assert.Equal(admin.Id, auth.SecretsId);
 
     }
 
@@ -259,7 +259,7 @@ public sealed class RequestLibraryTests : IDisposable
         var auth = await Library().AuthOfAsync("Users/Admin/Get user", ApiRequest.New(), Cancellation);
 
         // Assert
-        Assert.Equal(users.Id, auth.Id);
+        Assert.Equal(users.Id, auth.SecretsId);
 
     }
 

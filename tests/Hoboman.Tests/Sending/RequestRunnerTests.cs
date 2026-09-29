@@ -112,7 +112,7 @@ public sealed class RequestRunnerTests : IDisposable
         await Runner(sender).RunAsync(Request(), "Brugere/Hent", null, HistorySource.App, Cancellation);
 
         // Assert
-        Assert.Equal(folder.Id, sender.Auth?.Id);
+        Assert.Equal(folder.Id, sender.Auth?.SecretsId);
     }
 
     [Fact]

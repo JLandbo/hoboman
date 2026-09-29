@@ -32,7 +32,7 @@ public sealed class FolderAuthViewModel(RequestLibrary library, SecretStore secr
     public async Task LoadAsync(string folder, CancellationToken cancellationToken)
     {
         _folder = folder;
-        Title = translator.Format("FolderAuth.Title", folder.Split('/')[^1]);
+        Title = translator.Format("FolderAuth.Title", RequestLibrary.LastPartOf(folder));
         Problem = null;
         CanSave = false;
         try

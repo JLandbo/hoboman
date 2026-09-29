@@ -73,9 +73,9 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
 
     public bool FromHistory { get; }
 
-    public string? Title => (Name ?? SuggestedName)?.Split('/')[^1];
+    public string? Title => (Name ?? SuggestedName) is { } name ? RequestLibrary.LastPartOf(name) : null;
 
-    public string? Folder => Name?.Contains('/') == true ? $"{Name[..Name.LastIndexOf('/')].Replace("/", " / ")} /" : null;
+    public string? Folder => RequestLibrary.ParentOf(Name) is { } parent ? $"{parent.Replace("/", " / ")} /" : null;
 
     public string Method { get; set => Change(ref field, value); } = "GET";
 

@@ -114,7 +114,7 @@ public sealed class HttpRequestSender(SecretStore secrets, HttpClients clients, 
     };
 
     async Task<string> SecretOfAsync(AuthSource auth, SecretKind kind, CancellationToken cancellationToken) =>
-        await secrets.OfAsync(auth.Id, kind, cancellationToken).ConfigureAwait(false) ?? throw new MissingSecretException(kind);
+        await secrets.OfAsync(auth.SecretsId, kind, cancellationToken).ConfigureAwait(false) ?? throw new MissingSecretException(kind);
 
     static string LoggableOf(Uri? address) => address is null ? "(no address yet)" : SafeAddress.Of(address);
 

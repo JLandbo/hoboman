@@ -382,7 +382,7 @@ public sealed class RequestTabViewModelTests
         await tab.SendAsync();
 
         // Assert
-        Assert.Equal(folder.Id, harness.Sender.Auth?.Id);
+        Assert.Equal(folder.Id, harness.Sender.Auth?.SecretsId);
     }
 
     [Fact]
@@ -398,7 +398,7 @@ public sealed class RequestTabViewModelTests
         await tab.SendAsync();
 
         // Assert
-        Assert.Equal(folder.Id, harness.Sender.Auth?.Id);
+        Assert.Equal(folder.Id, harness.Sender.Auth?.SecretsId);
     }
 
     [Fact]

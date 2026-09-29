@@ -24,6 +24,7 @@ public sealed class RequestLibrary(AppFolder folder, ILogger<RequestLibrary> log
 
     public bool Exists(string name) => File.Exists(PathOf(name));
 
+    // These are async, so an invalid name fails the returned task instead of throwing before there is one.
     public async Task<ApiRequest?> LoadAsync(string name, CancellationToken cancellationToken) => await FileOf(name).LoadAsync(cancellationToken).ConfigureAwait(false);
 
     public async Task SaveAsync(string name, ApiRequest request, CancellationToken cancellationToken)
@@ -51,7 +52,7 @@ public sealed class RequestLibrary(AppFolder folder, ILogger<RequestLibrary> log
         return false;
     }
 
-    // Like in Postman, a request that inherits uses the nearest folder above it with auth of its own.
+    // The nearest folder wins, like in Postman, so a subfolder can override the auth of the folder it is in.
     public async Task<AuthSource> AuthOfAsync(string? name, ApiRequest request, CancellationToken cancellationToken)
     {
         if (request.Auth.Kind != AuthKind.Inherit)
@@ -119,5 +120,7 @@ public sealed class RequestLibrary(AppFolder folder, ILogger<RequestLibrary> log
 
     string FolderOf(string name) => IsValidName(name) ? Path.Combine(folder.Requests, name) : throw new ArgumentException($"'{name}' is not a valid request name", nameof(name));
 
-    static string? ParentOf(string? name) => name is not null && name.LastIndexOf('/') is var slash and > 0 ? name[..slash] : null;
+    public static string? ParentOf(string? name) => name is not null && name.LastIndexOf('/') is var slash and > 0 ? name[..slash] : null;
+
+    public static string LastPartOf(string name) => name[(name.LastIndexOf('/') + 1)..];
 }

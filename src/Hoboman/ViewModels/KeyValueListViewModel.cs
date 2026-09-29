@@ -49,7 +49,7 @@ public sealed class KeyValueListViewModel : ObservableObject
         Rows.Add(row);
     }
 
-    // There is always one blank row at the end to type into, like in Postman.
+    // A blank last row lets the user type a new entry without an Add button, like in Postman.
     void Row_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(KeyValueRowViewModel.IsBlank))

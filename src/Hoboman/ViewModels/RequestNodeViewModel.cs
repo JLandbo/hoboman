@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Hoboman.Core.Requests;
 using Hoboman.Mvvm;
 
 namespace Hoboman.ViewModels;
@@ -7,7 +8,7 @@ public sealed class RequestNodeViewModel(string path, string? method, bool isFol
 {
     public string Path => path;
 
-    public string Name => path[(path.LastIndexOf('/') + 1)..];
+    public string Name => RequestLibrary.LastPartOf(path);
 
     public string? Method => method;
 

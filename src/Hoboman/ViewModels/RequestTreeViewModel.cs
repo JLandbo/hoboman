@@ -51,7 +51,7 @@ public sealed class RequestTreeViewModel(RequestLibrary library, ILogger<Request
         _nameById = UniqueIds(names, requests);
         _idByName = names.Zip(requests).Where(pair => pair.Second is not null).ToDictionary(pair => pair.First, pair => pair.Second!.Id, StringComparer.OrdinalIgnoreCase);
 
-        ObservableCollection<RequestNodeViewModel> ChildrenOf(string path) => path.LastIndexOf('/') is var slash and > 0 ? FolderOf(path[..slash]).Children : Nodes;
+        ObservableCollection<RequestNodeViewModel> ChildrenOf(string path) => RequestLibrary.ParentOf(path) is { } parent ? FolderOf(parent).Children : Nodes;
 
         // A folder can appear between listing the folders and the files, so missing parents are made on the way.
         RequestNodeViewModel FolderOf(string path)

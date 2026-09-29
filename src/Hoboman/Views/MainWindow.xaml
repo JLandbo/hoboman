@@ -50,7 +50,7 @@
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
                         <Button DockPanel.Dock="Right" Content="&#xE710;" ToolTip="{DynamicResource Sidebar.NewRequest}" Click="NewRequest_Click" Style="{StaticResource SmallIconButton}" FontSize="13" />
                         <Button DockPanel.Dock="Right" Content="&#xE8F4;" ToolTip="{DynamicResource Sidebar.NewFolder}" Click="NewFolder_Click" Style="{StaticResource SmallIconButton}" FontSize="13" Margin="0,0,4,0" />
-                        <Border HorizontalAlignment="Left" Padding="2" CornerRadius="8" Background="{DynamicResource Input}">
+                        <Border Style="{StaticResource SegmentGroup}">
                             <StackPanel Orientation="Horizontal">
                                 <RadioButton x:Name="CollectionsSection" Content="{DynamicResource Sidebar.Collections}" GroupName="Sidebar" IsChecked="True" Style="{StaticResource Segment}" />
                                 <RadioButton x:Name="HistorySection" Content="{DynamicResource Sidebar.History}" GroupName="Sidebar" Style="{StaticResource Segment}" />
@@ -155,18 +155,7 @@
                             <DataTemplate DataType="{x:Type viewModels:RequestTabViewModel}">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="{Binding Method}" Foreground="{Binding Method, Converter={StaticResource MethodBrush}}" FontSize="11" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                    <TextBlock MaxWidth="180" TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Text" Value="{Binding Title}" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Title}" Value="{x:Null}">
-                                                        <Setter Property="Text" Value="{DynamicResource Tab.New}" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
+                                    <TextBlock Style="{StaticResource TabTitle}" MaxWidth="180" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                     <Ellipse Width="7" Height="7" Fill="{DynamicResource Attention}" Margin="6,0,0,0" VerticalAlignment="Center"
                                              Visibility="{Binding IsDirty, Converter={StaticResource VisibleWhenTrue}}" />
                                     <Button Content="&#xE711;" ToolTip="{DynamicResource Common.Close}" Click="CloseTab_Click" Style="{StaticResource SmallIconButton}" Margin="4,0,0,0" VerticalAlignment="Center" />

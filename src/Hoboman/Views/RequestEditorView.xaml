@@ -24,18 +24,7 @@
                     <TextBlock Text="{Binding Folder}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,0,6,0" />
                     <TextBlock Text="{DynamicResource History.FromHistory}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,0,6,0"
                                Visibility="{Binding FromHistory, Converter={StaticResource VisibleWhenTrue}}" />
-                    <TextBlock FontSize="12" FontWeight="SemiBold">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="Text" Value="{Binding Title}" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding Title}" Value="{x:Null}">
-                                        <Setter Property="Text" Value="{DynamicResource Tab.New}" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
+                    <TextBlock Style="{StaticResource TabTitle}" FontSize="12" FontWeight="SemiBold" />
                 </StackPanel>
             </DockPanel>
 
@@ -108,7 +97,7 @@
                 <local:KeyValueEditor DataContext="{Binding Headers}" Visibility="{Binding IsChecked, ElementName=HeadersSection, Converter={StaticResource VisibleWhenTrue}}" />
 
                 <DockPanel Visibility="{Binding IsChecked, ElementName=BodySection, Converter={StaticResource VisibleWhenTrue}}">
-                    <Border DockPanel.Dock="Top" HorizontalAlignment="Left" Padding="2" CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,8">
+                    <Border DockPanel.Dock="Top" Style="{StaticResource SegmentGroup}" Margin="0,0,0,8">
                         <StackPanel Orientation="Horizontal">
                             <RadioButton Content="{DynamicResource Body.None}" GroupName="BodyKind" Style="{StaticResource Segment}"
                                          IsChecked="{Binding BodyKind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static requests:BodyKind.None}}" />

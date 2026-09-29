@@ -118,12 +118,19 @@
         </Setter>
     </Style>
 
+    <Style x:Key="SegmentGroup" TargetType="Border">
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="Padding" Value="2" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Background" Value="{DynamicResource Input}" />
+    </Style>
+
     <Style x:Key="Segments" TargetType="ListBox">
         <Setter Property="Focusable" Value="False" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ListBox">
-                    <Border Padding="2" CornerRadius="8" Background="{DynamicResource Input}">
+                    <Border Style="{StaticResource SegmentGroup}">
                         <StackPanel Orientation="Horizontal" IsItemsHost="True" />
                     </Border>
                 </ControlTemplate>
@@ -274,6 +281,15 @@
         <Setter Property="Padding" Value="8,6" />
         <Setter Property="SelectionBrush" Value="{DynamicResource Attention}" />
         <Setter Property="ContextMenu" Value="{DynamicResource TextMenu}" />
+    </Style>
+
+    <Style x:Key="TabTitle" TargetType="TextBlock">
+        <Setter Property="Text" Value="{Binding Title}" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding Title}" Value="{x:Null}">
+                <Setter Property="Text" Value="{DynamicResource Tab.New}" />
+            </DataTrigger>
+        </Style.Triggers>
     </Style>
 
     <Style x:Key="Label" TargetType="TextBlock">

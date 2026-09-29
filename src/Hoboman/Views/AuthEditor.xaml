@@ -3,7 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:auth="clr-namespace:Hoboman.Core.Auth;assembly=Hoboman.Core">
     <DockPanel>
-        <Border DockPanel.Dock="Top" HorizontalAlignment="Left" Padding="2" CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,12">
+        <Border DockPanel.Dock="Top" Style="{StaticResource SegmentGroup}" Margin="0,0,0,12">
             <StackPanel Orientation="Horizontal">
                 <RadioButton Content="{DynamicResource Auth.Inherit}" GroupName="AuthKind" Style="{StaticResource Segment}"
                              IsChecked="{Binding AuthKind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:AuthKind.Inherit}}" />
