@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using Hoboman.Core.Requests;
+using Hoboman.Core.Storage;
 using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;

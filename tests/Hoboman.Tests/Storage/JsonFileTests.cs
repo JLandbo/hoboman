@@ -68,6 +68,45 @@ public sealed class JsonFileTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAsync_WhenTextHasQuotesAndLetters_ThenWritesThemAsTheyAre()
+    {
+        // Act
+        await Store().SaveAsync(new AppSettings("Søren \"&\" Co"), Cancellation);
+
+        // Assert
+        Assert.Contains("\"environmentName\": \"Søren \\\"&\\\" Co\"", File.ReadAllText(FilePath));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenAValueIsNull_ThenLeavesItOut()
+    {
+        // Act
+        await Store().SaveAsync(AppSettings.Default, Cancellation);
+
+        // Assert
+        Assert.DoesNotContain("environmentName", File.ReadAllText(FilePath));
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenTheFileHasCommentsAndATrailingComma_ThenReadsIt()
+    {
+        // Arrange
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(FilePath, """
+            {
+              // chosen by an agent
+              "environmentName": "Dev",
+            }
+            """);
+
+        // Act
+        var settings = await Store().LoadAsync(Cancellation);
+
+        // Assert
+        Assert.Equal("Dev", settings.EnvironmentName);
+    }
+
+    [Fact]
     public async Task LoadAsync_WhenSaved_ThenReturnsTheSameValue()
     {
         // Arrange

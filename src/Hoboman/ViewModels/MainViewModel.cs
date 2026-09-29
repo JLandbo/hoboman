@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using Hoboman.Core.Languages;
 using Hoboman.Core.Requests;
+using Hoboman.Core.Storage;
 using Hoboman.Mvvm;
 using Microsoft.Extensions.Logging;
 
@@ -9,6 +10,12 @@ namespace Hoboman.ViewModels;
 public sealed class MainViewModel(RequestTreeViewModel tree, HistoryViewModel history, EnvironmentsViewModel environments, RequestTabServices services, ILogger<MainViewModel> logger) : ObservableObject
 {
     readonly HashSet<string> _opening = new(StringComparer.OrdinalIgnoreCase);
+
+    Coalescer RequestsReload => field ??= new(ReloadRequestsAsync);
+
+    Coalescer HistoryReload => field ??= new(() => history.RefreshAsync(CancellationToken.None));
+
+    Coalescer EnvironmentsReload => field ??= new(() => environments.LoadAsync(CancellationToken.None));
 
     RequestLibrary Library => services.Library;
 
@@ -26,15 +33,27 @@ public sealed class MainViewModel(RequestTreeViewModel tree, HistoryViewModel hi
 
     public RequestTabViewModel? SelectedTab { get; set => Set(ref field, value); }
 
-    public async Task LoadAsync(CancellationToken cancellationToken)
+    public async Task LoadAsync()
     {
-        await tree.LoadAsync(cancellationToken);
-        await history.LoadAsync(cancellationToken);
-        await environments.LoadAsync(cancellationToken);
+        await RequestsChangedAsync();
+        await HistoryChangedAsync();
+        await EnvironmentsChangedAsync();
         if (Tabs.Count == 0)
         {
             NewTab();
         }
+    }
+
+    public Task RequestsChangedAsync() => RequestsReload.RunAsync();
+
+    public Task HistoryChangedAsync() => HistoryReload.RunAsync();
+
+    public Task EnvironmentsChangedAsync() => EnvironmentsReload.RunAsync();
+
+    public Task LanguageChangedAsync()
+    {
+        history.Relabel();
+        return HistoryChangedAsync();
     }
 
     public void NewTab() => Add(new(services, ApiRequest.New()));
@@ -161,7 +180,7 @@ public sealed class MainViewModel(RequestTreeViewModel tree, HistoryViewModel hi
         }
     }
 
-    public async Task RequestsChangedAsync()
+    async Task ReloadRequestsAsync()
     {
         await tree.LoadAsync(CancellationToken.None);
         foreach (var tab in Tabs.Where(tab => tab.Name is not null || tab.OwnsId).ToList())

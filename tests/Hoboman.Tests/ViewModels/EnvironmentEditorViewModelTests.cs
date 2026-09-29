@@ -95,6 +95,7 @@ public sealed class EnvironmentEditorViewModelTests
 
         // Act
         await editor.SaveAsync();
+        await harness.Settings.Saving;
 
         // Assert
         Assert.Equal("Development", harness.Environments.Selected?.Name);

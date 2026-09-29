@@ -10,8 +10,8 @@ public sealed record ResponseDisplay(string Status, bool IsSuccess, string Elaps
 
     public static ResponseDisplay Of(ApiResponse response) => new(
         $"{response.StatusCode} {response.Reason}".Trim(),
-        response.StatusCode is >= 200 and < 300,
-        $"{response.Elapsed.TotalMilliseconds:0} ms",
+        response.IsSuccess,
+        $"{response.ElapsedMs} ms",
         SizeOf(response.Size),
         PrettyOf(response.Body),
         string.Join(Environment.NewLine, response.Headers.Select(header => $"{header.Name}: {header.Value}")),

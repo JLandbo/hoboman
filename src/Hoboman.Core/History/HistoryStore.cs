@@ -7,30 +7,32 @@ public sealed class HistoryStore(AppFolder folder, ILogger<HistoryStore> logger)
 {
     // One file per call, named by time, so the app and the CLI can add entries at the same time and the newest are found without reading the rest.
     public Task AddAsync(HistoryEntry entry, CancellationToken cancellationToken) =>
-        FileOf(Path.Combine(folder.History, $"{entry.At.UtcDateTime:yyyyMMdd-HHmmss-fff}-{Guid.NewGuid():N}.json")).SaveAsync(entry, cancellationToken);
+        FileOf($"{entry.At.UtcDateTime:yyyyMMdd-HHmmss-fff}-{Guid.NewGuid():N}.json").SaveAsync(entry, cancellationToken);
 
-    public async Task<IReadOnlyList<HistoryEntry>> LatestAsync(int count, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<HistoryFile>> LatestAsync(int count, string? newerThan, CancellationToken cancellationToken)
     {
-        var files = await Task.Run<string[]>(() => Directory.Exists(folder.History) ? [.. Directory.EnumerateFiles(folder.History, "*.json").OrderDescending(StringComparer.Ordinal).Take(count)] : [], cancellationToken)
+        var names = await Task.Run<string[]>(() => Directory.Exists(folder.History)
+            ? [.. Directory.EnumerateFiles(folder.History, "*.json").Select(Path.GetFileName).OfType<string>()
+                .Where(name => newerThan is null || string.CompareOrdinal(name, newerThan) > 0).OrderDescending(StringComparer.Ordinal).Take(count)]
+            : [], cancellationToken).ConfigureAwait(false);
+        var files = new HistoryFile?[names.Length];
+        await Parallel.ForEachAsync(Enumerable.Range(0, names.Length), cancellationToken, async (index, token) => files[index] = await LoadAsync(names[index], token).ConfigureAwait(false))
             .ConfigureAwait(false);
-        var entries = new HistoryEntry?[files.Length];
-        await Parallel.ForEachAsync(Enumerable.Range(0, files.Length), cancellationToken, async (index, token) => entries[index] = await LoadAsync(files[index], token).ConfigureAwait(false))
-            .ConfigureAwait(false);
-        return [.. entries.OfType<HistoryEntry>()];
+        return [.. files.OfType<HistoryFile>()];
     }
 
-    async Task<HistoryEntry?> LoadAsync(string file, CancellationToken cancellationToken)
+    async Task<HistoryFile?> LoadAsync(string name, CancellationToken cancellationToken)
     {
         try
         {
-            return await FileOf(file).LoadAsync(cancellationToken).ConfigureAwait(false);
+            return await FileOf(name).LoadAsync(cancellationToken).ConfigureAwait(false) is { } entry ? new(name, entry) : null;
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        catch (Exception exception) when (FileProblem.Is(exception))
         {
-            logger.LogWarning(exception, "Skipped the history entry {File}", file);
+            logger.LogWarning(exception, "Skipped the history entry {Name}", name);
             return null;
         }
     }
 
-    JsonFile<HistoryEntry?> FileOf(string path) => new(path, null, logger);
+    JsonFile<HistoryEntry?> FileOf(string name) => new(Path.Combine(folder.History, name), null, logger);
 }

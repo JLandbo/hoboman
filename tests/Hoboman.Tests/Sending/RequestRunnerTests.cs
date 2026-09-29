@@ -26,13 +26,13 @@ public sealed class RequestRunnerTests : IDisposable
     public async Task RunAsync_WhenTheCallSucceeds_ThenRemembersTheResponseWithoutTheQuery()
     {
         // Arrange
-        var runner = Runner(() => Task.FromResult(new ApiResponse(200, "OK", TimeSpan.Zero, 2, [], "{}")));
+        var runner = Runner(() => Task.FromResult(new ApiResponse(200, "OK", 0, 2, [], "{}")));
 
         // Act
         await runner.RunAsync(Request(), "Brugere/Hent", null, HistorySource.App, Cancellation);
 
         // Assert
-        var entry = Assert.Single(await History().LatestAsync(10, Cancellation));
+        var entry = Assert.Single(await History().LatestAsync(10, null, Cancellation)).Entry;
         Assert.Equal(("Brugere/Hent", "dev.local:5001/users", "{}"), (entry.Name, entry.Address, entry.Response?.Body));
     }
 
@@ -47,7 +47,7 @@ public sealed class RequestRunnerTests : IDisposable
 
         // Assert
         await Assert.ThrowsAsync<HttpRequestException>(() => running);
-        Assert.Equal("Ingen forbindelse", Assert.Single(await History().LatestAsync(10, Cancellation)).Error);
+        Assert.Equal("Ingen forbindelse", Assert.Single(await History().LatestAsync(10, null, Cancellation)).Entry.Error);
     }
 
     [Fact]
@@ -63,6 +63,6 @@ public sealed class RequestRunnerTests : IDisposable
 
         // Assert
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => running);
-        Assert.Empty(await History().LatestAsync(10, Cancellation));
+        Assert.Empty(await History().LatestAsync(10, null, Cancellation));
     }
 }

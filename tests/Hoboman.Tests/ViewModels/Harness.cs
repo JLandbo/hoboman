@@ -11,9 +11,9 @@ public sealed class Harness : IDisposable
         Dialogs = dialogs ?? new FakeDialogs();
         Library = new(Folder, NullLogger<RequestLibrary>.Instance);
         EnvironmentStore = new(Folder, NullLogger<EnvironmentStore>.Instance);
-        var settings = new SettingsViewModel(new(Folder.Settings, AppSettings.Default, NullLogger.Instance), _translator, NullLogger<SettingsViewModel>.Instance);
-        Environments = new(EnvironmentStore, settings, NullLogger<EnvironmentsViewModel>.Instance);
-        var runner = new RequestRunner(new FakeSender(send ?? (() => Task.FromResult(new ApiResponse(200, "OK", TimeSpan.Zero, 2, [], "{}")))), History(), NullLogger<RequestRunner>.Instance);
+        Settings = new(new(Folder.Settings, AppSettings.Default, NullLogger.Instance), _translator, NullLogger<SettingsViewModel>.Instance);
+        Environments = new(EnvironmentStore, Settings, NullLogger<EnvironmentsViewModel>.Instance);
+        var runner = new RequestRunner(new FakeSender(send ?? (() => Task.FromResult(new ApiResponse(200, "OK", 0, 2, [], "{}")))), History(), NullLogger<RequestRunner>.Instance);
         Secrets = new(Folder, NullLogger<SecretStore>.Instance);
         Services = new(runner, Secrets, Library, Environments, Dialogs, _translator, NullLogger<RequestTabViewModel>.Instance);
     }
@@ -27,6 +27,8 @@ public sealed class Harness : IDisposable
     public SecretStore Secrets { get; }
 
     public EnvironmentStore EnvironmentStore { get; }
+
+    public SettingsViewModel Settings { get; }
 
     public EnvironmentsViewModel Environments { get; }
 

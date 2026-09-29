@@ -42,17 +42,33 @@ public partial class App : Application
             }
         };
         logger.LogInformation("Hoboman started in {Folder}", AppContext.BaseDirectory);
-        Use(translator.Current);
-        translator.Changed += () => Use(translator.Current);
-        await _services.GetRequiredService<SettingsViewModel>().LoadAsync(CancellationToken.None);
         var main = _services.GetRequiredService<MainViewModel>();
-        await main.LoadAsync(CancellationToken.None);
-        _services.GetRequiredService<MainWindow>().Show();
+        Use(translator.Current);
+        translator.Changed += () =>
+        {
+            Use(translator.Current);
+            OnUi(main.LanguageChangedAsync);
+        };
+        await _services.GetRequiredService<SettingsViewModel>().LoadAsync(CancellationToken.None);
         var watcher = _services.GetRequiredService<AppFolderWatcher>();
-        watcher.RequestsChanged += () => Dispatcher.InvokeAsync(main.RequestsChangedAsync);
-        watcher.HistoryChanged += () => Dispatcher.InvokeAsync(() => main.History.LoadAsync(CancellationToken.None));
-        watcher.EnvironmentsChanged += () => Dispatcher.InvokeAsync(() => main.Environments.LoadAsync(CancellationToken.None));
+        watcher.RequestsChanged += () => OnUi(main.RequestsChangedAsync);
+        watcher.HistoryChanged += () => OnUi(main.HistoryChangedAsync);
+        watcher.EnvironmentsChanged += () => OnUi(main.EnvironmentsChangedAsync);
         watcher.Start();
+        await main.LoadAsync();
+        _services.GetRequiredService<MainWindow>().Show();
+
+        void OnUi(Func<Task> work) => Dispatcher.InvokeAsync(async () =>
+        {
+            try
+            {
+                await work();
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Updating after a change failed");
+            }
+        });
     }
 
     protected override void OnExit(ExitEventArgs e)

@@ -195,7 +195,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
         // Assert
         Assert.Equal(200, response.StatusCode);
         Assert.Equal(Encoding.UTF8.GetByteCount(response.Body), response.Size);
-        Assert.Contains(new KeyValue("Content-Type", "application/json; charset=utf-8"), response.Headers);
+        Assert.Contains(new ResponseHeader("Content-Type", "application/json; charset=utf-8"), response.Headers);
     }
 
     [Fact]

@@ -23,15 +23,15 @@ public sealed class HttpRequestSender(SecretStore secrets, HttpClients clients, 
             logger.LogInformation("Sending {Method} {Url}", message.Method, LoggableOf(address));
             var started = Stopwatch.GetTimestamp();
             using var response = await client.SendAsync(message, cancellationToken).ConfigureAwait(false);
-            var elapsed = Stopwatch.GetElapsedTime(started);
+            var elapsedMs = (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             var size = (await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false)).LongLength;
-            logger.LogInformation("{Method} {Url} answered {StatusCode} in {Elapsed} ms with {Size} bytes", message.Method, LoggableOf(address), (int)response.StatusCode, elapsed.TotalMilliseconds, size);
+            logger.LogInformation("{Method} {Url} answered {StatusCode} in {Elapsed} ms with {Size} bytes", message.Method, LoggableOf(address), (int)response.StatusCode, elapsedMs, size);
             return new(
                 (int)response.StatusCode,
                 response.ReasonPhrase ?? "",
-                elapsed,
+                elapsedMs,
                 size,
-                [.. response.Headers.Concat(response.Content.Headers).SelectMany(header => header.Value.Select(value => new KeyValue(header.Key, value)))],
+                [.. response.Headers.Concat(response.Content.Headers).SelectMany(header => header.Value.Select(value => new ResponseHeader(header.Key, value)))],
                 await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -112,6 +112,5 @@ public sealed class HttpRequestSender(SecretStore secrets, HttpClients clients, 
     async Task<string> SecretOfAsync(ApiRequest request, SecretKind kind, CancellationToken cancellationToken) =>
         await secrets.OfAsync(request.Id, kind, cancellationToken).ConfigureAwait(false) ?? throw new MissingSecretException(kind);
 
-    // The query and user info can hold keys and passwords, so they never reach the log.
-    static string LoggableOf(Uri? address) => address?.GetComponents(UriComponents.SchemeAndServer | UriComponents.Path, UriFormat.UriEscaped) ?? "(no address yet)";
+    static string LoggableOf(Uri? address) => address is null ? "(no address yet)" : SafeAddress.Of(address);
 }

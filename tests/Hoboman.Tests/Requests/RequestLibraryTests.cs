@@ -47,6 +47,20 @@ public sealed class RequestLibraryTests : IDisposable
     }
 
     [Fact]
+    public async Task LoadAsync_WhenAHeaderHasNoValue_ThenUsesAnEmptyValue()
+    {
+        // Arrange
+        Directory.CreateDirectory(RequestsFolder);
+        File.WriteAllText(Path.Combine(RequestsFolder, "Ping.json"), """{"url": "https://dev.local", "headers": [{"name": "X-Flag"}]}""");
+
+        // Act
+        var loaded = await Library().LoadAsync("Ping", Cancellation);
+
+        // Assert
+        Assert.Equal(new KeyValue("X-Flag", ""), Assert.Single(loaded!.Headers));
+    }
+
+    [Fact]
     public async Task LoadAsync_WhenTheFileHasNoUrl_ThenThrows()
     {
         // Arrange

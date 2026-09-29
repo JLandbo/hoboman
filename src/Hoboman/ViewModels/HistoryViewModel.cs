@@ -2,26 +2,47 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using Hoboman.Core.History;
 using Hoboman.Core.Languages;
+using Hoboman.Core.Storage;
+using Hoboman.Mvvm;
 using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
 
-public sealed class HistoryViewModel(HistoryStore store, Translator translator, ILogger<HistoryViewModel> logger)
+public sealed class HistoryViewModel(HistoryStore store, Translator translator, ILogger<HistoryViewModel> logger) : ObservableObject
 {
-    const int _shown = 100;
+    public const int LatestCount = 100;
+
+    string? _newest;
+    bool _relabel = true;
 
     public ObservableCollection<HistoryItemViewModel> Items { get; } = [];
 
-    public async Task LoadAsync(CancellationToken cancellationToken)
+    public bool IsFull => Items.Count >= LatestCount;
+
+    // The day labels are texts in the chosen language, so the next refresh builds the list again.
+    public void Relabel() => _relabel = true;
+
+    public async Task RefreshAsync(CancellationToken cancellationToken)
     {
+        var relabel = _relabel;
+        _relabel = false;
         try
         {
-            var entries = await store.LatestAsync(_shown, cancellationToken);
-            Items.Clear();
-            foreach (var entry in entries)
+            var files = await store.LatestAsync(LatestCount, relabel ? null : _newest, cancellationToken);
+            if (relabel)
             {
-                Items.Add(new(entry, DayOf(entry.At.LocalDateTime.Date, DateTime.Today)));
+                Items.Clear();
             }
+            foreach (var file in files.Reverse())
+            {
+                Items.Insert(0, new(file.Entry, DayOf(file.Entry.At.LocalDateTime.Date, DateTime.Today)));
+            }
+            while (Items.Count > LatestCount)
+            {
+                Items.RemoveAt(Items.Count - 1);
+            }
+            _newest = files.Count > 0 ? files[0].Name : _newest;
+            OnPropertyChanged(nameof(IsFull));
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
@@ -29,25 +50,8 @@ public sealed class HistoryViewModel(HistoryStore store, Translator translator, 
         }
     }
 
-    internal string DayOf(DateTime day, DateTime today) =>
+    string DayOf(DateTime day, DateTime today) =>
         day == today ? translator.Of("History.Today")
         : day == today.AddDays(-1) ? translator.Of("History.Yesterday")
         : day.ToString("d. MMMM yyyy", CultureInfo.CurrentCulture);
-}
-
-public sealed class HistoryItemViewModel(HistoryEntry entry, string day)
-{
-    public HistoryEntry Entry => entry;
-
-    public string Day => day;
-
-    public string Method => entry.Request.Method;
-
-    public string Address => entry.Address;
-
-    public string? Status => entry.Response?.StatusCode.ToString(CultureInfo.InvariantCulture);
-
-    public bool IsSuccess => entry.Response?.StatusCode is >= 200 and < 300;
-
-    public bool IsCli => entry.Source == HistorySource.Cli;
 }

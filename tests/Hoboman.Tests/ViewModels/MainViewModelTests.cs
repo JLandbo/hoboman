@@ -11,7 +11,7 @@ public sealed class MainViewModelTests
         using var harness = new Harness();
         await harness.Library.SaveAsync("Ping", ApiRequest.New() with { Url = "https://dev.local" }, Cancellation);
         var main = harness.Main();
-        await main.LoadAsync(Cancellation);
+        await main.LoadAsync();
         var node = main.Tree.Nodes.Single();
         await main.OpenAsync(node);
         main.NewTab();
@@ -31,7 +31,7 @@ public sealed class MainViewModelTests
         var request = ApiRequest.New() with { Url = "https://dev.local" };
         await harness.Library.SaveAsync("Ping", request, Cancellation);
         var main = harness.Main();
-        await main.LoadAsync(Cancellation);
+        await main.LoadAsync();
         await main.OpenAsync(main.Tree.Nodes.Single());
         await harness.Library.SaveAsync("Ping", request with { Url = "https://agent.local" }, Cancellation);
 
@@ -49,7 +49,7 @@ public sealed class MainViewModelTests
         using var harness = new Harness();
         await harness.Library.SaveAsync("Ping", ApiRequest.New() with { Url = "https://dev.local" }, Cancellation);
         var main = harness.Main();
-        await main.LoadAsync(Cancellation);
+        await main.LoadAsync();
         await main.OpenAsync(main.Tree.Nodes.Single());
         var tab = main.SelectedTab!;
         tab.Url = "https://saved.local";
@@ -70,7 +70,7 @@ public sealed class MainViewModelTests
         using var harness = new Harness();
         await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
         var main = harness.Main();
-        await main.LoadAsync(Cancellation);
+        await main.LoadAsync();
         var node = main.Tree.Nodes.Single();
 
         // Act
@@ -89,7 +89,7 @@ public sealed class MainViewModelTests
         // Arrange
         using var harness = new Harness();
         var main = harness.Main();
-        await main.LoadAsync(Cancellation);
+        await main.LoadAsync();
         var selected = main.SelectedTab;
         main.NewTab();
         var background = main.SelectedTab!;
@@ -109,7 +109,7 @@ public sealed class MainViewModelTests
         using var harness = new Harness(new FakeDialogs(answer: "PING"));
         await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
         var main = harness.Main();
-        await main.LoadAsync(Cancellation);
+        await main.LoadAsync();
 
         // Act
         await main.RenameAsync(main.Tree.Nodes.Single());
@@ -125,7 +125,7 @@ public sealed class MainViewModelTests
         using var harness = new Harness();
         await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
         var main = harness.Main();
-        await main.LoadAsync(Cancellation);
+        await main.LoadAsync();
         await main.OpenAsync(main.Tree.Nodes.Single());
         await harness.Library.RenameAsync("Ping", "Moved/Ping", Cancellation);
 
@@ -143,7 +143,7 @@ public sealed class MainViewModelTests
         using var harness = new Harness();
         await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
         var main = harness.Main();
-        await main.LoadAsync(Cancellation);
+        await main.LoadAsync();
         await main.OpenAsync(main.Tree.Nodes.Single());
         await harness.Library.DeleteAsync("Ping", Cancellation);
 
@@ -161,7 +161,7 @@ public sealed class MainViewModelTests
         // Arrange
         using var harness = new Harness(new FakeDialogs(accept: false));
         var main = harness.Main();
-        await main.LoadAsync(Cancellation);
+        await main.LoadAsync();
         main.SelectedTab!.Url = "https://dev.local";
 
         // Act
@@ -178,7 +178,7 @@ public sealed class MainViewModelTests
         // Arrange
         using var harness = new Harness();
         var main = harness.Main();
-        await main.LoadAsync(Cancellation);
+        await main.LoadAsync();
         var first = main.SelectedTab!;
 
         // Act

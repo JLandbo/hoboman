@@ -27,6 +27,66 @@ public sealed class AppFolderWatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task HistoryChanged_WhenACallIsAdded_ThenFires()
+    {
+        // Arrange
+        var folder = new AppFolder(_directory);
+        using var watcher = new AppFolderWatcher(folder, NullLogger<AppFolderWatcher>.Instance);
+        var changed = new TaskCompletionSource();
+        watcher.HistoryChanged += changed.SetResult;
+        watcher.Start();
+
+        // Act
+        await new HistoryStore(folder, NullLogger<HistoryStore>.Instance).AddAsync(new(DateTimeOffset.Now, HistorySource.Cli, "dev.local", ApiRequest.New()), Cancellation);
+
+        // Assert
+        await changed.Task.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+    }
+
+    [Fact]
+    public async Task RequestsChanged_WhenAFileIsWrittenSeveralTimes_ThenFiresOnce()
+    {
+        // Arrange
+        var folder = new AppFolder(_directory);
+        Directory.CreateDirectory(folder.Requests);
+        using var watcher = new AppFolderWatcher(folder, NullLogger<AppFolderWatcher>.Instance);
+        var changes = 0;
+        watcher.RequestsChanged += () => Interlocked.Increment(ref changes);
+        watcher.Start();
+
+        // Act
+        for (var write = 0; write < 3; write++)
+        {
+            await File.WriteAllTextAsync(Path.Combine(folder.Requests, "Ping.json"), $$"""{"url": "https://dev.local/{{write}}"}""", Cancellation);
+        }
+        await Task.Delay(TimeSpan.FromSeconds(1), Cancellation);
+
+        // Assert
+        Assert.Equal(1, changes);
+    }
+
+    [Fact]
+    public async Task Changed_WhenALogIsWritten_ThenTellsNobody()
+    {
+        // Arrange
+        var folder = new AppFolder(_directory);
+        Directory.CreateDirectory(folder.Logs);
+        using var watcher = new AppFolderWatcher(folder, NullLogger<AppFolderWatcher>.Instance);
+        var changes = 0;
+        watcher.RequestsChanged += () => Interlocked.Increment(ref changes);
+        watcher.HistoryChanged += () => Interlocked.Increment(ref changes);
+        watcher.EnvironmentsChanged += () => Interlocked.Increment(ref changes);
+        watcher.Start();
+
+        // Act
+        await File.WriteAllTextAsync(Path.Combine(folder.Logs, "hoboman.log"), "started", Cancellation);
+        await Task.Delay(TimeSpan.FromSeconds(1), Cancellation);
+
+        // Assert
+        Assert.Equal(0, changes);
+    }
+
+    [Fact]
     public async Task EnvironmentsChanged_WhenTheEnvironmentsAreSaved_ThenFires()
     {
         // Arrange

@@ -5,6 +5,7 @@ using Hoboman.Core.History;
 using Hoboman.Core.Languages;
 using Hoboman.Core.Requests;
 using Hoboman.Core.Sending;
+using Hoboman.Core.Storage;
 using Hoboman.Mvvm;
 using Microsoft.Extensions.Logging;
 

@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
@@ -13,6 +14,11 @@ public sealed class JsonFile<T>(string path, T empty, ILogger logger)
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        // People and agents edit these files by hand, so they are written readable and read forgivingly.
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        AllowTrailingCommas = true,
+        ReadCommentHandling = JsonCommentHandling.Skip,
         PropertyNameCaseInsensitive = true,
         RespectRequiredConstructorParameters = true,
         RespectNullableAnnotations = true,
