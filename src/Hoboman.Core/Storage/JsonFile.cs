@@ -22,7 +22,9 @@ public sealed class JsonFile<T>(string path, T empty, ILogger logger)
         PropertyNameCaseInsensitive = true,
         RespectRequiredConstructorParameters = true,
         RespectNullableAnnotations = true,
-        Converters = { new JsonStringEnumConverter() },
+        // A misspelled name would otherwise be ignored without a word and dropped on the next save.
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+        Converters = { new JsonStringEnumConverter(), new NoNullItems() },
     };
 
     readonly SemaphoreSlim _writing = new(1, 1);
@@ -47,12 +49,13 @@ public sealed class JsonFile<T>(string path, T empty, ILogger logger)
         }
     }
 
+    // The write lock is taken before leaving the caller's thread, so saves are written in the order they were asked for.
     public async Task SaveAsync(T value, CancellationToken cancellationToken)
     {
-        await LeaveCallersThread();
         await _writing.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            await LeaveCallersThread();
             await WriteAsync(value, cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -63,10 +66,10 @@ public sealed class JsonFile<T>(string path, T empty, ILogger logger)
 
     public async Task<T> UpdateAsync(Func<T, T> change, CancellationToken cancellationToken)
     {
-        await LeaveCallersThread();
         await _writing.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            await LeaveCallersThread();
             var value = change(await LoadAsync(cancellationToken).ConfigureAwait(false));
             await WriteAsync(value, cancellationToken).ConfigureAwait(false);
             return value;

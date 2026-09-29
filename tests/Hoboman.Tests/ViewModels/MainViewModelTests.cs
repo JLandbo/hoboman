@@ -381,4 +381,123 @@ public sealed class MainViewModelTests
         // Assert
         Assert.Equal(AuthKind.Bearer, Assert.IsType<FolderAuthViewModel>(harness.Dialogs.Shown).AuthKind);
     }
+
+    [Fact]
+    public async Task DeleteAsync_WhenConfirmed_ThenDeletesTheSecrets()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(accept: true));
+        var request = ApiRequest.New();
+        await harness.Library.SaveAsync("Ping", request, Cancellation);
+        await harness.Secrets.SaveAsync(request.Id, SecretKind.Token, "token", Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+
+        // Act
+        await main.DeleteAsync(main.Tree.Nodes.Single());
+
+        // Assert
+        Assert.Null(await harness.Secrets.OfAsync(request.Id, SecretKind.Token, Cancellation));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenACopySharesTheId_ThenKeepsTheSecrets()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(accept: true));
+        var request = ApiRequest.New();
+        await harness.Library.SaveAsync("Ping", request, Cancellation);
+        await harness.Library.SaveAsync("Copy", request, Cancellation);
+        await harness.Secrets.SaveAsync(request.Id, SecretKind.Token, "token", Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+
+        // Act
+        await main.DeleteAsync(main.Tree.Nodes.Single(node => node.Path == "Ping"));
+
+        // Assert
+        Assert.Equal("token", await harness.Secrets.OfAsync(request.Id, SecretKind.Token, Cancellation));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenTheTabIsSavedAgain_ThenSavesItsSecretsAgain()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(answer: "Ping", accept: true));
+        var request = ApiRequest.New() with { Auth = new(AuthKind.Bearer) };
+        await harness.Library.SaveAsync("Ping", request, Cancellation);
+        await harness.Secrets.SaveAsync(request.Id, SecretKind.Token, "token", Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.OpenAsync(main.Tree.Nodes.Single());
+        var tab = main.SelectedTab!;
+        await main.DeleteAsync(main.Tree.Nodes.Single());
+
+        // Act
+        await tab.SaveAsync();
+
+        // Assert
+        Assert.Equal("token", await harness.Secrets.OfAsync(request.Id, SecretKind.Token, Cancellation));
+    }
+
+    [Fact]
+    public async Task Close_WhenTheTabIsSending_ThenCancelsIt()
+    {
+        // Arrange
+        using var harness = new Harness(send: () => new TaskCompletionSource<ApiResponse>().Task);
+        var main = harness.Main();
+        await main.LoadAsync();
+        var tab = main.SelectedTab!;
+        var sending = tab.SendAsync();
+
+        // Act
+        main.Close(tab);
+        await sending.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+
+        // Assert
+        Assert.False(tab.IsSending);
+    }
+
+    [Fact]
+    public async Task RequestsChangedAsync_WhenTheDeletedFileComesBack_ThenTheTabIsNotUnsaved()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.OpenAsync(main.Tree.Nodes.Single());
+        var file = Path.Combine(harness.Folder.Requests, "Ping.json");
+        var saved = File.ReadAllText(file);
+        File.Delete(file);
+        await main.RequestsChangedAsync();
+        File.WriteAllText(file, saved);
+
+        // Act
+        await main.RequestsChangedAsync();
+
+        // Assert
+        Assert.False(main.SelectedTab!.IsDirty);
+    }
+
+    [Fact]
+    public async Task RequestsChangedAsync_WhenAFileIsMovedOntoAnOpenTab_ThenTheMovedTabIsUnlinked()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("A", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAsync("B", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.OpenAsync(main.Tree.Nodes.Single(node => node.Path == "A"));
+        await main.OpenAsync(main.Tree.Nodes.Single(node => node.Path == "B"));
+        var b = main.SelectedTab!;
+        File.Move(Path.Combine(harness.Folder.Requests, "B.json"), Path.Combine(harness.Folder.Requests, "A.json"), overwrite: true);
+
+        // Act
+        await main.RequestsChangedAsync();
+
+        // Assert
+        Assert.Null(b.Name);
+    }
 }

@@ -90,4 +90,81 @@ public sealed class FolderAuthViewModelTests
         // Assert
         Assert.Equal("{", File.ReadAllText(file));
     }
+
+    [Fact]
+    public async Task SaveAsync_WhenTheFileChangedWhileOpen_ThenLeavesTheChangeAlone()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var users = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
+        await harness.Library.SaveFolderAsync("Users", users, Cancellation);
+        var folderAuth = harness.FolderAuth();
+        await folderAuth.LoadAsync("Users", Cancellation);
+        await harness.Library.SaveFolderAsync("Users", users with { Auth = new(AuthKind.Basic, "agent") }, Cancellation);
+        folderAuth.Token = "token";
+
+        // Act
+        await folderAuth.SaveAsync();
+
+        // Assert
+        Assert.Equal("agent", (await harness.Library.LoadFolderAsync("Users", Cancellation))?.Auth.UserName);
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenTheFolderWasMovedWhileOpen_ThenDoesNotMakeItAgain()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var users = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
+        await harness.Library.SaveFolderAsync("Users", users, Cancellation);
+        var folderAuth = harness.FolderAuth();
+        await folderAuth.LoadAsync("Users", Cancellation);
+        Directory.Move(Path.Combine(harness.Folder.Requests, "Users"), Path.Combine(harness.Folder.Requests, "Moved"));
+
+        // Act
+        await folderAuth.SaveAsync();
+
+        // Assert
+        Assert.False(harness.Library.FolderExists("Users"));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenACopySharesTheId_ThenGetsItsOwnId()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var users = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
+        await harness.Library.SaveFolderAsync("Users", users, Cancellation);
+        await harness.Library.SaveFolderAsync("Copy", users, Cancellation);
+        await harness.Secrets.SaveAsync(users.Id, SecretKind.Token, "users", Cancellation);
+        var folderAuth = harness.FolderAuth();
+        await folderAuth.LoadAsync("Copy", Cancellation);
+        folderAuth.Token = "copy";
+
+        // Act
+        await folderAuth.SaveAsync();
+
+        // Assert
+        Assert.NotEqual(users.Id, (await harness.Library.LoadFolderAsync("Copy", Cancellation))?.Id);
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenACopySharesTheId_ThenLeavesTheOriginalsTokenAlone()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var users = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
+        await harness.Library.SaveFolderAsync("Users", users, Cancellation);
+        await harness.Library.SaveFolderAsync("Copy", users, Cancellation);
+        await harness.Secrets.SaveAsync(users.Id, SecretKind.Token, "users", Cancellation);
+        var folderAuth = harness.FolderAuth();
+        await folderAuth.LoadAsync("Copy", Cancellation);
+        folderAuth.Token = "copy";
+
+        // Act
+        await folderAuth.SaveAsync();
+
+        // Assert
+        Assert.Equal("users", await harness.Secrets.OfAsync(users.Id, SecretKind.Token, Cancellation));
+    }
 }

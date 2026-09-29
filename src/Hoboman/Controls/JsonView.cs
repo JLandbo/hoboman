@@ -8,7 +8,7 @@ namespace Hoboman.Controls;
 public sealed partial class JsonView : RichTextBox
 {
     // Coloring very large bodies would make the view slow, so they are shown as plain text.
-    const int _coloredLength = 200_000;
+    const int _coloredLength = 20_000;
 
     public static readonly DependencyProperty TextProperty = DependencyProperty.Register(nameof(Text), typeof(string), typeof(JsonView), new(null, (view, _) => ((JsonView)view).Show()));
 

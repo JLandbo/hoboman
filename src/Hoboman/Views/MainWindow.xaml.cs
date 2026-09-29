@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Controls;
 using Hoboman.Core.Environments;
 using Hoboman.ViewModels;
 
@@ -20,6 +21,14 @@ public partial class MainWindow : Window
     void NewRequest_Click(object sender, RoutedEventArgs e) => _viewModel.NewTab();
 
     async void NewFolder_Click(object sender, RoutedEventArgs e) => await _viewModel.NewFolderAsync();
+
+    void Tabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.AddedItems is [var tab, ..])
+        {
+            ((ListBox)sender).ScrollIntoView(tab);
+        }
+    }
 
     void CloseTab_Click(object sender, RoutedEventArgs e) => _viewModel.Close((RequestTabViewModel)((FrameworkElement)sender).DataContext);
 

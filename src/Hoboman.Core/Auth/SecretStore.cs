@@ -11,7 +11,7 @@ public sealed class SecretStore(AppFolder folder, ILogger<SecretStore> logger)
 
     public async Task<string?> OfAsync(Guid id, SecretKind kind, CancellationToken cancellationToken)
     {
-        if (!(await _file.LoadAsync(cancellationToken).ConfigureAwait(false)).TryGetValue(KeyOf(id, kind), out var secret))
+        if ((await _file.LoadAsync(cancellationToken).ConfigureAwait(false)).GetValueOrDefault(KeyOf(id, kind)) is not { } secret)
         {
             logger.LogDebug("No {Kind} is saved for {Id}", kind, id);
             return null;
@@ -35,6 +35,12 @@ public sealed class SecretStore(AppFolder folder, ILogger<SecretStore> logger)
             secrets => new Dictionary<string, string>(secrets) { [KeyOf(id, kind)] = Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(secret), null, DataProtectionScope.CurrentUser)) },
             cancellationToken).ConfigureAwait(false);
         logger.LogInformation("Saved the {Kind} for {Id}", kind, id);
+    }
+
+    public async Task DeleteAsync(Guid id, CancellationToken cancellationToken)
+    {
+        await _file.UpdateAsync(secrets => secrets.Where(secret => !secret.Key.StartsWith($"{id}/", StringComparison.Ordinal)).ToDictionary(), cancellationToken).ConfigureAwait(false);
+        logger.LogInformation("Deleted the secrets for {Id}", id);
     }
 
     static string KeyOf(Guid id, SecretKind kind) => $"{id}/{kind}";

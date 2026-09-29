@@ -29,4 +29,19 @@ public sealed class TranslatorTests
         // Assert
         Assert.True(changed);
     }
+
+    [Fact]
+    public void Use_WhenTheLanguageIsTheSame_ThenTellsNobody()
+    {
+        // Arrange
+        var translator = new Translator(Translation.Danish);
+        var changed = false;
+        translator.Changed += () => changed = true;
+
+        // Act
+        translator.Use(Translation.Danish);
+
+        // Assert
+        Assert.False(changed);
+    }
 }

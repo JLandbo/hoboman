@@ -50,4 +50,19 @@ public sealed class EnvironmentsViewModelTests
         // Assert
         Assert.Equal("Dev", Assert.Single(harness.Environments.Items).Name);
     }
+
+    [Fact]
+    public async Task LoadAsync_WhenTheFileHoldsNull_ThenShowsNoEnvironments()
+    {
+        // Arrange
+        using var harness = new Harness();
+        Directory.CreateDirectory(harness.Folder.Root);
+        File.WriteAllText(harness.Folder.Environments, "[null]");
+
+        // Act
+        await harness.Environments.LoadAsync(Cancellation);
+
+        // Assert
+        Assert.Empty(harness.Environments.Items);
+    }
 }

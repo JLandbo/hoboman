@@ -17,11 +17,5 @@ public partial class EnvironmentEditorWindow : DialogWindow
 
     void Remove_Click(object sender, RoutedEventArgs e) => _viewModel.Remove();
 
-    async void Save_Click(object sender, RoutedEventArgs e)
-    {
-        if (await _viewModel.SaveAsync())
-        {
-            DialogResult = true;
-        }
-    }
+    async void Save_Click(object sender, RoutedEventArgs e) => await SaveAndCloseAsync(_viewModel.SaveAsync);
 }

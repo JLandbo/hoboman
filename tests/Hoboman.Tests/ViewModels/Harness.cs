@@ -48,6 +48,7 @@ public sealed class Harness : IDisposable
         FolderAuth(),
         Services,
         Library,
+        Secrets,
         Dialogs,
         _translator,
         NullLogger<MainViewModel>.Instance);

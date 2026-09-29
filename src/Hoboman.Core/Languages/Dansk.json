@@ -55,6 +55,7 @@
     "Folder.Create": "Opret",
     "Folder.Failed": "Mappen kunne ikke oprettes",
     "FolderAuth.Title": "Auth for {0}",
+    "FolderAuth.ChangedOnDisk": "Mappen er ændret på disken, mens vinduet var åbent. Luk vinduet og åbn det igen.",
     "FolderAuth.LoadFailed": "Mappens auth kunne ikke indlæses: {0}",
     "FolderAuth.SaveFailed": "Mappens auth kunne ikke gemmes: {0}",
     "History.Today": "I dag",

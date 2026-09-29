@@ -1,19 +1,21 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
 using Hoboman.Core.Storage;
 using Microsoft.Extensions.Logging;
 
 namespace Hoboman.Core.History;
 
-public sealed class HistoryStore(AppFolder folder, ILogger<HistoryStore> logger)
+public sealed partial class HistoryStore(AppFolder folder, ILogger<HistoryStore> logger)
 {
     // One file per call, named by time, so the app and the CLI can add entries at the same time and the newest are found without reading the rest.
     public Task AddAsync(HistoryEntry entry, CancellationToken cancellationToken) =>
-        FileOf($"{entry.At.UtcDateTime:yyyyMMdd-HHmmss-fff}-{Guid.NewGuid():N}.json").SaveAsync(entry, cancellationToken);
+        FileOf(string.Create(CultureInfo.InvariantCulture, $"{entry.At.UtcDateTime:yyyyMMdd-HHmmss-fff}-{Guid.NewGuid():N}.json")).SaveAsync(entry, cancellationToken);
 
     public async Task<IReadOnlyList<HistoryFile>> LatestAsync(int count, string? newerThan, CancellationToken cancellationToken)
     {
         var names = await Task.Run<string[]>(() => Directory.Exists(folder.History)
             ? [.. Directory.EnumerateFiles(folder.History, "*.json").Select(Path.GetFileName).OfType<string>()
-                .Where(name => newerThan is null || string.CompareOrdinal(name, newerThan) > 0).OrderDescending(StringComparer.Ordinal).Take(count)]
+                .Where(name => IsCall(name) && (newerThan is null || string.CompareOrdinal(name, newerThan) > 0)).OrderDescending(StringComparer.Ordinal).Take(count)]
             : [], cancellationToken).ConfigureAwait(false);
         var files = new HistoryFile?[names.Length];
         await Parallel.ForEachAsync(Enumerable.Range(0, names.Length), cancellationToken, async (index, token) => files[index] = await LoadAsync(names[index], token).ConfigureAwait(false))
@@ -34,5 +36,19 @@ public sealed class HistoryStore(AppFolder folder, ILogger<HistoryStore> logger)
         }
     }
 
+    // Any other file would sort as the newest and hide the calls that come after it.
+    bool IsCall(string name)
+    {
+        if (CallName().IsMatch(name))
+        {
+            return true;
+        }
+        logger.LogDebug("{Name} in the history folder is not a call and is left out", name);
+        return false;
+    }
+
     JsonFile<HistoryEntry?> FileOf(string name) => new(Path.Combine(folder.History, name), null, logger);
+
+    [GeneratedRegex(@"^\d{8}-\d{6}-\d{3}-")]
+    private static partial Regex CallName();
 }

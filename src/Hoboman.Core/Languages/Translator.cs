@@ -8,6 +8,10 @@ public sealed class Translator(Translation current)
 
     public void Use(Translation translation)
     {
+        if (translation == Current)
+        {
+            return;
+        }
         Current = translation;
         Changed?.Invoke();
     }

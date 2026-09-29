@@ -69,4 +69,48 @@ public sealed class SecretStoreTests : IDisposable
         // Assert
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => saving);
     }
+
+    [Fact]
+    public async Task OfAsync_WhenTheSavedValueIsNull_ThenGivesNull()
+    {
+        // Arrange
+        var id = Guid.NewGuid();
+        Directory.CreateDirectory(_temporary.Path);
+        File.WriteAllText(Folder.Secrets, $$"""{"{{id}}/Token": null}""");
+
+        // Act
+        var secret = await Store().OfAsync(id, SecretKind.Token, Cancellation);
+
+        // Assert
+        Assert.Null(secret);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenCalled_ThenRemovesEverySecretOfTheId()
+    {
+        // Arrange
+        var id = Guid.NewGuid();
+        await Store().SaveAsync(id, SecretKind.Password, "hemmelig", Cancellation);
+        await Store().SaveAsync(id, SecretKind.Token, "token", Cancellation);
+
+        // Act
+        await Store().DeleteAsync(id, Cancellation);
+
+        // Assert
+        Assert.Null(await Store().OfAsync(id, SecretKind.Token, Cancellation));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenCalled_ThenKeepsTheSecretsOfOthers()
+    {
+        // Arrange
+        var other = Guid.NewGuid();
+        await Store().SaveAsync(other, SecretKind.Token, "token", Cancellation);
+
+        // Act
+        await Store().DeleteAsync(Guid.NewGuid(), Cancellation);
+
+        // Assert
+        Assert.Equal("token", await Store().OfAsync(other, SecretKind.Token, Cancellation));
+    }
 }

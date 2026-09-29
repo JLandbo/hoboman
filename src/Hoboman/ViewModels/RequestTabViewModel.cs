@@ -18,9 +18,10 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
     bool _ownsId;
     OAuthSettings? _oauth;
     string _savedJson = "";
+    string _savedPassword = "";
+    string _savedToken = "";
+    ProblemMessage? _fileProblem;
     bool _loading;
-    bool _passwordChanged;
-    bool _tokenChanged;
     CancellationTokenSource? _sending;
 
     public RequestTabViewModel(RequestTabServices services, ApiRequest request, string? name = null, string? suggestedName = null, bool fromHistory = false)
@@ -92,29 +93,9 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
 
     public string UserName { get; set => Change(ref field, value); } = "";
 
-    public string Password
-    {
-        get;
-        set
-        {
-            if (Change(ref field, value))
-            {
-                _passwordChanged |= !_loading;
-            }
-        }
-    } = "";
+    public string Password { get; set => Change(ref field, value); } = "";
 
-    public string Token
-    {
-        get;
-        set
-        {
-            if (Change(ref field, value))
-            {
-                _tokenChanged |= !_loading;
-            }
-        }
-    } = "";
+    public string Token { get; set => Change(ref field, value); } = "";
 
     public bool IsDirty { get; private set => Set(ref field, value); }
 
@@ -131,20 +112,25 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
     // Changes on disk win over unsaved changes, but the tab's own saves must not reload it.
     public bool ReloadIfChanged(ApiRequest request)
     {
+        if (Problem is not null && Problem == _fileProblem)
+        {
+            Problem = null;
+        }
         if (JsonSerializer.Serialize(request) == _savedJson)
         {
+            // A tab that got its file back is only unsaved if it was edited.
+            IsDirty = HasUnsavedChanges();
             return false;
         }
         Load(request);
-        _passwordChanged = _tokenChanged = false;
         return true;
     }
 
-    public void ShowProblem(ProblemMessage problem) => Problem = problem;
+    public void ShowFileProblem(string details) => Problem = _fileProblem = new(_services.Translator.Of("Open.Failed"), details);
 
-    public void Show(HistoryEntry entry)
+    public async Task ShowAsync(HistoryEntry entry)
     {
-        Response = entry.Response is { } response ? ResponseDisplay.Of(response) : null;
+        Response = entry.Response is { } response ? await Task.Run(() => ResponseDisplay.Of(response)) : null;
         Problem = entry.Error is { } error ? new(_services.Translator.Of("Response.Failed"), error) : null;
     }
 
@@ -170,18 +156,18 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
             }
         }
         _loading = true;
-        Password = password ?? "";
-        Token = token ?? "";
+        Password = _savedPassword = password ?? "";
+        Token = _savedToken = token ?? "";
         _loading = false;
     }
 
-    public async Task<bool> SaveAsync()
+    public async Task SaveAsync()
     {
         var translator = _services.Translator;
         var name = Name ?? _services.Dialogs.AskName(translator.Of("Save.Title"), SuggestedName ?? "", translator.Of("Common.Save"), _services.ProblemOfName);
         if (name is null)
         {
-            return false;
+            return;
         }
         EnsureOwnId();
         try
@@ -192,14 +178,13 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
             await _services.Library.SaveAsync(name, request, CancellationToken.None);
             _savedJson = JsonSerializer.Serialize(request);
             Name = name;
-            IsDirty = false;
-            return true;
+            // Edits made while the file was being written are still unsaved.
+            IsDirty = HasUnsavedChanges();
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
             _services.Logger.LogError(exception, "Could not save {Name}", name);
             Problem = new(translator.Of("Save.Failed"), exception.Message);
-            return false;
         }
     }
 
@@ -213,6 +198,9 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
         Name = null;
         IsDirty = true;
     }
+
+    // Once the secrets are deleted, a later save writes the ones shown again.
+    public void ForgetSavedSecrets() => _savedPassword = _savedToken = "";
 
     public ApiRequest ToRequest() => new()
     {
@@ -235,13 +223,16 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
         try
         {
             await SaveSecretsAsync(sending.Token);
-            Response = ResponseDisplay.Of(await _services.Runner.RunAsync(ToRequest(), Name ?? SuggestedName, _services.Environments.Selected, HistorySource.App, sending.Token));
+            var response = await _services.Runner.RunAsync(ToRequest(), Name ?? SuggestedName, _services.Environments.Selected, HistorySource.App, sending.Token);
+            // Formatting a large body takes a while, so it is kept off the UI thread.
+            Response = await Task.Run(() => ResponseDisplay.Of(response));
         }
         catch (OperationCanceledException) when (sending.IsCancellationRequested)
         {
         }
         catch (Exception exception)
         {
+            _services.Logger.LogWarning(exception, "Could not send {Name}", Name ?? SuggestedName);
             Problem = new(_services.Translator.Of("Response.Failed"), ProblemOf(exception));
         }
         finally
@@ -254,39 +245,44 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
     string ProblemOf(Exception exception)
     {
         var translator = _services.Translator;
-        var reason = exception switch
+        // A file problem already names the file, which the inner exception leaves out.
+        var cause = FileProblem.Is(exception) ? exception.Message : exception.GetBaseException().Message;
+        return exception switch
         {
             MissingSecretException { Kind: SecretKind.Password } => translator.Of("Response.MissingPassword"),
-            MissingSecretException => translator.Of("Response.MissingToken"),
+            MissingSecretException { Kind: SecretKind.Token } => translator.Of("Response.MissingToken"),
             InvalidHeaderException header => translator.Format("Response.InvalidHeader", header.Name),
             InvalidMethodException method => translator.Format("Response.InvalidMethod", method.Method),
-            UriFormatException => translator.Of("Response.InvalidUrl"),
-            HttpRequestException { HttpRequestError: HttpRequestError.NameResolutionError } => translator.Of("Response.UnknownHost"),
-            HttpRequestException { HttpRequestError: HttpRequestError.ConnectionError } => translator.Of("Response.NoConnection"),
-            HttpRequestException { HttpRequestError: HttpRequestError.SecureConnectionError } => translator.Of("Response.SecureConnection"),
-            TaskCanceledException { InnerException: TimeoutException } => translator.Of("Response.Timeout"),
-            _ => null,
+            UriFormatException => WithCause(translator.Of("Response.InvalidUrl")),
+            HttpRequestException { HttpRequestError: HttpRequestError.NameResolutionError } => WithCause(translator.Of("Response.UnknownHost")),
+            HttpRequestException { HttpRequestError: HttpRequestError.ConnectionError } => WithCause(translator.Of("Response.NoConnection")),
+            HttpRequestException { HttpRequestError: HttpRequestError.SecureConnectionError } => WithCause(translator.Of("Response.SecureConnection")),
+            TaskCanceledException { InnerException: TimeoutException } => WithCause(translator.Of("Response.Timeout")),
+            _ => cause,
         };
-        var cause = exception.GetBaseException().Message;
-        return reason is null ? cause : exception is MissingSecretException or InvalidHeaderException or InvalidMethodException ? reason : $"{reason}{Environment.NewLine}{cause}";
+
+        string WithCause(string reason) => $"{reason}{Environment.NewLine}{cause}";
     }
 
+    // Each secret is saved on its own and only marked as saved afterwards, so a value typed while saving is saved next time.
     async Task SaveSecretsAsync(CancellationToken cancellationToken)
     {
-        if (!_passwordChanged && !_tokenChanged)
+        if (Password == _savedPassword && Token == _savedToken)
         {
             return;
         }
         EnsureOwnId();
-        if (_passwordChanged)
+        var (password, token) = (Password, Token);
+        if (password != _savedPassword)
         {
-            await _services.Secrets.SaveAsync(_id, SecretKind.Password, Password, cancellationToken);
+            await _services.Secrets.SaveAsync(_id, SecretKind.Password, password, cancellationToken);
+            _savedPassword = password;
         }
-        if (_tokenChanged)
+        if (token != _savedToken)
         {
-            await _services.Secrets.SaveAsync(_id, SecretKind.Token, Token, cancellationToken);
+            await _services.Secrets.SaveAsync(_id, SecretKind.Token, token, cancellationToken);
+            _savedToken = token;
         }
-        _passwordChanged = _tokenChanged = false;
     }
 
     void EnsureOwnId()
@@ -297,10 +293,12 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
         }
         _id = Guid.NewGuid();
         _ownsId = true;
-        _passwordChanged |= Password.Length > 0;
-        _tokenChanged |= Token.Length > 0;
+        // A new id has no secrets yet, so the ones shown are saved under it.
+        _savedPassword = _savedToken = "";
         MarkDirty();
     }
+
+    bool HasUnsavedChanges() => JsonSerializer.Serialize(ToRequest()) != _savedJson || Password != _savedPassword || Token != _savedToken;
 
     void Load(ApiRequest request)
     {

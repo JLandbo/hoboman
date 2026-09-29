@@ -8,11 +8,16 @@ namespace Hoboman.ViewModels;
 public sealed class RequestTreeViewModel(RequestLibrary library, ILogger<RequestTreeViewModel> logger)
 {
     IReadOnlyDictionary<Guid, string> _nameById = new Dictionary<Guid, string>();
+    IReadOnlyDictionary<string, Guid> _idByName = new Dictionary<string, Guid>();
 
     public ObservableCollection<RequestNodeViewModel> Nodes { get; } = [];
 
     // Moving a file shows up as a delete and a create, so open tabs find their file again by its id.
     public string? NameOf(Guid id) => _nameById.GetValueOrDefault(id);
+
+    public Guid IdOf(string name) => _idByName.GetValueOrDefault(name);
+
+    public bool IsUsed(Guid id) => _idByName.Values.Contains(id);
 
     public async Task LoadAsync(CancellationToken cancellationToken)
     {
@@ -44,6 +49,7 @@ public sealed class RequestTreeViewModel(RequestLibrary library, ILogger<Request
             ChildrenOf(name).Add(new(name, request?.Method, isFolder: false));
         }
         _nameById = UniqueIds(names, requests);
+        _idByName = names.Zip(requests).Where(pair => pair.Second is not null).ToDictionary(pair => pair.First, pair => pair.Second!.Id, StringComparer.OrdinalIgnoreCase);
 
         ObservableCollection<RequestNodeViewModel> ChildrenOf(string path) => path.LastIndexOf('/') is var slash and > 0 ? FolderOf(path[..slash]).Children : Nodes;
 

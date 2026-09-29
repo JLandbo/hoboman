@@ -220,4 +220,34 @@ public sealed class JsonFileTests : IDisposable
         Thread.Sleep(20);
         locked.Dispose();
     }).Start();
+
+    [Fact]
+    public async Task LoadAsync_WhenANameIsMisspelled_ThenThrows()
+    {
+        // Arrange
+        Directory.CreateDirectory(_temporary.Path);
+        File.WriteAllText(FilePath, """{"environmentNam": "Dev"}""");
+
+        // Act
+        var loading = Store().LoadAsync(Cancellation);
+
+        // Assert
+        await Assert.ThrowsAsync<InvalidDataException>(() => loading);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenCalledOneAfterTheOther_ThenTheLastOneWins()
+    {
+        // Arrange
+        var store = Store();
+
+        // Act
+        var first = store.UpdateAsync(settings => settings with { EnvironmentName = "First" }, Cancellation);
+        var last = store.UpdateAsync(settings => settings with { EnvironmentName = "Last" }, Cancellation);
+        await first;
+        await last;
+
+        // Assert
+        Assert.Equal("Last", (await store.LoadAsync(Cancellation)).EnvironmentName);
+    }
 }

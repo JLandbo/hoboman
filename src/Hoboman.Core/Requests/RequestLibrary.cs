@@ -26,11 +26,30 @@ public sealed class RequestLibrary(AppFolder folder, ILogger<RequestLibrary> log
 
     public async Task<ApiRequest?> LoadAsync(string name, CancellationToken cancellationToken) => await FileOf(name).LoadAsync(cancellationToken).ConfigureAwait(false);
 
-    public async Task SaveAsync(string name, ApiRequest request, CancellationToken cancellationToken) => await FileOf(name).SaveAsync(request, cancellationToken).ConfigureAwait(false);
+    public async Task SaveAsync(string name, ApiRequest request, CancellationToken cancellationToken)
+    {
+        await FileOf(name).SaveAsync(request, cancellationToken).ConfigureAwait(false);
+        logger.LogInformation("Saved the request {Name}", name);
+    }
+
+    public bool FolderExists(string name) => Directory.Exists(FolderOf(name));
 
     public async Task<FolderSettings?> LoadFolderAsync(string name, CancellationToken cancellationToken) => await FolderFileOf(name).LoadAsync(cancellationToken).ConfigureAwait(false);
 
     public async Task SaveFolderAsync(string name, FolderSettings settings, CancellationToken cancellationToken) => await FolderFileOf(name).SaveAsync(settings, cancellationToken).ConfigureAwait(false);
+
+    // A folder copied in Explorer takes its settings along, so two folders can share an id and with it their secrets.
+    public async Task<bool> SharesFolderIdAsync(string name, Guid id, CancellationToken cancellationToken)
+    {
+        foreach (var other in await FoldersAsync(cancellationToken).ConfigureAwait(false))
+        {
+            if (!other.Equals(name, StringComparison.OrdinalIgnoreCase) && (await LoadFolderAsync(other, cancellationToken).ConfigureAwait(false))?.Id == id)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
 
     // Like in Postman, a request that inherits uses the nearest folder above it with auth of its own.
     public async Task<AuthSource> AuthOfAsync(string? name, ApiRequest request, CancellationToken cancellationToken)

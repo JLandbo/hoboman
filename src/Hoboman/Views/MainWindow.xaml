@@ -148,8 +148,9 @@
                         </StackPanel>
                     </Border>
                 </Popup>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
-                    <ListBox ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab}" Style="{StaticResource Tabs}">
+                <DockPanel HorizontalAlignment="Left" VerticalAlignment="Bottom">
+                    <Button DockPanel.Dock="Right" Content="&#xE710;" ToolTip="{DynamicResource Sidebar.NewRequest}" Click="NewRequest_Click" Style="{StaticResource SmallIconButton}" FontSize="12" Margin="2,0,0,4" VerticalAlignment="Center" />
+                    <ListBox ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab}" Style="{StaticResource Tabs}" SelectionChanged="Tabs_SelectionChanged">
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="{x:Type viewModels:RequestTabViewModel}">
                                 <StackPanel Orientation="Horizontal">
@@ -173,8 +174,7 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
-                    <Button Content="&#xE710;" ToolTip="{DynamicResource Sidebar.NewRequest}" Click="NewRequest_Click" Style="{StaticResource SmallIconButton}" FontSize="12" Margin="2,0,0,4" VerticalAlignment="Center" />
-                </StackPanel>
+                </DockPanel>
             </DockPanel>
             <ContentControl Grid.Row="1" Content="{Binding SelectedTab}" Focusable="False" />
         </Grid>

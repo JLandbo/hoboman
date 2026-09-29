@@ -306,4 +306,18 @@ public sealed class RequestLibraryTests : IDisposable
         Assert.Equal(AuthKind.None, auth.Settings.Kind);
 
     }
+
+    [Fact]
+    public async Task LoadAsync_WhenAHeaderIsNull_ThenThrows()
+    {
+        // Arrange
+        Directory.CreateDirectory(RequestsFolder);
+        File.WriteAllText(Path.Combine(RequestsFolder, "Ping.json"), """{"url": "https://dev.local", "headers": [null]}""");
+
+        // Act
+        var loading = Library().LoadAsync("Ping", Cancellation);
+
+        // Assert
+        await Assert.ThrowsAsync<InvalidDataException>(() => loading);
+    }
 }

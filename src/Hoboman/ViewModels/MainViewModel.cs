@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Hoboman.Core.Auth;
 using Hoboman.Core.Languages;
 using Hoboman.Core.Requests;
 using Hoboman.Core.Storage;
@@ -16,6 +17,7 @@ public sealed class MainViewModel(
     FolderAuthViewModel folderAuth,
     RequestTabServices tabServices,
     RequestLibrary library,
+    SecretStore secrets,
     IDialogs dialogs,
     Translator translator,
     ILogger<MainViewModel> logger) : ObservableObject
@@ -61,11 +63,15 @@ public sealed class MainViewModel(
         return HistoryChangedAsync();
     }
 
-    public void NewTab() => Add(new(tabServices, ApiRequest.New()));
+    public void NewTab()
+    {
+        logger.LogDebug("Opened a new tab");
+        Add(new(tabServices, ApiRequest.New()));
+    }
 
     public async Task OpenAsync(RequestNodeViewModel node)
     {
-        if (Tabs.FirstOrDefault(tab => SameName(tab.Name, node.Path)) is { } open)
+        if (TabOf(node.Path) is { } open)
         {
             SelectedTab = open;
             return;
@@ -98,18 +104,24 @@ public sealed class MainViewModel(
 
     public async Task OpenAsync(HistoryItemViewModel item)
     {
+        logger.LogInformation("Opened the call to {Address} from the history", item.Address);
         var tab = new RequestTabViewModel(tabServices, item.Entry.Request, suggestedName: item.Entry.Name, fromHistory: true);
-        tab.Show(item.Entry);
+        await tab.ShowAsync(item.Entry);
         Add(tab);
         await tab.LoadSecretsAsync(CancellationToken.None);
     }
 
     public void Close(RequestTabViewModel tab)
     {
-        if (tab.IsDirty && !dialogs.Confirm(translator.Of("Close.TabTitle"), translator.Format("Close.TabMessage", TitleOf(tab)), translator.Of("Close.Confirm"), []))
+        if (tab.IsDirty)
         {
-            return;
+            if (!dialogs.Confirm(translator.Of("Close.TabTitle"), translator.Format("Close.TabMessage", TitleOf(tab)), translator.Of("Close.Confirm"), []))
+            {
+                return;
+            }
+            logger.LogInformation("Closed {Title} without saving it", TitleOf(tab));
         }
+        tab.Cancel();
         var index = Tabs.IndexOf(tab);
         var wasSelected = SelectedTab == tab;
         Tabs.Remove(tab);
@@ -126,7 +138,13 @@ public sealed class MainViewModel(
     public bool CanClose()
     {
         var unsaved = Tabs.Where(tab => tab.IsDirty).Select(TitleOf).ToList();
-        return unsaved.Count == 0 || dialogs.Confirm(translator.Of("Close.Title"), translator.Of("Close.Message"), translator.Of("Close.Confirm"), unsaved);
+        if (unsaved.Count == 0)
+        {
+            return true;
+        }
+        var close = dialogs.Confirm(translator.Of("Close.Title"), translator.Of("Close.Message"), translator.Of("Close.Confirm"), unsaved);
+        logger.LogInformation(close ? "Closing with {Count} unsaved requests" : "Kept the app open for {Count} unsaved requests", unsaved.Count);
+        return close;
     }
 
     public async Task NewFolderAsync()
@@ -156,7 +174,7 @@ public sealed class MainViewModel(
         try
         {
             await library.RenameAsync(node.Path, name, CancellationToken.None);
-            Tabs.FirstOrDefault(tab => SameName(tab.Name, node.Path))?.Rename(name);
+            TabOf(node.Path)?.Rename(name);
             await tree.LoadAsync(CancellationToken.None);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
@@ -174,9 +192,17 @@ public sealed class MainViewModel(
         }
         try
         {
+            var id = tree.IdOf(node.Path);
+            var tab = TabOf(node.Path);
             await library.DeleteAsync(node.Path, CancellationToken.None);
-            Tabs.FirstOrDefault(tab => SameName(tab.Name, node.Path))?.Unlink();
+            tab?.Unlink();
             await tree.LoadAsync(CancellationToken.None);
+            // A copy with the same id shares the secrets, so they stay while any request still uses them.
+            if (id != Guid.Empty && !tree.IsUsed(id))
+            {
+                await secrets.DeleteAsync(id, CancellationToken.None);
+                tab?.ForgetSavedSecrets();
+            }
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
@@ -215,7 +241,7 @@ public sealed class MainViewModel(
             catch (Exception exception) when (FileProblem.Is(exception))
             {
                 logger.LogWarning(exception, "Could not reload {Name}", tab.Name);
-                tab.ShowProblem(new(translator.Of("Open.Failed"), exception.Message));
+                tab.ShowFileProblem(exception.Message);
             }
         }
     }
@@ -225,7 +251,8 @@ public sealed class MainViewModel(
     {
         var name = tab.Name;
         var request = name is null ? null : await library.LoadAsync(name, CancellationToken.None);
-        if (request is null && tree.NameOf(tab.Id) is { } moved)
+        // A file that moved onto a name another tab already has is left to that tab.
+        if (request is null && tree.NameOf(tab.Id) is { } moved && TabOf(moved) is null)
         {
             name = moved;
             request = await library.LoadAsync(moved, CancellationToken.None);
@@ -256,6 +283,8 @@ public sealed class MainViewModel(
         Tabs.Add(tab);
         SelectedTab = tab;
     }
+
+    RequestTabViewModel? TabOf(string name) => Tabs.FirstOrDefault(tab => SameName(tab.Name, name));
 
     string TitleOf(RequestTabViewModel tab) => tab.Title ?? translator.Of("Tab.New");
 

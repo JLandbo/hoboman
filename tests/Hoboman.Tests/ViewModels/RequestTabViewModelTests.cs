@@ -400,4 +400,84 @@ public sealed class RequestTabViewModelTests
         // Assert
         Assert.Equal(folder.Id, harness.Sender.Auth?.Id);
     }
+
+    [Fact]
+    public async Task SendAsync_WhenAFolderFileIsInvalid_ThenNamesTheFile()
+    {
+        // Arrange
+        using var harness = new Harness();
+        Directory.CreateDirectory(Path.Combine(harness.Folder.Requests, "Users"));
+        File.WriteAllText(Path.Combine(harness.Folder.Requests, "Users", ".folder.json"), "{");
+        var tab = harness.Tab(ApiRequest.New(), "Users/Get user");
+
+        // Act
+        await tab.SendAsync();
+
+        // Assert
+        Assert.Contains(".folder.json", tab.Problem?.Details);
+    }
+
+    [Fact]
+    public void ReloadIfChanged_WhenTheFileCanBeReadAgain_ThenHidesTheProblem()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var request = ApiRequest.New();
+        var tab = harness.Tab(request, "Ping");
+        tab.ShowFileProblem("Ping.json is not valid");
+
+        // Act
+        tab.ReloadIfChanged(request);
+
+        // Assert
+        Assert.Null(tab.Problem);
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenEditedWhileSaving_ThenStaysUnsaved()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var request = ApiRequest.New();
+        await harness.Library.SaveAsync("Ping", request, Cancellation);
+        var tab = harness.Tab(request, "Ping");
+        tab.Url = "https://saved.local";
+        Task saving;
+
+        // Act
+        using (new FileStream(Path.Combine(harness.Folder.Requests, "Ping.json"), FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            saving = tab.SaveAsync();
+            tab.Url = "https://edited.local";
+        }
+        await saving;
+
+        // Assert
+        Assert.True(tab.IsDirty);
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenAPasswordIsTypedWhileSaving_ThenSavesItNextTime()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var request = ApiRequest.New() with { Auth = new(AuthKind.Basic, "hobo") };
+        var tab = harness.Tab(request, "Ping");
+        tab.Password = "first";
+        Directory.CreateDirectory(harness.Folder.Root);
+        File.WriteAllText(harness.Folder.Secrets, "{}");
+        Task saving;
+        using (new FileStream(harness.Folder.Secrets, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            saving = tab.SaveAsync();
+            tab.Password = "second";
+        }
+        await saving;
+
+        // Act
+        await tab.SaveAsync();
+
+        // Assert
+        Assert.Equal("second", await harness.Secrets.OfAsync(request.Id, SecretKind.Password, Cancellation));
+    }
 }

@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Hoboman.Tests.History;
 
 public sealed class HistoryStoreTests : IDisposable
@@ -78,5 +80,40 @@ public sealed class HistoryStoreTests : IDisposable
 
         // Assert
         Assert.Empty(entries);
+    }
+
+    [Fact]
+    public async Task AddAsync_WhenTheCultureUsesAnotherCalendar_ThenNamesTheFileByTheGregorianDate()
+    {
+        // Arrange
+        var culture = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = new CultureInfo("th-TH");
+
+        // Act
+        try
+        {
+            await Store().AddAsync(EntryAt(1), Cancellation);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = culture;
+        }
+
+        // Assert
+        Assert.StartsWith("20260929-", Path.GetFileName(Directory.EnumerateFiles(Path.Combine(_temporary.Path, "history")).Single()));
+    }
+
+    [Fact]
+    public async Task LatestAsync_WhenAFileIsNotACall_ThenLeavesItOut()
+    {
+        // Arrange
+        await Store().AddAsync(EntryAt(1), Cancellation);
+        File.WriteAllText(Path.Combine(_temporary.Path, "history", "backup.json"), "{}");
+
+        // Act
+        var entries = await Store().LatestAsync(10, null, Cancellation);
+
+        // Assert
+        Assert.Equal(["1"], entries.Select(file => file.Entry.Response?.Body));
     }
 }

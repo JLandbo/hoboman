@@ -35,4 +35,18 @@ public sealed class EnvironmentStoreTests : IDisposable
         // Assert
         Assert.Null(environment);
     }
+
+    [Fact]
+    public async Task AllAsync_WhenTheListHoldsNull_ThenThrows()
+    {
+        // Arrange
+        Directory.CreateDirectory(_temporary.Path);
+        File.WriteAllText(Path.Combine(_temporary.Path, "environments.json"), "[null]");
+
+        // Act
+        var loading = Store().AllAsync(Cancellation);
+
+        // Assert
+        await Assert.ThrowsAsync<InvalidDataException>(() => loading);
+    }
 }

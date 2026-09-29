@@ -59,13 +59,26 @@ public sealed class FolderAuthViewModel(RequestLibrary library, SecretStore secr
         }
         try
         {
-            var settings = _settings with { Id = _settings.Id == Guid.Empty ? Guid.NewGuid() : _settings.Id, Auth = _settings.Auth with { Kind = AuthKind, UserName = UserName } };
+            // The disk wins: a change made while the window was open is not overwritten, and a moved folder is not made again.
+            if (!library.FolderExists(_folder) || (await library.LoadFolderAsync(_folder, CancellationToken.None) ?? new()) != _settings)
+            {
+                Problem = translator.Of("FolderAuth.ChangedOnDisk");
+                return false;
+            }
+            var shared = _settings.Id != Guid.Empty && await library.SharesFolderIdAsync(_folder, _settings.Id, CancellationToken.None);
+            if (shared)
+            {
+                logger.LogWarning("{Folder} shares its id with another folder, so it gets its own", _folder);
+            }
+            var settings = _settings with { Id = _settings.Id == Guid.Empty || shared ? Guid.NewGuid() : _settings.Id, Auth = _settings.Auth with { Kind = AuthKind, UserName = UserName } };
+            // A new id has no secrets yet, so the ones shown are saved under it.
+            var (savedPassword, savedToken) = settings.Id == _settings.Id ? (_savedPassword, _savedToken) : ("", "");
             // The secrets go first, so a failure leaves no folder file behind that points at secrets that were never saved.
-            if (Password != _savedPassword)
+            if (Password != savedPassword)
             {
                 await secrets.SaveAsync(settings.Id, SecretKind.Password, Password, CancellationToken.None);
             }
-            if (Token != _savedToken)
+            if (Token != savedToken)
             {
                 await secrets.SaveAsync(settings.Id, SecretKind.Token, Token, CancellationToken.None);
             }

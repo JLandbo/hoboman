@@ -3,7 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:viewModels="clr-namespace:Hoboman.ViewModels">
     <Grid>
-        <ListBox x:Name="Entries" ItemsSource="{Binding History.Items}" Style="{StaticResource SideList}" SelectionChanged="Entries_SelectionChanged">
+        <ListBox x:Name="Entries" ItemsSource="{Binding History.Items}" Style="{StaticResource SideList}" MouseLeftButtonUp="Entries_MouseLeftButtonUp">
             <ListBox.GroupStyle>
                 <GroupStyle>
                     <GroupStyle.HeaderTemplate>

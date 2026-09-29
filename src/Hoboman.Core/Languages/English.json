@@ -55,6 +55,7 @@
     "Folder.Create": "Create",
     "Folder.Failed": "The folder could not be created",
     "FolderAuth.Title": "Auth for {0}",
+    "FolderAuth.ChangedOnDisk": "The folder changed on disk while the window was open. Close the window and open it again.",
     "FolderAuth.LoadFailed": "The folder's auth could not be loaded: {0}",
     "FolderAuth.SaveFailed": "The folder's auth could not be saved: {0}",
     "History.Today": "Today",

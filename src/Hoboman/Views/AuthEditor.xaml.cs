@@ -7,24 +7,38 @@ namespace Hoboman.Views;
 
 public partial class AuthEditor : UserControl
 {
+    IAuthFields? _fields;
+
+    // Listening only while shown keeps a closed dialog from being held in memory by the view model it edited.
     public AuthEditor()
     {
         InitializeComponent();
+        Loaded += (_, _) => Follow(DataContext as IAuthFields);
+        Unloaded += (_, _) => Follow(null);
         DataContextChanged += (_, e) =>
         {
-            if (e.OldValue is IAuthFields old)
+            if (IsLoaded)
             {
-                old.PropertyChanged -= Fields_PropertyChanged;
-            }
-            if (e.NewValue is IAuthFields fields)
-            {
-                fields.PropertyChanged += Fields_PropertyChanged;
-                PasswordBox.Password = fields.Password;
+                Follow(e.NewValue as IAuthFields);
             }
         };
     }
 
     IAuthFields Fields => (IAuthFields)DataContext;
+
+    void Follow(IAuthFields? fields)
+    {
+        if (_fields is not null)
+        {
+            _fields.PropertyChanged -= Fields_PropertyChanged;
+        }
+        _fields = fields;
+        if (fields is not null)
+        {
+            fields.PropertyChanged += Fields_PropertyChanged;
+            PasswordBox.Password = fields.Password;
+        }
+    }
 
     // A password box cannot be bound, so it is kept in step with the view model by hand.
     void Fields_PropertyChanged(object? sender, PropertyChangedEventArgs e)
