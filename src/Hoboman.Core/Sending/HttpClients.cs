@@ -1,9 +1,8 @@
 using Hoboman.Core.Settings;
-using Hoboman.Core.Storage;
 
 namespace Hoboman.Core.Sending;
 
-public sealed class HttpClients(JsonFile<AppSettings> settings) : IDisposable
+public sealed class HttpClients(SettingsStore settings) : IDisposable
 {
     readonly HttpClient _client = new(new SocketsHttpHandler { UseCookies = false });
     readonly HttpClient _trustingClient = new(new SocketsHttpHandler { UseCookies = false, SslOptions = { RemoteCertificateValidationCallback = delegate { return true; } } });

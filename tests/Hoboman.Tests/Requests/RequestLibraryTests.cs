@@ -2,21 +2,15 @@ namespace Hoboman.Tests.Requests;
 
 public sealed class RequestLibraryTests : IDisposable
 {
-    readonly string _directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+    readonly TemporaryFolder _temporary = new();
 
-    string RequestsFolder => Path.Combine(_directory, "requests");
+    string RequestsFolder => Path.Combine(_temporary.Path, "requests");
 
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
-    RequestLibrary Library() => new(new AppFolder(_directory), NullLogger<RequestLibrary>.Instance);
+    RequestLibrary Library() => new(new AppFolder(_temporary.Path), NullLogger<RequestLibrary>.Instance);
 
-    public void Dispose()
-    {
-        if (Directory.Exists(_directory))
-        {
-            Directory.Delete(_directory, recursive: true);
-        }
-    }
+    public void Dispose() => _temporary.Dispose();
 
     [Fact]
     public async Task LoadAsync_WhenTheRequestWasSaved_ThenGivesItBack()
@@ -90,14 +84,28 @@ public sealed class RequestLibraryTests : IDisposable
     [InlineData("Auth: get token")]
     [InlineData("Users//Get user")]
     [InlineData("Users./Get user")]
-    public async Task SaveAsync_WhenTheNameIsInvalid_ThenThrowsWithoutWriting(string name)
+    public async Task SaveAsync_WhenTheNameIsInvalid_ThenThrows(string name)
     {
         // Act
         var saving = Library().SaveAsync(name, ApiRequest.New(), Cancellation);
 
         // Assert
         await Assert.ThrowsAsync<ArgumentException>(() => saving);
-        Assert.False(Directory.Exists(_directory));
+    }
+
+    [Theory]
+    [InlineData("/api/users")]
+    [InlineData("../settings")]
+    [InlineData("Auth: get token")]
+    [InlineData("Users//Get user")]
+    [InlineData("Users./Get user")]
+    public async Task SaveAsync_WhenTheNameIsInvalid_ThenWritesNothing(string name)
+    {
+        // Act
+        await Record.ExceptionAsync(() => Library().SaveAsync(name, ApiRequest.New(), Cancellation));
+
+        // Assert
+        Assert.False(Directory.Exists(_temporary.Path));
     }
 
     [Fact]

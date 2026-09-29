@@ -11,7 +11,7 @@ public sealed class KeyValueListViewModel : ObservableObject
 
     public ObservableCollection<KeyValueRowViewModel> Rows { get; } = [];
 
-    public int Count => Rows.Count(row => row.Enabled && !row.IsBlank);
+    public int EnabledCount => Rows.Count(row => row.Enabled && !row.IsBlank);
 
     public event Action? Changed;
 
@@ -27,7 +27,7 @@ public sealed class KeyValueListViewModel : ObservableObject
             Add(new() { Enabled = value.Enabled, Name = value.Name, Value = value.Value });
         }
         Add(new());
-        OnPropertyChanged(nameof(Count));
+        OnPropertyChanged(nameof(EnabledCount));
     }
 
     public void Remove(KeyValueRowViewModel row)
@@ -65,38 +65,7 @@ public sealed class KeyValueListViewModel : ObservableObject
 
     void OnChanged()
     {
-        OnPropertyChanged(nameof(Count));
+        OnPropertyChanged(nameof(EnabledCount));
         Changed?.Invoke();
     }
-}
-
-public sealed class KeyValueRowViewModel : ObservableObject
-{
-    public bool Enabled { get; set => Set(ref field, value); } = true;
-
-    public string Name
-    {
-        get;
-        set
-        {
-            if (Set(ref field, value))
-            {
-                OnPropertyChanged(nameof(IsBlank));
-            }
-        }
-    } = "";
-
-    public string Value
-    {
-        get;
-        set
-        {
-            if (Set(ref field, value))
-            {
-                OnPropertyChanged(nameof(IsBlank));
-            }
-        }
-    } = "";
-
-    public bool IsBlank => Name.Length == 0 && Value.Length == 0;
 }

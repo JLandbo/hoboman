@@ -2,10 +2,6 @@ using Hoboman.Core.Auth;
 
 namespace Hoboman.Core.Requests;
 
-public enum BodyKind { None, Json, Text }
-
-public sealed record KeyValue(string Name, string Value = "", bool Enabled = true);
-
 public sealed record ApiRequest
 {
     public Guid Id { get; init; }

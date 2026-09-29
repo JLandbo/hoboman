@@ -7,7 +7,17 @@ using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
 
-public sealed class MainViewModel(RequestTreeViewModel tree, HistoryViewModel history, EnvironmentsViewModel environments, RequestTabServices services, ILogger<MainViewModel> logger) : ObservableObject
+public sealed class MainViewModel(
+    RequestTreeViewModel tree,
+    HistoryViewModel history,
+    EnvironmentsViewModel environments,
+    SettingsViewModel settings,
+    EnvironmentEditorViewModel environmentEditor,
+    RequestTabServices tabServices,
+    RequestLibrary library,
+    IDialogs dialogs,
+    Translator translator,
+    ILogger<MainViewModel> logger) : ObservableObject
 {
     readonly HashSet<string> _opening = new(StringComparer.OrdinalIgnoreCase);
 
@@ -16,12 +26,6 @@ public sealed class MainViewModel(RequestTreeViewModel tree, HistoryViewModel hi
     Coalescer HistoryReload => field ??= new(() => history.RefreshAsync(CancellationToken.None));
 
     Coalescer EnvironmentsReload => field ??= new(() => environments.LoadAsync(CancellationToken.None));
-
-    RequestLibrary Library => services.Library;
-
-    IDialogs Dialogs => services.Dialogs;
-
-    Translator Translator => services.Translator;
 
     public RequestTreeViewModel Tree => tree;
 
@@ -56,7 +60,7 @@ public sealed class MainViewModel(RequestTreeViewModel tree, HistoryViewModel hi
         return HistoryChangedAsync();
     }
 
-    public void NewTab() => Add(new(services, ApiRequest.New()));
+    public void NewTab() => Add(new(tabServices, ApiRequest.New()));
 
     public async Task OpenAsync(RequestNodeViewModel node)
     {
@@ -71,19 +75,19 @@ public sealed class MainViewModel(RequestTreeViewModel tree, HistoryViewModel hi
         }
         try
         {
-            if (await Library.LoadAsync(node.Path, CancellationToken.None) is not { } request)
+            if (await library.LoadAsync(node.Path, CancellationToken.None) is not { } request)
             {
                 await tree.LoadAsync(CancellationToken.None);
                 return;
             }
-            var tab = new RequestTabViewModel(services, request, name: node.Path);
+            var tab = new RequestTabViewModel(tabServices, request, name: node.Path);
             Add(tab);
             await tab.LoadSecretsAsync(CancellationToken.None);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
             logger.LogError(exception, "Could not open {Name}", node.Path);
-            Dialogs.Tell(Translator.Of("Open.Failed"), exception.Message);
+            dialogs.Tell(translator.Of("Open.Failed"), exception.Message);
         }
         finally
         {
@@ -93,7 +97,7 @@ public sealed class MainViewModel(RequestTreeViewModel tree, HistoryViewModel hi
 
     public async Task OpenAsync(HistoryItemViewModel item)
     {
-        var tab = new RequestTabViewModel(services, item.Entry.Request, suggestedName: item.Entry.Name, fromHistory: true);
+        var tab = new RequestTabViewModel(tabServices, item.Entry.Request, suggestedName: item.Entry.Name, fromHistory: true);
         tab.Show(item.Entry);
         Add(tab);
         await tab.LoadSecretsAsync(CancellationToken.None);
@@ -101,7 +105,7 @@ public sealed class MainViewModel(RequestTreeViewModel tree, HistoryViewModel hi
 
     public void Close(RequestTabViewModel tab)
     {
-        if (tab.IsDirty && !Dialogs.Confirm(Translator.Of("Close.TabTitle"), Translator.Format("Close.TabMessage", TitleOf(tab)), Translator.Of("Close.Confirm"), []))
+        if (tab.IsDirty && !dialogs.Confirm(translator.Of("Close.TabTitle"), translator.Format("Close.TabMessage", TitleOf(tab)), translator.Of("Close.Confirm"), []))
         {
             return;
         }
@@ -121,63 +125,75 @@ public sealed class MainViewModel(RequestTreeViewModel tree, HistoryViewModel hi
     public bool CanClose()
     {
         var unsaved = Tabs.Where(tab => tab.IsDirty).Select(TitleOf).ToList();
-        return unsaved.Count == 0 || Dialogs.Confirm(Translator.Of("Close.Title"), Translator.Of("Close.Message"), Translator.Of("Close.Confirm"), unsaved);
+        return unsaved.Count == 0 || dialogs.Confirm(translator.Of("Close.Title"), translator.Of("Close.Message"), translator.Of("Close.Confirm"), unsaved);
     }
 
     public async Task NewFolderAsync()
     {
-        if (Dialogs.AskName(Translator.Of("Folder.Title"), "", Translator.Of("Folder.Create"), ProblemOfFolder) is not { } name)
+        if (dialogs.AskName(translator.Of("Folder.Title"), "", translator.Of("Folder.Create"), ProblemOfFolder) is not { } name)
         {
             return;
         }
         try
         {
-            await Library.CreateFolderAsync(name, CancellationToken.None);
+            await library.CreateFolderAsync(name, CancellationToken.None);
             await tree.LoadAsync(CancellationToken.None);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
             logger.LogError(exception, "Could not create the folder {Name}", name);
-            Dialogs.Tell(Translator.Of("Folder.Failed"), exception.Message);
+            dialogs.Tell(translator.Of("Folder.Failed"), exception.Message);
         }
     }
 
     public async Task RenameAsync(RequestNodeViewModel node)
     {
-        if (Dialogs.AskName(Translator.Of("Rename.Title"), node.Path, Translator.Of("Common.Save"), candidate => SameName(candidate, node.Path) ? null : services.ProblemOfName(candidate)) is not { } name || name == node.Path)
+        if (dialogs.AskName(translator.Of("Rename.Title"), node.Path, translator.Of("Common.Save"), candidate => SameName(candidate, node.Path) ? null : tabServices.ProblemOfName(candidate)) is not { } name || name == node.Path)
         {
             return;
         }
         try
         {
-            await Library.RenameAsync(node.Path, name, CancellationToken.None);
+            await library.RenameAsync(node.Path, name, CancellationToken.None);
             Tabs.FirstOrDefault(tab => SameName(tab.Name, node.Path))?.Rename(name);
             await tree.LoadAsync(CancellationToken.None);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
             logger.LogError(exception, "Could not rename {Name}", node.Path);
-            Dialogs.Tell(Translator.Of("Rename.Failed"), exception.Message);
+            dialogs.Tell(translator.Of("Rename.Failed"), exception.Message);
         }
     }
 
     public async Task DeleteAsync(RequestNodeViewModel node)
     {
-        if (!Dialogs.Confirm(Translator.Of("Delete.Title"), Translator.Format("Delete.Message", node.Name), Translator.Of("Delete.Confirm"), []))
+        if (!dialogs.Confirm(translator.Of("Delete.Title"), translator.Format("Delete.Message", node.Name), translator.Of("Delete.Confirm"), []))
         {
             return;
         }
         try
         {
-            await Library.DeleteAsync(node.Path, CancellationToken.None);
+            await library.DeleteAsync(node.Path, CancellationToken.None);
             Tabs.FirstOrDefault(tab => SameName(tab.Name, node.Path))?.Unlink();
             await tree.LoadAsync(CancellationToken.None);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
             logger.LogError(exception, "Could not delete {Name}", node.Path);
-            Dialogs.Tell(Translator.Of("Delete.Failed"), exception.Message);
+            dialogs.Tell(translator.Of("Delete.Failed"), exception.Message);
         }
+    }
+
+    public async Task EditSettingsAsync()
+    {
+        await settings.LoadAsync(CancellationToken.None);
+        dialogs.EditSettings(settings);
+    }
+
+    public async Task EditEnvironmentsAsync()
+    {
+        await environmentEditor.LoadAsync(CancellationToken.None);
+        dialogs.EditEnvironments(environmentEditor);
     }
 
     async Task ReloadRequestsAsync()
@@ -192,7 +208,7 @@ public sealed class MainViewModel(RequestTreeViewModel tree, HistoryViewModel hi
             catch (Exception exception) when (FileProblem.Is(exception))
             {
                 logger.LogWarning(exception, "Could not reload {Name}", tab.Name);
-                tab.ShowProblem(new(Translator.Of("Open.Failed"), exception.Message));
+                tab.ShowProblem(new(translator.Of("Open.Failed"), exception.Message));
             }
         }
     }
@@ -201,11 +217,11 @@ public sealed class MainViewModel(RequestTreeViewModel tree, HistoryViewModel hi
     async Task FollowAsync(RequestTabViewModel tab)
     {
         var name = tab.Name;
-        var request = name is null ? null : await Library.LoadAsync(name, CancellationToken.None);
+        var request = name is null ? null : await library.LoadAsync(name, CancellationToken.None);
         if (request is null && tree.NameOf(tab.Id) is { } moved)
         {
             name = moved;
-            request = await Library.LoadAsync(moved, CancellationToken.None);
+            request = await library.LoadAsync(moved, CancellationToken.None);
         }
         if (request is null)
         {
@@ -234,9 +250,9 @@ public sealed class MainViewModel(RequestTreeViewModel tree, HistoryViewModel hi
         SelectedTab = tab;
     }
 
-    string TitleOf(RequestTabViewModel tab) => tab.Title ?? Translator.Of("Tab.New");
+    string TitleOf(RequestTabViewModel tab) => tab.Title ?? translator.Of("Tab.New");
 
-    string? ProblemOfFolder(string name) => RequestLibrary.IsValidName(name) ? null : Translator.Of("Save.Invalid");
+    string? ProblemOfFolder(string name) => RequestLibrary.IsValidName(name) ? null : translator.Of("Save.Invalid");
 
     // Windows does not tell upper and lower case apart in file names.
     static bool SameName(string? name, string? other) => string.Equals(name, other, StringComparison.OrdinalIgnoreCase);

@@ -2,21 +2,15 @@ namespace Hoboman.Tests.Storage;
 
 public sealed class JsonFileTests : IDisposable
 {
-    readonly string _directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+    readonly TemporaryFolder _temporary = new();
 
-    string FilePath => Path.Combine(_directory, "settings.json");
+    string FilePath => Path.Combine(_temporary.Path, "settings.json");
 
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
     JsonFile<AppSettings> Store(string? path = null) => new(path ?? FilePath, AppSettings.Default, NullLogger.Instance);
 
-    public void Dispose()
-    {
-        if (Directory.Exists(_directory))
-        {
-            Directory.Delete(_directory, recursive: true);
-        }
-    }
+    public void Dispose() => _temporary.Dispose();
 
     [Fact]
     public async Task LoadAsync_WhenTheFileIsMissing_ThenReturnsTheEmptyValue()
@@ -32,7 +26,7 @@ public sealed class JsonFileTests : IDisposable
     public async Task LoadAsync_WhenTheFileIsInvalid_ThenThrowsWithThePath()
     {
         // Arrange
-        Directory.CreateDirectory(_directory);
+        Directory.CreateDirectory(_temporary.Path);
         File.WriteAllText(FilePath, "{");
 
         // Act
@@ -43,10 +37,10 @@ public sealed class JsonFileTests : IDisposable
     }
 
     [Fact]
-    public async Task UpdateAsync_WhenTheFileIsInvalid_ThenLeavesItUntouched()
+    public async Task UpdateAsync_WhenTheFileIsInvalid_ThenThrows()
     {
         // Arrange
-        Directory.CreateDirectory(_directory);
+        Directory.CreateDirectory(_temporary.Path);
         File.WriteAllText(FilePath, "{");
 
         // Act
@@ -54,6 +48,19 @@ public sealed class JsonFileTests : IDisposable
 
         // Assert
         await Assert.ThrowsAsync<InvalidDataException>(() => updating);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenTheFileIsInvalid_ThenLeavesItUntouched()
+    {
+        // Arrange
+        Directory.CreateDirectory(_temporary.Path);
+        File.WriteAllText(FilePath, "{");
+
+        // Act
+        await Record.ExceptionAsync(() => Store().UpdateAsync(settings => settings with { EnvironmentName = "Test" }, Cancellation));
+
+        // Assert
         Assert.Equal("{", File.ReadAllText(FilePath));
     }
 
@@ -91,7 +98,7 @@ public sealed class JsonFileTests : IDisposable
     public async Task LoadAsync_WhenTheFileHasCommentsAndATrailingComma_ThenReadsIt()
     {
         // Arrange
-        Directory.CreateDirectory(_directory);
+        Directory.CreateDirectory(_temporary.Path);
         File.WriteAllText(FilePath, """
             {
               // chosen by an agent
@@ -165,11 +172,11 @@ public sealed class JsonFileTests : IDisposable
     public async Task SaveAsync_WhenTheFolderCannotBeCreated_ThenThrows()
     {
         // Arrange
-        Directory.CreateDirectory(_directory);
-        File.WriteAllText(Path.Combine(_directory, "blocked"), "");
+        Directory.CreateDirectory(_temporary.Path);
+        File.WriteAllText(Path.Combine(_temporary.Path, "blocked"), "");
 
         // Act
-        var saving = Store(Path.Combine(_directory, "blocked", "settings.json")).SaveAsync(AppSettings.Default, Cancellation);
+        var saving = Store(Path.Combine(_temporary.Path, "blocked", "settings.json")).SaveAsync(AppSettings.Default, Cancellation);
 
         // Assert
         await Assert.ThrowsAsync<IOException>(() => saving);

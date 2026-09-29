@@ -1,4 +1,3 @@
-using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using Hoboman.ViewModels;
@@ -19,13 +18,13 @@ public partial class HistoryView : UserControl
         };
     }
 
-    async void List_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    async void Entries_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (List.SelectedItem is not HistoryItemViewModel item)
+        if (Entries.SelectedItem is not HistoryItemViewModel item)
         {
             return;
         }
-        List.SelectedItem = null;
+        Entries.SelectedItem = null;
         await ((MainViewModel)DataContext).OpenAsync(item);
     }
 }

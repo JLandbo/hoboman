@@ -86,7 +86,7 @@ public sealed class EnvironmentEditorViewModel(EnvironmentStore store, Environme
             logger.LogInformation("Saved {Count} environments", names.Count);
             foreach (var draft in Environments.Where(draft => draft.OriginalName is not null && draft.OriginalName != draft.Name.Trim()))
             {
-                environments.Renamed(draft.OriginalName!, draft.Name.Trim());
+                await environments.RenamedAsync(draft.OriginalName!, draft.Name.Trim());
             }
             await environments.LoadAsync(CancellationToken.None);
             return true;

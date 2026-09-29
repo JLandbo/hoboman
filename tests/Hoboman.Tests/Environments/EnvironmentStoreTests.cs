@@ -2,19 +2,13 @@ namespace Hoboman.Tests.Environments;
 
 public sealed class EnvironmentStoreTests : IDisposable
 {
-    readonly string _directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+    readonly TemporaryFolder _temporary = new();
 
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
-    EnvironmentStore Store() => new(new AppFolder(_directory), NullLogger<EnvironmentStore>.Instance);
+    EnvironmentStore Store() => new(new AppFolder(_temporary.Path), NullLogger<EnvironmentStore>.Instance);
 
-    public void Dispose()
-    {
-        if (Directory.Exists(_directory))
-        {
-            Directory.Delete(_directory, recursive: true);
-        }
-    }
+    public void Dispose() => _temporary.Dispose();
 
     [Fact]
     public async Task FindAsync_WhenTheNameIsSaved_ThenGivesTheEnvironment()

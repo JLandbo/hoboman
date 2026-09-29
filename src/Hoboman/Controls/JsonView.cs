@@ -28,19 +28,13 @@ public sealed partial class JsonView : RichTextBox
         }
         else
         {
-            var start = 0;
-            foreach (Match match in Token().Matches(text))
-            {
-                paragraph.Inlines.Add(new Run(text[start..match.Index]));
-                var token = new Run(match.Value);
-                token.SetResourceReference(TextElement.ForegroundProperty, match.Groups["key"].Success ? "JsonKey" : match.Groups["string"].Success ? "JsonString" : match.Groups["literal"].Success ? "JsonLiteral" : "JsonNumber");
-                paragraph.Inlines.Add(token);
-                start = match.Index + match.Length;
-            }
-            paragraph.Inlines.Add(new Run(text[start..]));
+            paragraph.Inlines.AddRange(Runs.Of(text, Token().Matches(text), BrushOf));
         }
         Document = new FlowDocument(paragraph) { PagePadding = new Thickness(0), FontFamily = FontFamily, FontSize = FontSize };
     }
+
+    static string BrushOf(Match token) =>
+        token.Groups["key"].Success ? "JsonKey" : token.Groups["string"].Success ? "JsonString" : token.Groups["literal"].Success ? "JsonLiteral" : "JsonNumber";
 
     [GeneratedRegex("""(?<key>"(?:\\.|[^"\\])*")(?=\s*:)|(?<string>"(?:\\.|[^"\\])*")|(?<literal>\b(?:true|false|null)\b)|(?<number>-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)""")]
     private static partial Regex Token();

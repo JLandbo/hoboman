@@ -38,6 +38,8 @@ public partial class RequestEditorView : UserControl
 
     void PasswordBox_PasswordChanged(object sender, RoutedEventArgs e) => Tab.Password = PasswordBox.Password;
 
+    void Cancel_Click(object sender, RoutedEventArgs e) => Tab.Cancel();
+
     void Method_Click(object sender, RoutedEventArgs e) => Choose((string)((FrameworkElement)sender).DataContext);
 
     void CustomMethod_KeyDown(object sender, KeyEventArgs e)

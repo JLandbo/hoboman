@@ -16,11 +16,6 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
-        <Style x:Key="Label" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{DynamicResource Muted}" />
-            <Setter Property="FontSize" Value="12" />
-            <Setter Property="Margin" Value="0,0,0,4" />
-        </Style>
     </UserControl.Resources>
     <Border Style="{StaticResource Panel}">
         <DockPanel>
@@ -58,7 +53,7 @@
                             </Style>
                         </Button.Style>
                     </Button>
-                    <Button Content="{DynamicResource Common.Cancel}" Command="{Binding Cancel}" Style="{StaticResource PillButton}" Padding="18,6"
+                    <Button Content="{DynamicResource Common.Cancel}" Click="Cancel_Click" Style="{StaticResource PillButton}" Padding="18,6"
                             Visibility="{Binding IsSending, Converter={StaticResource VisibleWhenTrue}}" />
                 </Grid>
                 <ToggleButton x:Name="MethodToggle" DockPanel.Dock="Left" Style="{StaticResource PillToggle}" Margin="0,0,8,0" MinWidth="96"
@@ -96,13 +91,13 @@
                 <RadioButton x:Name="ParamsSection" GroupName="RequestSection" IsChecked="True" Style="{StaticResource Segment}">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="{DynamicResource Editor.Params}" />
-                        <TextBlock Text="{Binding Query.Count}" Style="{StaticResource Count}" />
+                        <TextBlock Text="{Binding Query.EnabledCount}" Style="{StaticResource Count}" />
                     </StackPanel>
                 </RadioButton>
                 <RadioButton x:Name="HeadersSection" GroupName="RequestSection" Style="{StaticResource Segment}">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="{DynamicResource Editor.Headers}" />
-                        <TextBlock Text="{Binding Headers.Count}" Style="{StaticResource Count}" />
+                        <TextBlock Text="{Binding Headers.EnabledCount}" Style="{StaticResource Count}" />
                     </StackPanel>
                 </RadioButton>
                 <RadioButton x:Name="BodySection" Content="{DynamicResource Editor.Body}" GroupName="RequestSection" Style="{StaticResource Segment}" />
@@ -166,8 +161,7 @@
                             </Border>
                             <TextBlock Text="{DynamicResource Auth.Password}" Style="{StaticResource Label}" />
                             <Border CornerRadius="8" Background="{DynamicResource Input}">
-                                <PasswordBox x:Name="PasswordBox" Style="{StaticResource Field}" Background="Transparent" Padding="8,6" CaretBrush="{DynamicResource Text}"
-                                             PasswordChanged="PasswordBox_PasswordChanged" />
+                                <PasswordBox x:Name="PasswordBox" Style="{StaticResource PasswordCell}" PasswordChanged="PasswordBox_PasswordChanged" />
                             </Border>
                         </StackPanel>
                         <StackPanel>

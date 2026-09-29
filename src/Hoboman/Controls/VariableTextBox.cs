@@ -1,12 +1,11 @@
-using System.Text.RegularExpressions;
 using System.Windows.Controls;
-using System.Windows.Documents;
 using System.Windows.Media;
+using Hoboman.Core.Environments;
 
 namespace Hoboman.Controls;
 
 // WPF text boxes cannot color parts of their text, so the text is drawn by a text block behind a transparent text box.
-public sealed partial class VariableTextBox : TextBox
+public sealed class VariableTextBox : TextBox
 {
     TextBlock? _highlight;
 
@@ -34,18 +33,6 @@ public sealed partial class VariableTextBox : TextBox
             return;
         }
         _highlight.Inlines.Clear();
-        var start = 0;
-        foreach (Match match in Variable().Matches(Text))
-        {
-            _highlight.Inlines.Add(new Run(Text[start..match.Index]));
-            var variable = new Run(match.Value);
-            variable.SetResourceReference(TextElement.ForegroundProperty, "Attention");
-            _highlight.Inlines.Add(variable);
-            start = match.Index + match.Length;
-        }
-        _highlight.Inlines.Add(new Run(Text[start..]));
+        _highlight.Inlines.AddRange(Runs.Of(Text, ApiEnvironment.VariablesIn(Text), _ => "Attention"));
     }
-
-    [GeneratedRegex(@"\{\{[^{}]+\}\}")]
-    private static partial Regex Variable();
 }

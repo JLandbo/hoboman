@@ -87,7 +87,7 @@ public partial class App : Application
             dispose: true));
         services.AddSingleton(folder);
         services.AddSingleton<AppFolderWatcher>();
-        services.AddSingleton(provider => new JsonFile<AppSettings>(folder.Settings, AppSettings.Default, provider.GetRequiredService<ILogger<AppSettings>>()));
+        services.AddSingleton<SettingsStore>();
         services.AddSingleton(_ => new Translator(Translation.Danish));
         services.AddSingleton<EnvironmentStore>();
         services.AddSingleton<RequestLibrary>();
@@ -100,8 +100,7 @@ public partial class App : Application
         services.AddSingleton<IDialogs, Dialogs>();
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<EnvironmentsViewModel>();
-        services.AddTransient<EnvironmentEditorViewModel>();
-        services.AddSingleton<Func<EnvironmentEditorViewModel>>(provider => provider.GetRequiredService<EnvironmentEditorViewModel>);
+        services.AddSingleton<EnvironmentEditorViewModel>();
         services.AddSingleton<RequestTreeViewModel>();
         services.AddSingleton<HistoryViewModel>();
         services.AddSingleton<RequestTabServices>();

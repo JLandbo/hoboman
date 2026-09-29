@@ -1,6 +1,8 @@
 using System.Net;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -8,10 +10,11 @@ using Microsoft.Extensions.Logging;
 
 namespace Hoboman.Tests.Sending;
 
-public sealed record Echo(string Method, string Target, Dictionary<string, string> Headers, string Body);
-
 public sealed class EchoServer : IAsyncLifetime
 {
+    // Letters beyond ASCII are sent back as they are, so the body can be longer in bytes than in characters.
+    static readonly JsonSerializerOptions _json = new(JsonSerializerOptions.Web) { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
     readonly X509Certificate2 _certificate = SelfSignedCertificate();
     WebApplication? _app;
 
@@ -54,7 +57,7 @@ public sealed class EchoServer : IAsyncLifetime
         using var reader = new StreamReader(context.Request.Body);
         context.Response.Cookies.Append("session", "1");
         var headers = context.Request.Headers.ToDictionary(header => header.Key, header => header.Value.ToString(), StringComparer.OrdinalIgnoreCase);
-        await context.Response.WriteAsJsonAsync(new Echo(context.Request.Method, context.Request.Path + context.Request.QueryString, headers, await reader.ReadToEndAsync()));
+        await context.Response.WriteAsJsonAsync(new Echo(context.Request.Method, context.Request.Path + context.Request.QueryString, headers, await reader.ReadToEndAsync()), _json);
     }
 
     static X509Certificate2 SelfSignedCertificate()

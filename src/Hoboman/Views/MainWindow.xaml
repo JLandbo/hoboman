@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:Hoboman.Views"
         xmlns:viewModels="clr-namespace:Hoboman.ViewModels"
+        xmlns:environments="clr-namespace:Hoboman.Core.Environments;assembly=Hoboman.Core"
         Title="Hoboman" Width="1400" Height="860" MinWidth="900" MinHeight="560"
         Background="{DynamicResource Input}" Foreground="{DynamicResource Text}"
         FontFamily="{StaticResource UiFont}" FontSize="13" Closing="Window_Closing">
@@ -11,6 +12,16 @@
         <KeyBinding Key="Enter" Modifiers="Control" Command="{Binding SelectedTab.Send}" />
     </Window.InputBindings>
     <Window.Resources>
+        <Style x:Key="MenuCheck" TargetType="TextBlock">
+            <Setter Property="DockPanel.Dock" Value="Left" />
+            <Setter Property="Width" Value="18" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Text" Value="&#xE73E;" />
+            <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="Foreground" Value="{DynamicResource Attention}" />
+            <Setter Property="Visibility" Value="Hidden" />
+        </Style>
         <DataTemplate DataType="{x:Type viewModels:RequestTabViewModel}">
             <Grid>
                 <Grid.RowDefinitions>
@@ -68,7 +79,8 @@
                 <RowDefinition />
             </Grid.RowDefinitions>
             <DockPanel Margin="0,0,0,6">
-                <Button DockPanel.Dock="Right" Click="Environment_Click" Style="{StaticResource PillButton}" Background="{DynamicResource Surface}" Padding="12,5" VerticalAlignment="Center">
+                <ToggleButton x:Name="EnvironmentToggle" DockPanel.Dock="Right" Style="{StaticResource PillToggle}" Background="{DynamicResource Surface}" VerticalAlignment="Center"
+                              IsHitTestVisible="{Binding IsOpen, ElementName=EnvironmentPopup, Converter={StaticResource Not}}">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="{DynamicResource Environment.Label}" Foreground="{DynamicResource Muted}" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0" />
                         <TextBlock FontWeight="SemiBold">
@@ -85,7 +97,57 @@
                         </TextBlock>
                         <TextBlock Text="&#xE70D;" FontFamily="{StaticResource IconFont}" FontSize="9" Foreground="{DynamicResource Muted}" Margin="8,0,0,0" VerticalAlignment="Center" />
                     </StackPanel>
-                </Button>
+                </ToggleButton>
+                <Popup x:Name="EnvironmentPopup" DockPanel.Dock="Right" IsOpen="{Binding IsChecked, ElementName=EnvironmentToggle}" PlacementTarget="{Binding ElementName=EnvironmentToggle}"
+                       StaysOpen="False" AllowsTransparency="True">
+                    <Border Style="{StaticResource Menu}" MinWidth="220" TextElement.FontSize="12">
+                        <StackPanel>
+                            <Button Style="{StaticResource MenuButton}" Click="NoEnvironment_Click">
+                                <DockPanel>
+                                    <TextBlock>
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource MenuCheck}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Environments.Selected}" Value="{x:Null}">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Text="{DynamicResource Environment.None}" />
+                                </DockPanel>
+                            </Button>
+                            <ItemsControl ItemsSource="{Binding Environments.Items}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type environments:ApiEnvironment}">
+                                        <Button Style="{StaticResource MenuButton}" Click="Environment_Click" HorizontalAlignment="Stretch">
+                                            <DockPanel>
+                                                <TextBlock x:Name="Check" Style="{StaticResource MenuCheck}" />
+                                                <TextBlock Text="{Binding Name}" />
+                                            </DockPanel>
+                                        </Button>
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Value="True">
+                                                <DataTrigger.Binding>
+                                                    <MultiBinding Converter="{StaticResource IsEqual}">
+                                                        <Binding />
+                                                        <Binding Path="DataContext.Environments.Selected" RelativeSource="{RelativeSource AncestorType=ItemsControl}" />
+                                                    </MultiBinding>
+                                                </DataTrigger.Binding>
+                                                <Setter TargetName="Check" Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Border BorderBrush="{DynamicResource BoxEdge}" BorderThickness="0,1,0,0" Margin="0,6,0,6" />
+                            <Button Style="{StaticResource MenuButton}" Click="EditEnvironments_Click">
+                                <TextBlock Text="{DynamicResource Environment.Edit}" Margin="18,0,0,0" />
+                            </Button>
+                        </StackPanel>
+                    </Border>
+                </Popup>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
                     <ListBox ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab}" Style="{StaticResource Tabs}">
                         <ListBox.ItemTemplate>

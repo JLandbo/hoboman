@@ -3,7 +3,20 @@ namespace Hoboman.Tests.Languages;
 public sealed class TranslatorTests
 {
     [Fact]
-    public void Use_WhenGivenATranslation_ThenTranslatesWithItAndTellsListeners()
+    public void Use_WhenGivenATranslation_ThenTranslatesWithIt()
+    {
+        // Arrange
+        var translator = new Translator(Translation.Danish);
+
+        // Act
+        translator.Use(Translation.English);
+
+        // Assert
+        Assert.Equal("Response", translator.Of("Response.Title"));
+    }
+
+    [Fact]
+    public void Use_WhenGivenATranslation_ThenTellsListeners()
     {
         // Arrange
         var translator = new Translator(Translation.Danish);
@@ -14,7 +27,6 @@ public sealed class TranslatorTests
         translator.Use(Translation.English);
 
         // Assert
-        Assert.Equal("Response", translator.Of("Response.Title"));
         Assert.True(changed);
     }
 }

@@ -20,7 +20,46 @@ public sealed class MainViewModelTests
         await main.OpenAsync(node);
 
         // Assert
-        Assert.Equal((3, "Ping"), (main.Tabs.Count, main.SelectedTab?.Name));
+        Assert.Equal("Ping", main.SelectedTab?.Name);
+    }
+
+    [Fact]
+    public async Task OpenAsync_WhenTheRequestIsAlreadyOpen_ThenOpensNoNewTab()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("Ping", ApiRequest.New() with { Url = "https://dev.local" }, Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        var node = main.Tree.Nodes.Single();
+        await main.OpenAsync(node);
+        main.NewTab();
+
+        // Act
+        await main.OpenAsync(node);
+
+        // Assert
+        Assert.Equal(3, main.Tabs.Count);
+    }
+
+    [Fact]
+    public async Task OpenAsync_WhenOpenedTwiceAtOnce_ThenOpensOneTab()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        var node = main.Tree.Nodes.Single();
+
+        // Act
+        var first = main.OpenAsync(node);
+        var second = main.OpenAsync(node);
+        await first;
+        await second;
+
+        // Assert
+        Assert.Single(main.Tabs, tab => tab.Name == "Ping");
     }
 
     [Fact]
@@ -64,23 +103,57 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public async Task OpenAsync_WhenOpenedTwiceAtOnce_ThenOpensOneTab()
+    public async Task RequestsChangedAsync_WhenAnOpenRequestIsMovedOnDisk_ThenTheTabFollows()
     {
         // Arrange
         using var harness = new Harness();
         await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
-        var node = main.Tree.Nodes.Single();
+        await main.OpenAsync(main.Tree.Nodes.Single());
+        await harness.Library.RenameAsync("Ping", "Moved/Ping", Cancellation);
 
         // Act
-        var first = main.OpenAsync(node);
-        var second = main.OpenAsync(node);
-        await first;
-        await second;
+        await main.RequestsChangedAsync();
 
         // Assert
-        Assert.Single(main.Tabs, tab => tab.Name == "Ping");
+        Assert.Equal("Moved/Ping", main.SelectedTab?.Name);
+    }
+
+    [Fact]
+    public async Task RequestsChangedAsync_WhenAnOpenRequestIsDeletedOnDisk_ThenTheTabIsNoLongerLinked()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.OpenAsync(main.Tree.Nodes.Single());
+        await harness.Library.DeleteAsync("Ping", Cancellation);
+
+        // Act
+        await main.RequestsChangedAsync();
+
+        // Assert
+        Assert.Null(main.SelectedTab?.Name);
+    }
+
+    [Fact]
+    public async Task RequestsChangedAsync_WhenAnOpenRequestIsDeletedOnDisk_ThenTheTabKeepsItsTitle()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.OpenAsync(main.Tree.Nodes.Single());
+        await harness.Library.DeleteAsync("Ping", Cancellation);
+
+        // Act
+        await main.RequestsChangedAsync();
+
+        // Assert
+        Assert.Equal("Ping", main.SelectedTab?.Title);
     }
 
     [Fact]
@@ -103,6 +176,86 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public async Task Close_WhenTheLastTabIsClosed_ThenOpensANewOne()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var main = harness.Main();
+        await main.LoadAsync();
+        var first = main.SelectedTab!;
+
+        // Act
+        main.Close(first);
+
+        // Assert
+        Assert.NotSame(first, Assert.Single(main.Tabs));
+    }
+
+    [Fact]
+    public async Task Close_WhenTheTabIsUnsavedAndTheUserSaysNo_ThenKeepsIt()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(accept: false));
+        var main = harness.Main();
+        await main.LoadAsync();
+        var tab = main.SelectedTab!;
+        tab.Url = "https://dev.local";
+
+        // Act
+        main.Close(tab);
+
+        // Assert
+        Assert.Same(tab, Assert.Single(main.Tabs));
+    }
+
+    [Fact]
+    public async Task CanClose_WhenATabIsUnsaved_ThenAsksFirst()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(accept: false));
+        var main = harness.Main();
+        await main.LoadAsync();
+        main.SelectedTab!.Url = "https://dev.local";
+
+        // Act
+        main.CanClose();
+
+        // Assert
+        Assert.Equal(1, harness.Dialogs.Asked);
+    }
+
+    [Fact]
+    public async Task CanClose_WhenATabIsUnsavedAndTheUserSaysNo_ThenIsFalse()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(accept: false));
+        var main = harness.Main();
+        await main.LoadAsync();
+        main.SelectedTab!.Url = "https://dev.local";
+
+        // Act
+        var canClose = main.CanClose();
+
+        // Assert
+        Assert.False(canClose);
+    }
+
+    [Fact]
+    public async Task NewFolderAsync_WhenANameIsGiven_ThenShowsTheFolder()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(answer: "Users"));
+        var main = harness.Main();
+        await main.LoadAsync();
+
+        // Act
+        await main.NewFolderAsync();
+
+        // Assert
+        Assert.Equal("Users", Assert.Single(main.Tree.Nodes).Path);
+    }
+
+    [Fact]
     public async Task RenameAsync_WhenOnlyTheCaseChanges_ThenRenamesTheFile()
     {
         // Arrange
@@ -119,72 +272,97 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public async Task RequestsChangedAsync_WhenAnOpenRequestIsMovedOnDisk_ThenTheTabFollows()
+    public async Task RenameAsync_WhenTheRequestIsOpen_ThenTheTabFollows()
     {
         // Arrange
-        using var harness = new Harness();
+        using var harness = new Harness(new FakeDialogs(answer: "Health/Ping"));
         await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.OpenAsync(main.Tree.Nodes.Single());
-        await harness.Library.RenameAsync("Ping", "Moved/Ping", Cancellation);
 
         // Act
-        await main.RequestsChangedAsync();
+        await main.RenameAsync(main.Tree.Nodes.Single());
 
         // Assert
-        Assert.Equal("Moved/Ping", main.SelectedTab?.Name);
+        Assert.Equal("Health/Ping", main.SelectedTab?.Name);
     }
 
     [Fact]
-    public async Task RequestsChangedAsync_WhenAnOpenRequestIsDeletedOnDisk_ThenTheTabKeepsItsTitle()
+    public async Task DeleteAsync_WhenConfirmed_ThenDeletesTheRequest()
     {
         // Arrange
-        using var harness = new Harness();
+        using var harness = new Harness(new FakeDialogs(accept: true));
         await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
-        await main.OpenAsync(main.Tree.Nodes.Single());
-        await harness.Library.DeleteAsync("Ping", Cancellation);
 
         // Act
-        await main.RequestsChangedAsync();
+        await main.DeleteAsync(main.Tree.Nodes.Single());
 
         // Assert
-        Assert.Null(main.SelectedTab?.Name);
-        Assert.Equal("Ping", main.SelectedTab?.Title);
+        Assert.Empty(await harness.Library.NamesAsync(Cancellation));
     }
 
     [Fact]
-    public async Task CanClose_WhenATabIsUnsaved_ThenAsksFirst()
+    public async Task DeleteAsync_WhenNotConfirmed_ThenKeepsTheRequest()
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(accept: false));
+        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
-        main.SelectedTab!.Url = "https://dev.local";
 
         // Act
-        var canClose = main.CanClose();
+        await main.DeleteAsync(main.Tree.Nodes.Single());
 
         // Assert
-        Assert.False(canClose);
-        Assert.Equal(1, harness.Dialogs.Asked);
+        Assert.Equal(["Ping"], await harness.Library.NamesAsync(Cancellation));
     }
 
     [Fact]
-    public async Task Close_WhenTheLastTabIsClosed_ThenOpensANewOne()
+    public async Task DeleteAsync_WhenTheRequestIsOpen_ThenTheTabBecomesUnsaved()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(accept: true));
+        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.OpenAsync(main.Tree.Nodes.Single());
+
+        // Act
+        await main.DeleteAsync(main.Tree.Nodes.Single());
+
+        // Assert
+        Assert.True(main.SelectedTab!.IsDirty);
+    }
+
+    [Fact]
+    public async Task EditSettingsAsync_WhenCalled_ThenShowsTheSettings()
     {
         // Arrange
         using var harness = new Harness();
         var main = harness.Main();
-        await main.LoadAsync();
-        var first = main.SelectedTab!;
 
         // Act
-        main.Close(first);
+        await main.EditSettingsAsync();
 
         // Assert
-        Assert.NotSame(first, Assert.Single(main.Tabs));
+        Assert.IsType<SettingsViewModel>(harness.Dialogs.Shown);
+    }
+
+    [Fact]
+    public async Task EditEnvironmentsAsync_WhenCalled_ThenShowsTheSavedEnvironments()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.EnvironmentStore.SaveAsync([new("Dev", [])], Cancellation);
+        var main = harness.Main();
+
+        // Act
+        await main.EditEnvironmentsAsync();
+
+        // Assert
+        Assert.Equal("Dev", Assert.Single(Assert.IsType<EnvironmentEditorViewModel>(harness.Dialogs.Shown).Environments).Name);
     }
 }

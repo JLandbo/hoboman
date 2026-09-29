@@ -3,7 +3,6 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Hoboman.Core.Auth;
 using Hoboman.Core.History;
-using Hoboman.Core.Languages;
 using Hoboman.Core.Requests;
 using Hoboman.Core.Sending;
 using Hoboman.Core.Storage;
@@ -11,16 +10,6 @@ using Hoboman.Mvvm;
 using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
-
-public sealed record RequestTabServices(RequestRunner Runner, SecretStore Secrets, RequestLibrary Library, EnvironmentsViewModel Environments, IDialogs Dialogs, Translator Translator, ILogger<RequestTabViewModel> Logger)
-{
-    public string? ProblemOfName(string name) =>
-        !RequestLibrary.IsValidName(name) ? Translator.Of("Save.Invalid")
-        : Library.Exists(name) ? Translator.Of("Save.Exists")
-        : null;
-}
-
-public sealed record ProblemMessage(string Title, string Details);
 
 public sealed class RequestTabViewModel : ObservableObject
 {
@@ -43,9 +32,8 @@ public sealed class RequestTabViewModel : ObservableObject
         _ownsId = !fromHistory;
         Query.Changed += MarkDirty;
         Headers.Changed += MarkDirty;
-        Send = new AsyncCommand(SendAsync, () => !IsSending);
-        Save = new AsyncCommand(async () => await SaveAsync());
-        Cancel = new Command(_ => _sending?.Cancel());
+        Send = new AsyncCommand(SendAsync);
+        Save = new AsyncCommand(SaveAsync);
         Load(request);
     }
 
@@ -130,17 +118,7 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public bool IsDirty { get; private set => Set(ref field, value); }
 
-    public bool IsSending
-    {
-        get;
-        private set
-        {
-            if (Set(ref field, value))
-            {
-                Send.RaiseCanExecuteChanged();
-            }
-        }
-    }
+    public bool IsSending { get; private set => Set(ref field, value); }
 
     public ResponseDisplay? Response { get; private set => Set(ref field, value); }
 
@@ -149,8 +127,6 @@ public sealed class RequestTabViewModel : ObservableObject
     public AsyncCommand Send { get; }
 
     public AsyncCommand Save { get; }
-
-    public Command Cancel { get; }
 
     // Changes on disk win over unsaved changes, but the tab's own saves must not reload it.
     public bool ReloadIfChanged(ApiRequest request)
@@ -226,6 +202,8 @@ public sealed class RequestTabViewModel : ObservableObject
             return false;
         }
     }
+
+    public void Cancel() => _sending?.Cancel();
 
     public void Rename(string name) => Name = name;
 

@@ -1,18 +1,17 @@
 using System.Windows;
-using System.Windows.Input;
 
 namespace Hoboman.Views;
 
-public partial class ConfirmDialog : Window
+public partial class ConfirmDialog : DialogWindow
 {
-    public ConfirmDialog(string title, string message, string confirm, IReadOnlyList<string> items, bool isQuestion)
+    public ConfirmDialog(string title, string message, string confirm, IReadOnlyList<string> items, bool canCancel)
     {
         InitializeComponent();
-        TitleText.Text = title;
+        Title = title;
         MessageText.Text = message;
         ItemList.ItemsSource = items;
         ConfirmButton.Content = confirm;
-        if (isQuestion)
+        if (canCancel)
         {
             ConfirmButton.SetResourceReference(BackgroundProperty, "Error");
         }
@@ -23,8 +22,4 @@ public partial class ConfirmDialog : Window
     }
 
     void Confirm_Click(object sender, RoutedEventArgs e) => DialogResult = true;
-
-    void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
-
-    void Border_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) => DragMove();
 }

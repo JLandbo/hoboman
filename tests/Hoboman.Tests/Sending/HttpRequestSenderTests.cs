@@ -7,44 +7,38 @@ namespace Hoboman.Tests.Sending;
 
 public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<EchoServer>, IDisposable
 {
-    readonly string _directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+    readonly TemporaryFolder _temporary = new();
     HttpClients? _clients;
 
-    AppFolder Folder => new(_directory);
+    AppFolder Folder => new(_temporary.Path);
 
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
     public void Dispose()
     {
         _clients?.Dispose();
-        if (Directory.Exists(_directory))
-        {
-            Directory.Delete(_directory, recursive: true);
-        }
+        _temporary.Dispose();
     }
 
     SecretStore Secrets() => new(Folder, NullLogger<SecretStore>.Instance);
 
-    JsonFile<AppSettings> Settings() => new(Folder.Settings, AppSettings.Default, NullLogger.Instance);
+    SettingsStore Settings() => new(Folder, NullLogger<SettingsStore>.Instance);
 
     async Task<HttpRequestSender> SenderAsync(bool ignoreCertificateErrors = false, ILogger<HttpRequestSender>? logger = null)
     {
-        await Settings().SaveAsync(new AppSettings(IgnoreCertificateErrors: ignoreCertificateErrors), Cancellation);
+        await Settings().UpdateAsync(_ => new(IgnoreCertificateErrors: ignoreCertificateErrors), Cancellation);
         return new(Secrets(), _clients ??= new(Settings()), logger ?? NullLogger<HttpRequestSender>.Instance);
     }
 
     ApiRequest Request() => ApiRequest.New() with { Url = server.Http.ToString() };
 
-    async Task<Echo> EchoOf(ApiRequest request, ApiEnvironment? environment = null)
+    async Task<Echo> SendAndEchoAsync(ApiRequest request, ApiEnvironment? environment = null)
     {
         var sender = await SenderAsync();
-        return EchoIn(await sender.SendAsync(request, environment, Cancellation));
+        return EchoOf(await sender.SendAsync(request, environment, Cancellation));
     }
 
-    static Echo EchoIn(ApiResponse response)
-    {
-        return JsonSerializer.Deserialize<Echo>(response.Body, JsonSerializerOptions.Web)!;
-    }
+    static Echo EchoOf(ApiResponse response) => JsonSerializer.Deserialize<Echo>(response.Body, JsonSerializerOptions.Web)!;
 
     [Fact]
     public async Task SendAsync_WhenTheUrlHasVariablesAndQuery_ThenSendsTheResolvedAddress()
@@ -54,7 +48,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
         var request = Request() with { Url = "{{base}}items?x=1", Query = [new("a", "b c"), new("off", "1", Enabled: false)] };
 
         // Act
-        var echo = await EchoOf(request, environment);
+        var echo = await SendAndEchoAsync(request, environment);
 
         // Assert
         Assert.Equal("/items?x=1&a=b%20c", echo.Target);
@@ -67,39 +61,72 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
         var request = Request() with { Url = $"{server.Http}items#top", Query = [new("page", "2")] };
 
         // Act
-        var echo = await EchoOf(request);
+        var echo = await SendAndEchoAsync(request);
 
         // Assert
         Assert.Equal("/items?page=2", echo.Target);
     }
 
     [Fact]
-    public async Task SendAsync_WhenTheBodyIsJson_ThenSendsItAsJson()
+    public async Task SendAsync_WhenTheMethodIsGiven_ThenUsesIt()
+    {
+        // Act
+        var echo = await SendAndEchoAsync(Request() with { Method = "PUT" });
+
+        // Assert
+        Assert.Equal("PUT", echo.Method);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheBodyIsJson_ThenSendsIt()
     {
         // Arrange
         var request = Request() with { Method = "POST", BodyKind = BodyKind.Json, Body = """{"name":"Hobo"}""" };
 
         // Act
-        var echo = await EchoOf(request);
+        var echo = await SendAndEchoAsync(request);
 
         // Assert
-        Assert.Equal("POST", echo.Method);
         Assert.Equal("""{"name":"Hobo"}""", echo.Body);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheBodyIsJson_ThenSaysItIsJson()
+    {
+        // Arrange
+        var request = Request() with { Method = "POST", BodyKind = BodyKind.Json, Body = """{"name":"Hobo"}""" };
+
+        // Act
+        var echo = await SendAndEchoAsync(request);
+
+        // Assert
         Assert.Equal("application/json; charset=utf-8", echo.Headers["Content-Type"]);
     }
 
     [Fact]
-    public async Task SendAsync_WhenHeadersAreGiven_ThenSendsTheEnabledOnesResolved()
+    public async Task SendAsync_WhenAHeaderHasAVariable_ThenSendsItResolved()
     {
         // Arrange
         var environment = new ApiEnvironment("Test", [new("value", "resolved")]);
-        var request = Request() with { Headers = [new("X-On", "{{value}}"), new("X-Off", "1", Enabled: false)] };
+        var request = Request() with { Headers = [new("X-On", "{{value}}")] };
 
         // Act
-        var echo = await EchoOf(request, environment);
+        var echo = await SendAndEchoAsync(request, environment);
 
         // Assert
         Assert.Equal("resolved", echo.Headers["X-On"]);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenAHeaderIsDisabled_ThenLeavesItOut()
+    {
+        // Arrange
+        var request = Request() with { Headers = [new("X-Off", "1", Enabled: false)] };
+
+        // Act
+        var echo = await SendAndEchoAsync(request);
+
+        // Assert
         Assert.DoesNotContain("X-Off", echo.Headers.Keys);
     }
 
@@ -110,7 +137,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
         var request = Request() with { Method = "POST", BodyKind = BodyKind.Text, Body = "<a />", Headers = [new("Content-Type", "application/xml")] };
 
         // Act
-        var echo = await EchoOf(request);
+        var echo = await SendAndEchoAsync(request);
 
         // Assert
         Assert.Equal("application/xml", echo.Headers["Content-Type"]);
@@ -123,7 +150,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
         var request = Request() with { Method = "POST", BodyKind = BodyKind.Text, Body = "hej", Headers = [new("", "")] };
 
         // Act
-        var echo = await EchoOf(request);
+        var echo = await SendAndEchoAsync(request);
 
         // Assert
         Assert.Equal("hej", echo.Body);
@@ -163,7 +190,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
         await Secrets().SaveAsync(request.Id, SecretKind.Password, "hemmelig", Cancellation);
 
         // Act
-        var echo = await EchoOf(request);
+        var echo = await SendAndEchoAsync(request);
 
         // Assert
         Assert.Equal($"Basic {Convert.ToBase64String(Encoding.UTF8.GetBytes("hobo:hemmelig"))}", echo.Headers["Authorization"]);
@@ -177,7 +204,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
         await Secrets().SaveAsync(request.Id, SecretKind.Token, "token", Cancellation);
 
         // Act
-        var echo = await EchoOf(request);
+        var echo = await SendAndEchoAsync(request);
 
         // Assert
         Assert.Equal("Bearer token", echo.Headers["Authorization"]);
@@ -197,7 +224,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
     }
 
     [Fact]
-    public async Task SendAsync_WhenTheServerAnswers_ThenGivesStatusSizeHeadersAndBody()
+    public async Task SendAsync_WhenTheServerAnswers_ThenGivesTheStatus()
     {
         // Arrange
         var sender = await SenderAsync();
@@ -207,8 +234,32 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
 
         // Assert
         Assert.Equal(200, response.StatusCode);
-        Assert.Equal(Encoding.UTF8.GetByteCount(response.Body), response.Size);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheServerAnswers_ThenGivesTheHeaders()
+    {
+        // Arrange
+        var sender = await SenderAsync();
+
+        // Act
+        var response = await sender.SendAsync(Request(), null, Cancellation);
+
+        // Assert
         Assert.Contains(new ResponseHeader("Content-Type", "application/json; charset=utf-8"), response.Headers);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheAnswerHasLettersBeyondAscii_ThenGivesTheSizeInBytes()
+    {
+        // Arrange
+        var sender = await SenderAsync();
+
+        // Act
+        var response = await sender.SendAsync(Request() with { Method = "POST", BodyKind = BodyKind.Text, Body = "Ærø" }, null, Cancellation);
+
+        // Assert
+        Assert.Equal(Encoding.UTF8.GetByteCount(response.Body), response.Size);
     }
 
     [Fact]
@@ -219,7 +270,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
         await sender.SendAsync(Request(), null, Cancellation);
 
         // Act
-        var echo = EchoIn(await sender.SendAsync(Request(), null, Cancellation));
+        var echo = EchoOf(await sender.SendAsync(Request(), null, Cancellation));
 
         // Assert
         Assert.DoesNotContain("Cookie", echo.Headers.Keys);
@@ -249,10 +300,9 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
 
         // Act
-        var sending = sender.SendAsync(Request() with { Url = $"{server.Http}slow" }, null, cancellation.Token);
+        await Record.ExceptionAsync(() => sender.SendAsync(Request() with { Url = $"{server.Http}slow" }, null, cancellation.Token));
 
         // Assert
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => sending);
         Assert.DoesNotContain(logger.Entries, entry => entry.Level == LogLevel.Warning);
     }
 

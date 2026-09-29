@@ -1,10 +1,9 @@
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
 
 namespace Hoboman.Views;
 
-public partial class NameDialog : Window
+public partial class NameDialog : DialogWindow
 {
     readonly Func<string, string?> _problemOf;
 
@@ -12,7 +11,7 @@ public partial class NameDialog : Window
     {
         InitializeComponent();
         _problemOf = problemOf;
-        TitleText.Text = title;
+        Title = title;
         ConfirmButton.Content = confirm;
         NameBox.Text = name;
         Loaded += (_, _) =>
@@ -22,11 +21,11 @@ public partial class NameDialog : Window
         };
     }
 
-    public string Chosen => NameBox.Text.Trim();
+    public string EnteredName => NameBox.Text.Trim();
 
     void Confirm_Click(object sender, RoutedEventArgs e)
     {
-        if (_problemOf(Chosen) is { } problem)
+        if (_problemOf(EnteredName) is { } problem)
         {
             ProblemText.Text = problem;
             ProblemText.Visibility = Visibility.Visible;
@@ -35,9 +34,5 @@ public partial class NameDialog : Window
         DialogResult = true;
     }
 
-    void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
-
     void NameBox_TextChanged(object sender, TextChangedEventArgs e) => ProblemText.Visibility = Visibility.Collapsed;
-
-    void Border_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) => DragMove();
 }

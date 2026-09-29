@@ -4,25 +4,19 @@ namespace Hoboman.Tests;
 
 public sealed class AppTests : IDisposable
 {
-    readonly string _directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+    readonly TemporaryFolder _temporary = new();
 
-    public void Dispose()
-    {
-        if (Directory.Exists(_directory))
-        {
-            Directory.Delete(_directory, recursive: true);
-        }
-    }
+    public void Dispose() => _temporary.Dispose();
 
     [Fact]
     public void Services_WhenBuilt_ThenEveryServiceTheWindowNeedsCanBeCreated()
     {
         // Arrange
-        var registrations = App.Services(new AppFolder(_directory));
+        var registrations = App.Services(new AppFolder(_temporary.Path));
         using var services = registrations.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true });
 
         // Act
-        var failures = registrations.Select(registration => registration.ServiceType).Where(type => type != typeof(MainWindow) && !type.IsGenericTypeDefinition).Where(type => Record.Exception(() => services.GetRequiredService(type)) is not null);
+        var failures = registrations.Select(registration => registration.ServiceType).Where(type => type != typeof(MainWindow) && !type.IsGenericTypeDefinition).Where(type => Record.Exception(() => services.GetRequiredService(type)) is not null).ToList();
 
         // Assert
         Assert.Empty(failures);

@@ -41,6 +41,21 @@ public sealed class HistoryViewModelTests
     }
 
     [Fact]
+    public async Task RefreshAsync_WhenTheCallIsFromYesterday_ThenSaysYesterday()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var history = new HistoryViewModel(harness.History(), new Translator(Translation.English), NullLogger<HistoryViewModel>.Instance);
+        await harness.History().AddAsync(Entry("dev.local", DateTimeOffset.Now.AddDays(-1)), Cancellation);
+
+        // Act
+        await history.RefreshAsync(Cancellation);
+
+        // Assert
+        Assert.Equal("Yesterday", Assert.Single(history.Items).Day);
+    }
+
+    [Fact]
     public async Task RefreshAsync_WhenTheCallIsFromAnEarlierYear_ThenShowsTheDateInTheChosenLanguage()
     {
         // Arrange

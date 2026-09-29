@@ -2,17 +2,19 @@ namespace Hoboman.Tests.Storage;
 
 public sealed class AppFolderWatcherTests : IDisposable
 {
-    readonly string _directory = Directory.CreateTempSubdirectory().FullName;
+    readonly TemporaryFolder _temporary = new();
+
+    public AppFolderWatcherTests() => Directory.CreateDirectory(_temporary.Path);
 
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
-    public void Dispose() => Directory.Delete(_directory, recursive: true);
+    public void Dispose() => _temporary.Dispose();
 
     [Fact]
     public async Task RequestsChanged_WhenARequestFileIsWritten_ThenFires()
     {
         // Arrange
-        var folder = new AppFolder(_directory);
+        var folder = new AppFolder(_temporary.Path);
         Directory.CreateDirectory(folder.Requests);
         using var watcher = new AppFolderWatcher(folder, NullLogger<AppFolderWatcher>.Instance);
         var changed = new TaskCompletionSource();
@@ -30,7 +32,7 @@ public sealed class AppFolderWatcherTests : IDisposable
     public async Task HistoryChanged_WhenACallIsAdded_ThenFires()
     {
         // Arrange
-        var folder = new AppFolder(_directory);
+        var folder = new AppFolder(_temporary.Path);
         using var watcher = new AppFolderWatcher(folder, NullLogger<AppFolderWatcher>.Instance);
         var changed = new TaskCompletionSource();
         watcher.HistoryChanged += changed.SetResult;
@@ -47,7 +49,7 @@ public sealed class AppFolderWatcherTests : IDisposable
     public async Task RequestsChanged_WhenAFileIsWrittenSeveralTimes_ThenFiresOnce()
     {
         // Arrange
-        var folder = new AppFolder(_directory);
+        var folder = new AppFolder(_temporary.Path);
         Directory.CreateDirectory(folder.Requests);
         using var watcher = new AppFolderWatcher(folder, NullLogger<AppFolderWatcher>.Instance);
         var changes = 0;
@@ -69,7 +71,7 @@ public sealed class AppFolderWatcherTests : IDisposable
     public async Task Changed_WhenALogIsWritten_ThenTellsNobody()
     {
         // Arrange
-        var folder = new AppFolder(_directory);
+        var folder = new AppFolder(_temporary.Path);
         Directory.CreateDirectory(folder.Logs);
         using var watcher = new AppFolderWatcher(folder, NullLogger<AppFolderWatcher>.Instance);
         var changes = 0;
@@ -90,7 +92,7 @@ public sealed class AppFolderWatcherTests : IDisposable
     public async Task EnvironmentsChanged_WhenTheEnvironmentsAreSaved_ThenFires()
     {
         // Arrange
-        var folder = new AppFolder(_directory);
+        var folder = new AppFolder(_temporary.Path);
         using var watcher = new AppFolderWatcher(folder, NullLogger<AppFolderWatcher>.Instance);
         var changed = new TaskCompletionSource();
         watcher.EnvironmentsChanged += changed.SetResult;

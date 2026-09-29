@@ -1,14 +1,13 @@
 using System.Windows;
-using System.Windows.Input;
 using Hoboman.ViewModels;
 
 namespace Hoboman.Views;
 
-public partial class EnvironmentsWindow : Window
+public partial class EnvironmentEditorWindow : DialogWindow
 {
     readonly EnvironmentEditorViewModel _viewModel;
 
-    public EnvironmentsWindow(EnvironmentEditorViewModel viewModel)
+    public EnvironmentEditorWindow(EnvironmentEditorViewModel viewModel)
     {
         InitializeComponent();
         DataContext = _viewModel = viewModel;
@@ -25,8 +24,4 @@ public partial class EnvironmentsWindow : Window
             DialogResult = true;
         }
     }
-
-    void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
-
-    void Border_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) => DragMove();
 }

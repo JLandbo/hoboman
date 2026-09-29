@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
 
-public sealed class SettingsViewModel(JsonFile<AppSettings> file, Translator translator, ILogger<SettingsViewModel> logger) : ObservableObject
+public sealed class SettingsViewModel(SettingsStore store, Translator translator, ILogger<SettingsViewModel> logger) : ObservableObject
 {
     AppSettings _saved = AppSettings.Default;
     bool _ignoreCertificateErrors;
@@ -35,16 +35,6 @@ public sealed class SettingsViewModel(JsonFile<AppSettings> file, Translator tra
         }
     }
 
-    public string? EnvironmentName
-    {
-        get => _saved.EnvironmentName;
-        set
-        {
-            logger.LogInformation("Environment changed to {Environment}", value);
-            Saving = SaveAsync(settings => settings with { EnvironmentName = value });
-        }
-    }
-
     public string? Problem { get; private set => Set(ref field, value); }
 
     internal Task Saving { get; private set; } = Task.CompletedTask;
@@ -54,7 +44,7 @@ public sealed class SettingsViewModel(JsonFile<AppSettings> file, Translator tra
         Problem = null;
         try
         {
-            _saved = await file.LoadAsync(cancellationToken);
+            _saved = await store.LoadAsync(cancellationToken);
             _ignoreCertificateErrors = _saved.IgnoreCertificateErrors;
             translator.Use(Translation.Find(_saved.LanguageName));
             logger.LogInformation("Using {Language}", translator.Current.Name);
@@ -69,7 +59,7 @@ public sealed class SettingsViewModel(JsonFile<AppSettings> file, Translator tra
     {
         try
         {
-            _saved = await file.UpdateAsync(change, CancellationToken.None);
+            _saved = await store.UpdateAsync(change, CancellationToken.None);
             Problem = null;
         }
         catch (Exception exception) when (FileProblem.Is(exception))

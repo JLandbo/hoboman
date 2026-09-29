@@ -2,21 +2,15 @@ namespace Hoboman.Tests.Auth;
 
 public sealed class SecretStoreTests : IDisposable
 {
-    readonly string _directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+    readonly TemporaryFolder _temporary = new();
 
-    AppFolder Folder => new(_directory);
+    AppFolder Folder => new(_temporary.Path);
 
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
     SecretStore Store() => new(Folder, NullLogger<SecretStore>.Instance);
 
-    public void Dispose()
-    {
-        if (Directory.Exists(_directory))
-        {
-            Directory.Delete(_directory, recursive: true);
-        }
-    }
+    public void Dispose() => _temporary.Dispose();
 
     [Fact]
     public async Task OfAsync_WhenTheSecretWasSaved_ThenGivesItBack()

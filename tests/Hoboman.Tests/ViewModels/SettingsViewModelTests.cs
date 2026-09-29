@@ -2,29 +2,23 @@ namespace Hoboman.Tests.ViewModels;
 
 public sealed class SettingsViewModelTests : IDisposable
 {
-    readonly string _directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+    readonly TemporaryFolder _temporary = new();
 
-    string FilePath => Path.Combine(_directory, "settings.json");
+    string FilePath => Path.Combine(_temporary.Path, "settings.json");
 
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
-    JsonFile<AppSettings> Store() => new(FilePath, AppSettings.Default, NullLogger.Instance);
+    SettingsStore Store() => new(new AppFolder(_temporary.Path), NullLogger<SettingsStore>.Instance);
 
     SettingsViewModel Settings(Translator translator) => new(Store(), translator, NullLogger<SettingsViewModel>.Instance);
 
-    public void Dispose()
-    {
-        if (Directory.Exists(_directory))
-        {
-            Directory.Delete(_directory, recursive: true);
-        }
-    }
+    public void Dispose() => _temporary.Dispose();
 
     [Fact]
     public async Task LoadAsync_WhenTheSettingsChooseEnglish_ThenTranslatesWithEnglish()
     {
         // Arrange
-        await Store().SaveAsync(new AppSettings(LanguageName: "English"), Cancellation);
+        await Store().UpdateAsync(_ => new(LanguageName: "English"), Cancellation);
         var translator = new Translator(Translation.Danish);
 
         // Act
@@ -35,7 +29,7 @@ public sealed class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task Language_WhenSet_ThenTranslatesWithItAndSavesIt()
+    public async Task Language_WhenSet_ThenTranslatesWithIt()
     {
         // Arrange
         var translator = new Translator(Translation.Danish);
@@ -47,6 +41,19 @@ public sealed class SettingsViewModelTests : IDisposable
 
         // Assert
         Assert.Same(Translation.English, translator.Current);
+    }
+
+    [Fact]
+    public async Task Language_WhenSet_ThenSavesIt()
+    {
+        // Arrange
+        var settings = Settings(new Translator(Translation.Danish));
+
+        // Act
+        settings.Language = Translation.English;
+        await settings.Saving;
+
+        // Assert
         Assert.Equal("English", (await Store().LoadAsync(Cancellation)).LanguageName);
     }
 
@@ -54,7 +61,7 @@ public sealed class SettingsViewModelTests : IDisposable
     public async Task IgnoreCertificateErrors_WhenSet_ThenSavesItAndKeepsTheOtherSettings()
     {
         // Arrange
-        await Store().SaveAsync(new AppSettings(LanguageName: "English"), Cancellation);
+        await Store().UpdateAsync(_ => new(LanguageName: "English"), Cancellation);
         var settings = Settings(new Translator(Translation.English));
 
         // Act
@@ -66,10 +73,10 @@ public sealed class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task IgnoreCertificateErrors_WhenSavingFails_ThenShowsTheProblemAndUndoesTheChange()
+    public async Task IgnoreCertificateErrors_WhenSavingFails_ThenShowsTheProblem()
     {
         // Arrange
-        Directory.CreateDirectory(_directory);
+        Directory.CreateDirectory(_temporary.Path);
         using var locked = new FileStream(FilePath, FileMode.Create, FileAccess.Write, FileShare.None);
         var settings = Settings(new Translator(Translation.English));
 
@@ -79,6 +86,21 @@ public sealed class SettingsViewModelTests : IDisposable
 
         // Assert
         Assert.StartsWith("The settings could not be saved", settings.Problem);
+    }
+
+    [Fact]
+    public async Task IgnoreCertificateErrors_WhenSavingFails_ThenUndoesTheChange()
+    {
+        // Arrange
+        Directory.CreateDirectory(_temporary.Path);
+        using var locked = new FileStream(FilePath, FileMode.Create, FileAccess.Write, FileShare.None);
+        var settings = Settings(new Translator(Translation.English));
+
+        // Act
+        settings.IgnoreCertificateErrors = true;
+        await settings.Saving;
+
+        // Assert
         Assert.False(settings.IgnoreCertificateErrors);
     }
 
@@ -86,7 +108,7 @@ public sealed class SettingsViewModelTests : IDisposable
     public async Task IgnoreCertificateErrors_WhenTwoSavesFail_ThenShowsWhatTheFileHolds()
     {
         // Arrange
-        await Store().SaveAsync(new AppSettings(IgnoreCertificateErrors: true), Cancellation);
+        await Store().UpdateAsync(_ => new(IgnoreCertificateErrors: true), Cancellation);
         var settings = Settings(new Translator(Translation.English));
         await settings.LoadAsync(Cancellation);
         using var locked = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.None);
@@ -104,7 +126,7 @@ public sealed class SettingsViewModelTests : IDisposable
     public async Task LoadAsync_WhenTheFileIsLocked_ThenKeepsTheCurrentLanguage()
     {
         // Arrange
-        Directory.CreateDirectory(_directory);
+        Directory.CreateDirectory(_temporary.Path);
         using var locked = new FileStream(FilePath, FileMode.Create, FileAccess.Write, FileShare.None);
         var translator = new Translator(Translation.English);
 
@@ -119,7 +141,7 @@ public sealed class SettingsViewModelTests : IDisposable
     public async Task LoadAsync_WhenAProblemIsShown_ThenClearsIt()
     {
         // Arrange
-        Directory.CreateDirectory(_directory);
+        Directory.CreateDirectory(_temporary.Path);
         var settings = Settings(new Translator(Translation.English));
         using (new FileStream(FilePath, FileMode.Create, FileAccess.Write, FileShare.None))
         {
