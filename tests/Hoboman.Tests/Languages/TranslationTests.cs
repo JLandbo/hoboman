@@ -101,6 +101,6 @@ public sealed partial class TranslationTests
 
     static string SourceFolder([CallerFilePath] string test = "") => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(test)!, "..", "..", "..", "src"));
 
-    [GeneratedRegex("""(?:\b(?:Of|Format)\("|DynamicResource )([A-Z][A-Za-z]*\.[A-Za-z.]+)""")]
+    [GeneratedRegex("""(?:\b(?:Of|Format)\("|DynamicResource |ResourceReference\([^,]+, ")([A-Z][A-Za-z]*\.[A-Za-z.]+)""")]
     private static partial Regex Key();
 }

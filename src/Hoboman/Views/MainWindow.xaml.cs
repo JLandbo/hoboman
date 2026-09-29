@@ -11,12 +11,14 @@ public partial class MainWindow : Window
 {
     readonly MainViewModel _viewModel;
     readonly SettingsViewModel _settings;
+    readonly Func<EnvironmentEditorViewModel> _environmentEditor;
 
-    public MainWindow(MainViewModel viewModel, SettingsViewModel settings)
+    public MainWindow(MainViewModel viewModel, SettingsViewModel settings, Func<EnvironmentEditorViewModel> environmentEditor)
     {
         InitializeComponent();
         DataContext = _viewModel = viewModel;
         _settings = settings;
+        _environmentEditor = environmentEditor;
     }
 
     async void Settings_Click(object sender, RoutedEventArgs e)
@@ -45,7 +47,23 @@ public partial class MainWindow : Window
             item.Click += (_, _) => environments.Choose(environment);
             menu.Items.Add(item);
         }
+        var edit = new MenuItem();
+        edit.SetResourceReference(HeaderedItemsControl.HeaderProperty, "Environment.Edit");
+        edit.Click += async (_, _) => await EditEnvironmentsAsync();
+        // A separator with its own style is left alone by the menu's item style, which only fits menu items.
+        menu.Items.Add(new Separator { Style = (Style)FindResource("MenuSeparator") });
+        menu.Items.Add(edit);
         menu.IsOpen = true;
+    }
+
+    async Task EditEnvironmentsAsync()
+    {
+        var editor = _environmentEditor();
+        await editor.LoadAsync(CancellationToken.None);
+        if (new EnvironmentsWindow(editor) { Owner = this }.ShowDialog() == true)
+        {
+            await _viewModel.Environments.LoadAsync(CancellationToken.None);
+        }
     }
 
     void Window_Closing(object? sender, CancelEventArgs e) => e.Cancel = !_viewModel.CanClose();
