@@ -125,6 +125,25 @@ public sealed class JsonFileTests : IDisposable
         Assert.Equal(new AppSettings("Test", IgnoreCertificateErrors: true), await store.LoadAsync(Cancellation));
     }
 
+    [Fact]
+    public async Task SaveAsync_WhenCalled_ThenDoesTheWorkOffTheCallersThread()
+    {
+        // Arrange
+        var logger = new RecordingLogger<AppSettings>();
+        var store = new JsonFile<AppSettings>(FilePath, AppSettings.Default, logger);
+        var cancellation = Cancellation;
+        var saving = Task.CompletedTask;
+        var caller = new Thread(() => saving = store.SaveAsync(AppSettings.Default, cancellation));
+
+        // Act
+        caller.Start();
+        caller.Join();
+        await saving;
+
+        // Assert
+        Assert.DoesNotContain(logger.Entries, entry => entry.Thread == caller.ManagedThreadId);
+    }
+
     static void ReleaseSoon(FileStream locked) => new Thread(() =>
     {
         Thread.Sleep(20);

@@ -29,9 +29,10 @@ public sealed class SettingsViewModel(JsonFile<AppSettings> file, Translator tra
         get => _ignoreCertificateErrors;
         set
         {
+            var previous = _ignoreCertificateErrors;
             _ignoreCertificateErrors = value;
             logger.LogInformation("Ignore certificate errors changed to {Ignore}", value);
-            Saving = SaveAsync(settings => settings with { IgnoreCertificateErrors = value });
+            Saving = SaveAsync(settings => settings with { IgnoreCertificateErrors = value }, undo: () => Set(ref _ignoreCertificateErrors, previous, nameof(IgnoreCertificateErrors)));
         }
     }
 
@@ -41,21 +42,21 @@ public sealed class SettingsViewModel(JsonFile<AppSettings> file, Translator tra
 
     public async Task LoadAsync(CancellationToken cancellationToken)
     {
-        var settings = AppSettings.Default;
+        Problem = null;
         try
         {
-            settings = await file.LoadAsync(cancellationToken);
+            var settings = await file.LoadAsync(cancellationToken);
+            _ignoreCertificateErrors = settings.IgnoreCertificateErrors;
+            translator.Use(Translation.Find(settings.LanguageName));
+            logger.LogInformation("Using {Language}", translator.Current.Name);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            logger.LogError(exception, "Could not load the settings, using the defaults");
+            logger.LogError(exception, "Could not load the settings, keeping the current ones");
         }
-        _ignoreCertificateErrors = settings.IgnoreCertificateErrors;
-        translator.Use(Translation.Find(settings.LanguageName));
-        logger.LogInformation("Using {Language}", translator.Current.Name);
     }
 
-    async Task SaveAsync(Func<AppSettings, AppSettings> change)
+    async Task SaveAsync(Func<AppSettings, AppSettings> change, Action? undo = null)
     {
         try
         {
@@ -65,6 +66,7 @@ public sealed class SettingsViewModel(JsonFile<AppSettings> file, Translator tra
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             logger.LogError(exception, "Could not save the settings");
+            undo?.Invoke();
             Problem = translator.Format("Settings.SaveFailed", exception.Message);
         }
     }

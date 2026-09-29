@@ -35,6 +35,11 @@ public sealed class HttpRequestSender(SecretStore secrets, JsonFile<AppSettings>
                 [.. response.Headers.Concat(response.Content.Headers).SelectMany(header => header.Value.Select(value => new KeyValue(header.Key, value)))],
                 await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            logger.LogInformation("{Method} {Url} was cancelled", request.Method, request.Url);
+            throw;
+        }
         catch (Exception exception)
         {
             logger.LogWarning(exception, "{Method} {Url} failed", request.Method, request.Url);

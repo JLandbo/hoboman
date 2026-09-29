@@ -14,5 +14,9 @@ public partial class MainWindow : Window
         _settings = settings;
     }
 
-    void Settings_Click(object sender, RoutedEventArgs e) => new SettingsWindow(_settings) { Owner = this }.ShowDialog();
+    async void Settings_Click(object sender, RoutedEventArgs e)
+    {
+        await _settings.LoadAsync(CancellationToken.None);
+        new SettingsWindow(_settings) { Owner = this }.ShowDialog();
+    }
 }

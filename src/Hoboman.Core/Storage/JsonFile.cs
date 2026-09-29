@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
@@ -21,6 +22,7 @@ public sealed class JsonFile<T>(string path, T empty, ILogger logger)
 
     public async Task<T> LoadAsync(CancellationToken cancellationToken)
     {
+        await LeaveCallersThread();
         for (var attempt = 1; ; attempt++)
         {
             try
@@ -36,6 +38,7 @@ public sealed class JsonFile<T>(string path, T empty, ILogger logger)
 
     public async Task SaveAsync(T value, CancellationToken cancellationToken)
     {
+        await LeaveCallersThread();
         await _writing.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -49,6 +52,7 @@ public sealed class JsonFile<T>(string path, T empty, ILogger logger)
 
     public async Task UpdateAsync(Func<T, T> change, CancellationToken cancellationToken)
     {
+        await LeaveCallersThread();
         await _writing.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -103,6 +107,9 @@ public sealed class JsonFile<T>(string path, T empty, ILogger logger)
             }
         }
     }
+
+    // Small files are read and written synchronously even through async calls, so this keeps the disk work off the UI thread.
+    static ConfiguredTaskAwaitable LeaveCallersThread() => Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
 
     static bool IsBusy(Exception exception, int attempt) => exception is IOException or UnauthorizedAccessException && attempt < _attempts;
 

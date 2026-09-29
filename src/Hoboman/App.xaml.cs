@@ -21,14 +21,13 @@ public partial class App : Application
     const string _logLine = "{Timestamp:HH:mm:ss.fff} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}";
 
     ServiceProvider? _services;
-    ILogger<App>? _logger;
     ResourceDictionary? _texts;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         _services = Services(new AppFolder(AppContext.BaseDirectory)).BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true });
-        var logger = _logger = _services.GetRequiredService<ILogger<App>>();
+        var logger = _services.GetRequiredService<ILogger<App>>();
         AppDomain.CurrentDomain.UnhandledException += (_, args) => logger.LogCritical(args.ExceptionObject as Exception, "Unhandled exception");
         TaskScheduler.UnobservedTaskException += (_, args) => logger.LogError(args.Exception, "Unobserved task exception");
         logger.LogInformation("Hoboman started in {Folder}", AppContext.BaseDirectory);
@@ -41,7 +40,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _logger?.LogInformation("Hoboman stopped");
+        _services?.GetRequiredService<ILogger<App>>().LogInformation("Hoboman stopped");
         _services?.Dispose();
         base.OnExit(e);
     }

@@ -66,7 +66,7 @@ public sealed class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task IgnoreCertificateErrors_WhenSavingFails_ThenShowsTheProblem()
+    public async Task IgnoreCertificateErrors_WhenSavingFails_ThenShowsTheProblemAndUndoesTheChange()
     {
         // Arrange
         Directory.CreateDirectory(_directory);
@@ -79,5 +79,40 @@ public sealed class SettingsViewModelTests : IDisposable
 
         // Assert
         Assert.StartsWith("The settings could not be saved", settings.Problem);
+        Assert.False(settings.IgnoreCertificateErrors);
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenTheFileIsLocked_ThenKeepsTheCurrentLanguage()
+    {
+        // Arrange
+        Directory.CreateDirectory(_directory);
+        using var locked = new FileStream(FilePath, FileMode.Create, FileAccess.Write, FileShare.None);
+        var translator = new Translator(Translation.English);
+
+        // Act
+        await Settings(translator).LoadAsync(Cancellation);
+
+        // Assert
+        Assert.Same(Translation.English, translator.Current);
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenAProblemIsShown_ThenClearsIt()
+    {
+        // Arrange
+        Directory.CreateDirectory(_directory);
+        var settings = Settings(new Translator(Translation.English));
+        using (new FileStream(FilePath, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            settings.IgnoreCertificateErrors = true;
+            await settings.Saving;
+        }
+
+        // Act
+        await settings.LoadAsync(Cancellation);
+
+        // Assert
+        Assert.Null(settings.Problem);
     }
 }

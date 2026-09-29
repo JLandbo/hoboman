@@ -28,8 +28,9 @@ public sealed class SecretStore(AppFolder folder, ILogger<SecretStore> logger)
 
     public async Task SaveAsync(Guid id, string secret, CancellationToken cancellationToken)
     {
-        var encrypted = Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(secret), null, DataProtectionScope.CurrentUser));
-        await _file.UpdateAsync(secrets => new Dictionary<Guid, string>(secrets) { [id] = encrypted }, cancellationToken).ConfigureAwait(false);
+        await _file.UpdateAsync(
+            secrets => new Dictionary<Guid, string>(secrets) { [id] = Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(secret), null, DataProtectionScope.CurrentUser)) },
+            cancellationToken).ConfigureAwait(false);
         logger.LogInformation("Saved the secret for {Id}", id);
     }
 }

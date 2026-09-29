@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 
 namespace Hoboman.Tests.Sending;
 
@@ -22,11 +23,11 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
 
     SecretStore Secrets() => new(Folder, NullLogger<SecretStore>.Instance);
 
-    async Task<HttpRequestSender> SenderAsync(bool ignoreCertificateErrors = false)
+    async Task<HttpRequestSender> SenderAsync(bool ignoreCertificateErrors = false, ILogger<HttpRequestSender>? logger = null)
     {
         var settings = new JsonFile<AppSettings>(Folder.Settings, AppSettings.Default, NullLogger.Instance);
         await settings.SaveAsync(new AppSettings(IgnoreCertificateErrors: ignoreCertificateErrors), Cancellation);
-        return new(Secrets(), settings, NullLogger<HttpRequestSender>.Instance);
+        return new(Secrets(), settings, logger ?? NullLogger<HttpRequestSender>.Instance);
     }
 
     ApiRequest Request() => ApiRequest.New() with { Url = server.Http.ToString() };
@@ -154,6 +155,23 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
 
         // Assert
         Assert.DoesNotContain("Cookie", echo.Headers.Keys);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenCancelled_ThenDoesNotLogItAsAFailure()
+    {
+        // Arrange
+        var logger = new RecordingLogger<HttpRequestSender>();
+        using var sender = await SenderAsync(logger: logger);
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        // Act
+        var sending = sender.SendAsync(Request(), null, cancellation.Token);
+
+        // Assert
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => sending);
+        Assert.DoesNotContain(logger.Entries, entry => entry.Level == LogLevel.Warning);
     }
 
     [Fact]
