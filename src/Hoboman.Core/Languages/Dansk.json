@@ -1,0 +1,17 @@
+{
+  "texts": {
+    "Edit.Cut": "Klip",
+    "Edit.Copy": "Kopiér",
+    "Edit.Paste": "Sæt ind",
+    "Tree.Title": "Requests",
+    "Tree.Empty": "Ingen requests endnu",
+    "Editor.Send": "Send",
+    "Editor.Params": "Params",
+    "Editor.Headers": "Headers",
+    "Editor.Body": "Body",
+    "Editor.Auth": "Auth",
+    "Response.Title": "Svar",
+    "Response.Body": "Body",
+    "Response.Headers": "Headers"
+  }
+}

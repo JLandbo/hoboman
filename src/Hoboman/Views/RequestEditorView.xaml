@@ -5,17 +5,17 @@
         <DockPanel>
             <DockPanel DockPanel.Dock="Top">
                 <Button DockPanel.Dock="Left" Content="{Binding Method}" Style="{StaticResource PillButton}" FontWeight="SemiBold" Margin="0,0,8,0" />
-                <Button DockPanel.Dock="Right" Content="Send" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" />
+                <Button DockPanel.Dock="Right" Content="{DynamicResource Editor.Send}" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" />
                 <Border CornerRadius="8" Background="{DynamicResource Input}">
                     <TextBox Text="{Binding Url, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Field}" Background="Transparent"
                              VerticalContentAlignment="Center" FontFamily="{StaticResource CodeFont}" />
                 </Border>
             </DockPanel>
             <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,12,0,8">
-                <RadioButton Content="Params" GroupName="RequestSection" IsChecked="True" Style="{StaticResource Segment}" />
-                <RadioButton Content="Headers" GroupName="RequestSection" Style="{StaticResource Segment}" />
-                <RadioButton Content="Body" GroupName="RequestSection" Style="{StaticResource Segment}" />
-                <RadioButton Content="Auth" GroupName="RequestSection" Style="{StaticResource Segment}" />
+                <RadioButton Content="{DynamicResource Editor.Params}" GroupName="RequestSection" IsChecked="True" Style="{StaticResource Segment}" />
+                <RadioButton Content="{DynamicResource Editor.Headers}" GroupName="RequestSection" Style="{StaticResource Segment}" />
+                <RadioButton Content="{DynamicResource Editor.Body}" GroupName="RequestSection" Style="{StaticResource Segment}" />
+                <RadioButton Content="{DynamicResource Editor.Auth}" GroupName="RequestSection" Style="{StaticResource Segment}" />
             </StackPanel>
             <Border CornerRadius="8" Background="{DynamicResource Box}" BorderBrush="{DynamicResource BoxEdge}" BorderThickness="1" />
         </DockPanel>

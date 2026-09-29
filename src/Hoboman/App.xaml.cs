@@ -1,6 +1,8 @@
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Hoboman.Core.Auth;
+using Hoboman.Core.Languages;
+using Hoboman.Core.Settings;
 using Hoboman.Core.Storage;
 using Hoboman.Desktop;
 using Hoboman.ViewModels;
@@ -11,11 +13,15 @@ namespace Hoboman;
 public partial class App : Application
 {
     ServiceProvider? _services;
+    ResourceDictionary? _texts;
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         _services = Services(new AppFolder(AppContext.BaseDirectory)).BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true });
+        var translator = _services.GetRequiredService<Translator>();
+        Use(translator.Current);
+        translator.Changed += () => Use(translator.Current);
         _services.GetRequiredService<MainWindow>().Show();
     }
 
@@ -29,6 +35,8 @@ public partial class App : Application
     {
         var services = new ServiceCollection();
         services.AddSingleton(folder);
+        services.AddSingleton(_ => new JsonFile<AppSettings>(folder.Settings, AppSettings.Default));
+        services.AddSingleton(provider => new Translator(Translation.Find(provider.GetRequiredService<JsonFile<AppSettings>>().Load().LanguageName)));
         services.AddSingleton<IBrowser, ShellBrowser>();
         services.AddSingleton<RequestTreeViewModel>();
         services.AddSingleton<RequestEditorViewModel>();
@@ -36,5 +44,25 @@ public partial class App : Application
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();
         return services;
+    }
+
+    internal static ResourceDictionary ResourcesOf(Translation translation)
+    {
+        var resources = new ResourceDictionary();
+        foreach (var key in Translation.Danish.Texts.Keys)
+        {
+            resources[key] = translation.Of(key);
+        }
+        return resources;
+    }
+
+    void Use(Translation translation)
+    {
+        if (_texts is not null)
+        {
+            Resources.MergedDictionaries.Remove(_texts);
+        }
+        _texts = ResourcesOf(translation);
+        Resources.MergedDictionaries.Add(_texts);
     }
 }

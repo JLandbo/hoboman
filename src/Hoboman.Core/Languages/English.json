@@ -1,0 +1,17 @@
+{
+  "texts": {
+    "Edit.Cut": "Cut",
+    "Edit.Copy": "Copy",
+    "Edit.Paste": "Paste",
+    "Tree.Title": "Requests",
+    "Tree.Empty": "No requests yet",
+    "Editor.Send": "Send",
+    "Editor.Params": "Params",
+    "Editor.Headers": "Headers",
+    "Editor.Body": "Body",
+    "Editor.Auth": "Auth",
+    "Response.Title": "Response",
+    "Response.Body": "Body",
+    "Response.Headers": "Headers"
+  }
+}

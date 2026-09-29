@@ -4,7 +4,7 @@
              xmlns:viewModels="clr-namespace:Hoboman.ViewModels">
     <Border Style="{StaticResource Panel}">
         <DockPanel>
-            <TextBlock DockPanel.Dock="Top" Text="Requests" FontWeight="SemiBold" Margin="4,0,0,8" />
+            <TextBlock DockPanel.Dock="Top" Text="{DynamicResource Tree.Title}" FontWeight="SemiBold" Margin="4,0,0,8" />
             <Grid>
                 <TreeView ItemsSource="{Binding Nodes}" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource Text}">
                     <TreeView.ItemTemplate>
@@ -13,7 +13,7 @@
                         </HierarchicalDataTemplate>
                     </TreeView.ItemTemplate>
                 </TreeView>
-                <TextBlock Text="Ingen requests endnu" Foreground="{DynamicResource Muted}" Margin="4,0,0,0">
+                <TextBlock Text="{DynamicResource Tree.Empty}" Foreground="{DynamicResource Muted}" Margin="4,0,0,0">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock">
                             <Setter Property="Visibility" Value="Collapsed" />

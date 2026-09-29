@@ -17,6 +17,7 @@
     <Using Include="Xunit" />
     <Using Include="Hoboman.Core.Auth" />
     <Using Include="Hoboman.Core.Environments" />
+    <Using Include="Hoboman.Core.Languages" />
     <Using Include="Hoboman.Core.Requests" />
     <Using Include="Hoboman.Core.Sending" />
     <Using Include="Hoboman.Core.Settings" />

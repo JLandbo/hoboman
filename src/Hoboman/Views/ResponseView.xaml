@@ -4,11 +4,11 @@
     <Border Style="{StaticResource Panel}">
         <DockPanel>
             <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-                <TextBlock DockPanel.Dock="Left" Text="Svar" FontWeight="SemiBold" VerticalAlignment="Center" Margin="4,0,12,0" />
+                <TextBlock DockPanel.Dock="Left" Text="{DynamicResource Response.Title}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="4,0,12,0" />
                 <TextBlock DockPanel.Dock="Right" Text="{Binding Summary}" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" />
                 <StackPanel Orientation="Horizontal">
-                    <RadioButton Content="Body" GroupName="ResponseSection" IsChecked="True" Style="{StaticResource Segment}" />
-                    <RadioButton Content="Headers" GroupName="ResponseSection" Style="{StaticResource Segment}" />
+                    <RadioButton Content="{DynamicResource Response.Body}" GroupName="ResponseSection" IsChecked="True" Style="{StaticResource Segment}" />
+                    <RadioButton Content="{DynamicResource Response.Headers}" GroupName="ResponseSection" Style="{StaticResource Segment}" />
                 </StackPanel>
             </DockPanel>
             <Border CornerRadius="8" Background="{DynamicResource Input}">
