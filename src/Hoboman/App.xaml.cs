@@ -45,8 +45,14 @@ public partial class App : Application
         Use(translator.Current);
         translator.Changed += () => Use(translator.Current);
         await _services.GetRequiredService<SettingsViewModel>().LoadAsync(CancellationToken.None);
-        await _services.GetRequiredService<MainViewModel>().LoadAsync(CancellationToken.None);
+        var main = _services.GetRequiredService<MainViewModel>();
+        await main.LoadAsync(CancellationToken.None);
         _services.GetRequiredService<MainWindow>().Show();
+        var watcher = _services.GetRequiredService<AppFolderWatcher>();
+        watcher.RequestsChanged += () => Dispatcher.InvokeAsync(main.RequestsChangedAsync);
+        watcher.HistoryChanged += () => Dispatcher.InvokeAsync(() => main.History.LoadAsync(CancellationToken.None));
+        watcher.EnvironmentsChanged += () => Dispatcher.InvokeAsync(() => main.Environments.LoadAsync(CancellationToken.None));
+        watcher.Start();
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -63,6 +69,7 @@ public partial class App : Application
             new LoggerConfiguration().MinimumLevel.Debug().WriteTo.File(Path.Combine(folder.Logs, "hoboman-.log"), rollingInterval: RollingInterval.Day, outputTemplate: _logLine).CreateLogger(),
             dispose: true));
         services.AddSingleton(folder);
+        services.AddSingleton<AppFolderWatcher>();
         services.AddSingleton(provider => new JsonFile<AppSettings>(folder.Settings, AppSettings.Default, provider.GetRequiredService<ILogger<AppSettings>>()));
         services.AddSingleton(_ => new Translator(Translation.Danish));
         services.AddSingleton<EnvironmentStore>();

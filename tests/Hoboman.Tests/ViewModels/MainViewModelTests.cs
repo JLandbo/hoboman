@@ -24,6 +24,46 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public async Task RequestsChangedAsync_WhenAnOpenRequestChangedOnDisk_ThenReloadsIt()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var request = ApiRequest.New() with { Url = "https://dev.local" };
+        await harness.Library.SaveAsync("Ping", request, Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync(Cancellation);
+        await main.OpenAsync(main.Tree.Nodes.Single());
+        await harness.Library.SaveAsync("Ping", request with { Url = "https://agent.local" }, Cancellation);
+
+        // Act
+        await main.RequestsChangedAsync();
+
+        // Assert
+        Assert.Equal("https://agent.local", main.SelectedTab?.Url);
+    }
+
+    [Fact]
+    public async Task RequestsChangedAsync_WhenTheTabSavedItself_ThenKeepsNewerEdits()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("Ping", ApiRequest.New() with { Url = "https://dev.local" }, Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync(Cancellation);
+        await main.OpenAsync(main.Tree.Nodes.Single());
+        var tab = main.SelectedTab!;
+        tab.Url = "https://saved.local";
+        await tab.SaveAsync();
+        tab.Url = "https://newer.local";
+
+        // Act
+        await main.RequestsChangedAsync();
+
+        // Assert
+        Assert.Equal("https://newer.local", tab.Url);
+    }
+
+    [Fact]
     public async Task CanClose_WhenATabIsUnsaved_ThenAsksFirst()
     {
         // Arrange

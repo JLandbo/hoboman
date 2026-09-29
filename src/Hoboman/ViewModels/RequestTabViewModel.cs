@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using Hoboman.Core.Auth;
 using Hoboman.Core.History;
 using Hoboman.Core.Languages;
@@ -24,6 +25,7 @@ public sealed class RequestTabViewModel : ObservableObject
     readonly RequestTabServices _services;
     Guid _id;
     OAuthSettings? _oauth;
+    string _savedJson = "";
     bool _loading;
     bool _passwordChanged;
     bool _tokenChanged;
@@ -130,15 +132,19 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public Command Cancel { get; }
 
-    public event Action? Sent;
-
-    public event Action? Saved;
-
-    public void Reload(ApiRequest request)
+    // Changes on disk win over unsaved changes, but the tab's own saves must not reload it.
+    public bool ReloadIfChanged(ApiRequest request)
     {
+        if (JsonSerializer.Serialize(request) == _savedJson)
+        {
+            return false;
+        }
         Load(request);
         _passwordChanged = _tokenChanged = false;
+        return true;
     }
+
+    public void ShowProblem(ProblemMessage problem) => Problem = problem;
 
     public void Show(HistoryEntry entry)
     {
@@ -183,11 +189,12 @@ public sealed class RequestTabViewModel : ObservableObject
         EnsureId();
         try
         {
-            await _services.Library.SaveAsync(name, ToRequest(), CancellationToken.None);
+            var request = ToRequest();
+            await _services.Library.SaveAsync(name, request, CancellationToken.None);
             await SaveSecretsAsync(CancellationToken.None);
+            _savedJson = JsonSerializer.Serialize(request);
             Name = name;
             IsDirty = false;
-            Saved?.Invoke();
             return true;
         }
         catch (Exception exception) when (FileProblem.Is(exception))
@@ -241,7 +248,6 @@ public sealed class RequestTabViewModel : ObservableObject
             _sending = null;
             IsSending = false;
         }
-        Sent?.Invoke();
     }
 
     string ProblemOf(Exception exception) => exception switch
@@ -281,6 +287,7 @@ public sealed class RequestTabViewModel : ObservableObject
     void Load(ApiRequest request)
     {
         _loading = true;
+        _savedJson = JsonSerializer.Serialize(request);
         _id = request.Id;
         _oauth = request.Auth.OAuth;
         Method = request.Method;

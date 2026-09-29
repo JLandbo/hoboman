@@ -47,6 +47,40 @@ public sealed class RequestTabViewModelTests
     }
 
     [Fact]
+    public void ReloadIfChanged_WhenTheFileIsWhatTheTabLoaded_ThenKeepsTheEdits()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var request = ApiRequest.New() with { Url = "https://dev.local" };
+        var tab = harness.Tab(request, "Ping");
+        tab.Url = "https://edited.local";
+
+        // Act
+        var reloaded = tab.ReloadIfChanged(request);
+
+        // Assert
+        Assert.False(reloaded);
+        Assert.Equal("https://edited.local", tab.Url);
+    }
+
+    [Fact]
+    public void ReloadIfChanged_WhenTheFileChanged_ThenShowsTheFile()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var request = ApiRequest.New() with { Url = "https://dev.local" };
+        var tab = harness.Tab(request, "Ping");
+        tab.Url = "https://edited.local";
+
+        // Act
+        var reloaded = tab.ReloadIfChanged(request with { Url = "https://agent.local" });
+
+        // Assert
+        Assert.True(reloaded);
+        Assert.Equal(("https://agent.local", false), (tab.Url, tab.IsDirty));
+    }
+
+    [Fact]
     public async Task SaveAsync_WhenTheTabIsNew_ThenAsksForANameAndSaves()
     {
         // Arrange

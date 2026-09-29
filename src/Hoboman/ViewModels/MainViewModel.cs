@@ -82,8 +82,6 @@ public sealed class MainViewModel(RequestTreeViewModel tree, HistoryViewModel hi
             return;
         }
         var index = Tabs.IndexOf(tab);
-        tab.Sent -= Tab_Sent;
-        tab.Saved -= Tab_Saved;
         Tabs.Remove(tab);
         if (Tabs.Count == 0)
         {
@@ -155,17 +153,37 @@ public sealed class MainViewModel(RequestTreeViewModel tree, HistoryViewModel hi
         }
     }
 
+    public async Task RequestsChangedAsync()
+    {
+        await tree.LoadAsync(CancellationToken.None);
+        foreach (var tab in Tabs.Where(tab => tab.Name is not null).ToList())
+        {
+            try
+            {
+                if (await Library.LoadAsync(tab.Name!, CancellationToken.None) is not { } request)
+                {
+                    logger.LogInformation("{Name} was removed on disk", tab.Name);
+                    tab.Unlink();
+                }
+                else if (tab.ReloadIfChanged(request))
+                {
+                    logger.LogInformation("{Name} changed on disk and was reloaded", tab.Name);
+                    await tab.LoadSecretsAsync(CancellationToken.None);
+                }
+            }
+            catch (Exception exception) when (FileProblem.Is(exception))
+            {
+                logger.LogWarning(exception, "Could not reload {Name}", tab.Name);
+                tab.ShowProblem(new(Translator.Of("Open.Failed"), exception.Message));
+            }
+        }
+    }
+
     void Add(RequestTabViewModel tab)
     {
-        tab.Sent += Tab_Sent;
-        tab.Saved += Tab_Saved;
         Tabs.Add(tab);
         SelectedTab = tab;
     }
-
-    void Tab_Sent() => _ = history.LoadAsync(CancellationToken.None);
-
-    void Tab_Saved() => _ = tree.LoadAsync(CancellationToken.None);
 
     string TitleOf(RequestTabViewModel tab) => tab.Title ?? Translator.Of("Tab.New");
 
