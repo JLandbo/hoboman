@@ -16,6 +16,7 @@
     "Response.Headers": "Headers",
     "Settings.Title": "Settings",
     "Settings.Language": "Language",
-    "Settings.IgnoreCertificateErrors": "Ignore certificate errors"
+    "Settings.IgnoreCertificateErrors": "Ignore certificate errors",
+    "Settings.SaveFailed": "The settings could not be saved: {0}"
   }
 }

@@ -16,6 +16,7 @@
     "Response.Headers": "Headers",
     "Settings.Title": "Indstillinger",
     "Settings.Language": "Sprog",
-    "Settings.IgnoreCertificateErrors": "Ignorér certifikatfejl"
+    "Settings.IgnoreCertificateErrors": "Ignorér certifikatfejl",
+    "Settings.SaveFailed": "Indstillingerne kunne ikke gemmes: {0}"
   }
 }

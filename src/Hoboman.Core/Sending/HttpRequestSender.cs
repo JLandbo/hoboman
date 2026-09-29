@@ -6,29 +6,40 @@ using Hoboman.Core.Environments;
 using Hoboman.Core.Requests;
 using Hoboman.Core.Settings;
 using Hoboman.Core.Storage;
+using Microsoft.Extensions.Logging;
 
 namespace Hoboman.Core.Sending;
 
-public sealed class HttpRequestSender(SecretStore secrets, JsonFile<AppSettings> settings) : IRequestSender, IDisposable
+public sealed class HttpRequestSender(SecretStore secrets, JsonFile<AppSettings> settings, ILogger<HttpRequestSender> logger) : IRequestSender, IDisposable
 {
-    readonly HttpClient _client = new();
-    readonly HttpClient _trustingClient = new(new SocketsHttpHandler { SslOptions = { RemoteCertificateValidationCallback = delegate { return true; } } });
+    readonly HttpClient _client = new(new SocketsHttpHandler { UseCookies = false });
+    readonly HttpClient _trustingClient = new(new SocketsHttpHandler { UseCookies = false, SslOptions = { RemoteCertificateValidationCallback = delegate { return true; } } });
 
     public async Task<ApiResponse> SendAsync(ApiRequest request, ApiEnvironment? environment, CancellationToken cancellationToken)
     {
-        using var message = MessageOf(request, environment ?? new ApiEnvironment("", []));
-        var client = settings.Load().IgnoreCertificateErrors ? _trustingClient : _client;
-        var started = Stopwatch.GetTimestamp();
-        using var response = await client.SendAsync(message, cancellationToken);
-        var elapsed = Stopwatch.GetElapsedTime(started);
-        var size = (await response.Content.ReadAsByteArrayAsync(cancellationToken)).LongLength;
-        return new(
-            (int)response.StatusCode,
-            response.ReasonPhrase ?? "",
-            elapsed,
-            size,
-            [.. response.Headers.Concat(response.Content.Headers).SelectMany(header => header.Value.Select(value => new KeyValue(header.Key, value)))],
-            await response.Content.ReadAsStringAsync(cancellationToken));
+        try
+        {
+            using var message = await MessageOfAsync(request, environment ?? new ApiEnvironment("", []), cancellationToken).ConfigureAwait(false);
+            var client = (await settings.LoadAsync(cancellationToken).ConfigureAwait(false)).IgnoreCertificateErrors ? _trustingClient : _client;
+            logger.LogInformation("Sending {Method} {Url}", message.Method, message.RequestUri);
+            var started = Stopwatch.GetTimestamp();
+            using var response = await client.SendAsync(message, cancellationToken).ConfigureAwait(false);
+            var elapsed = Stopwatch.GetElapsedTime(started);
+            var size = (await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false)).LongLength;
+            logger.LogInformation("{Method} {Url} answered {StatusCode} in {Elapsed} ms with {Size} bytes", message.Method, message.RequestUri, (int)response.StatusCode, elapsed.TotalMilliseconds, size);
+            return new(
+                (int)response.StatusCode,
+                response.ReasonPhrase ?? "",
+                elapsed,
+                size,
+                [.. response.Headers.Concat(response.Content.Headers).SelectMany(header => header.Value.Select(value => new KeyValue(header.Key, value)))],
+                await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "{Method} {Url} failed", request.Method, request.Url);
+            throw;
+        }
     }
 
     public void Dispose()
@@ -37,7 +48,7 @@ public sealed class HttpRequestSender(SecretStore secrets, JsonFile<AppSettings>
         _trustingClient.Dispose();
     }
 
-    HttpRequestMessage MessageOf(ApiRequest request, ApiEnvironment environment)
+    async Task<HttpRequestMessage> MessageOfAsync(ApiRequest request, ApiEnvironment environment, CancellationToken cancellationToken)
     {
         var message = new HttpRequestMessage(new HttpMethod(request.Method), UrlOf(request, environment))
         {
@@ -57,7 +68,7 @@ public sealed class HttpRequestSender(SecretStore secrets, JsonFile<AppSettings>
                 message.Content.Headers.TryAddWithoutValidation(name, value);
             }
         }
-        if (AuthorizationOf(request, environment) is { } authorization)
+        if (await AuthorizationOfAsync(request, environment, cancellationToken).ConfigureAwait(false) is { } authorization)
         {
             message.Headers.Authorization = authorization;
         }
@@ -72,10 +83,10 @@ public sealed class HttpRequestSender(SecretStore secrets, JsonFile<AppSettings>
         return new Uri(query.Length == 0 ? url : $"{url}{(url.Contains('?') ? '&' : '?')}{query}", UriKind.Absolute);
     }
 
-    AuthenticationHeaderValue? AuthorizationOf(ApiRequest request, ApiEnvironment environment) => request.Auth.Kind switch
+    async Task<AuthenticationHeaderValue?> AuthorizationOfAsync(ApiRequest request, ApiEnvironment environment, CancellationToken cancellationToken) => request.Auth.Kind switch
     {
-        AuthKind.Basic => new("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{environment.Resolve(request.Auth.UserName)}:{environment.Resolve(secrets.Of(request.Id))}"))),
-        AuthKind.Bearer => new("Bearer", environment.Resolve(secrets.Of(request.Id))),
+        AuthKind.Basic => new("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{environment.Resolve(request.Auth.UserName)}:{environment.Resolve(await secrets.OfAsync(request.Id, cancellationToken).ConfigureAwait(false))}"))),
+        AuthKind.Bearer => new("Bearer", environment.Resolve(await secrets.OfAsync(request.Id, cancellationToken).ConfigureAwait(false))),
         _ => null,
     };
 }

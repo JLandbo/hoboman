@@ -6,6 +6,10 @@ public sealed class SecretStoreTests : IDisposable
 
     AppFolder Folder => new(_directory);
 
+    CancellationToken Cancellation => TestContext.Current.CancellationToken;
+
+    SecretStore Store() => new(Folder, NullLogger<SecretStore>.Instance);
+
     public void Dispose()
     {
         if (Directory.Exists(_directory))
@@ -15,34 +19,34 @@ public sealed class SecretStoreTests : IDisposable
     }
 
     [Fact]
-    public void Of_WhenTheSecretWasSaved_ThenGivesItBack()
+    public async Task OfAsync_WhenTheSecretWasSaved_ThenGivesItBack()
     {
         // Arrange
         var id = Guid.NewGuid();
-        new SecretStore(Folder).Save(id, "hemmelig");
+        await Store().SaveAsync(id, "hemmelig", Cancellation);
 
         // Act
-        var secret = new SecretStore(Folder).Of(id);
+        var secret = await Store().OfAsync(id, Cancellation);
 
         // Assert
         Assert.Equal("hemmelig", secret);
     }
 
     [Fact]
-    public void Of_WhenNothingWasSaved_ThenGivesEmpty()
+    public async Task OfAsync_WhenNothingWasSaved_ThenGivesEmpty()
     {
         // Act
-        var secret = new SecretStore(Folder).Of(Guid.NewGuid());
+        var secret = await Store().OfAsync(Guid.NewGuid(), Cancellation);
 
         // Assert
         Assert.Empty(secret);
     }
 
     [Fact]
-    public void Save_WhenCalled_ThenDoesNotWriteTheSecretInPlainText()
+    public async Task SaveAsync_WhenCalled_ThenDoesNotWriteTheSecretInPlainText()
     {
         // Act
-        new SecretStore(Folder).Save(Guid.NewGuid(), "hemmelig");
+        await Store().SaveAsync(Guid.NewGuid(), "hemmelig", Cancellation);
 
         // Assert
         Assert.DoesNotContain("hemmelig", File.ReadAllText(Folder.Secrets));

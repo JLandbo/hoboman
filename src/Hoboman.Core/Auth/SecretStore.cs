@@ -1,16 +1,17 @@
 using System.Security.Cryptography;
 using System.Text;
 using Hoboman.Core.Storage;
+using Microsoft.Extensions.Logging;
 
 namespace Hoboman.Core.Auth;
 
-public sealed class SecretStore(AppFolder folder)
+public sealed class SecretStore(AppFolder folder, ILogger<SecretStore> logger)
 {
-    readonly JsonFile<IReadOnlyDictionary<Guid, string>> _file = new(folder.Secrets, new Dictionary<Guid, string>());
+    readonly JsonFile<IReadOnlyDictionary<Guid, string>> _file = new(folder.Secrets, new Dictionary<Guid, string>(), logger);
 
-    public string Of(Guid id)
+    public async Task<string> OfAsync(Guid id, CancellationToken cancellationToken)
     {
-        if (!_file.Load().TryGetValue(id, out var secret))
+        if (!(await _file.LoadAsync(cancellationToken).ConfigureAwait(false)).TryGetValue(id, out var secret))
         {
             return "";
         }
@@ -20,10 +21,15 @@ public sealed class SecretStore(AppFolder folder)
         }
         catch (Exception exception) when (exception is CryptographicException or FormatException)
         {
+            logger.LogWarning(exception, "Could not decrypt the secret for {Id}", id);
             return "";
         }
     }
 
-    public void Save(Guid id, string secret) =>
-        _file.Save(new Dictionary<Guid, string>(_file.Load()) { [id] = Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(secret), null, DataProtectionScope.CurrentUser)) });
+    public async Task SaveAsync(Guid id, string secret, CancellationToken cancellationToken)
+    {
+        var encrypted = Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(secret), null, DataProtectionScope.CurrentUser));
+        await _file.UpdateAsync(secrets => new Dictionary<Guid, string>(secrets) { [id] = encrypted }, cancellationToken).ConfigureAwait(false);
+        logger.LogInformation("Saved the secret for {Id}", id);
+    }
 }

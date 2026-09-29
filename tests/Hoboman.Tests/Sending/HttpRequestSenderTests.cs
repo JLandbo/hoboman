@@ -20,19 +20,25 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
         }
     }
 
-    HttpRequestSender Sender(bool ignoreCertificateErrors = false)
+    SecretStore Secrets() => new(Folder, NullLogger<SecretStore>.Instance);
+
+    async Task<HttpRequestSender> SenderAsync(bool ignoreCertificateErrors = false)
     {
-        var settings = new JsonFile<AppSettings>(Folder.Settings, AppSettings.Default);
-        settings.Save(new AppSettings(IgnoreCertificateErrors: ignoreCertificateErrors));
-        return new(new SecretStore(Folder), settings);
+        var settings = new JsonFile<AppSettings>(Folder.Settings, AppSettings.Default, NullLogger.Instance);
+        await settings.SaveAsync(new AppSettings(IgnoreCertificateErrors: ignoreCertificateErrors), Cancellation);
+        return new(Secrets(), settings, NullLogger<HttpRequestSender>.Instance);
     }
 
     ApiRequest Request() => ApiRequest.New() with { Url = server.Http.ToString() };
 
     async Task<Echo> EchoOf(ApiRequest request, ApiEnvironment? environment = null)
     {
-        using var sender = Sender();
-        var response = await sender.SendAsync(request, environment, Cancellation);
+        using var sender = await SenderAsync();
+        return EchoIn(await sender.SendAsync(request, environment, Cancellation));
+    }
+
+    static Echo EchoIn(ApiResponse response)
+    {
         return JsonSerializer.Deserialize<Echo>(response.Body, JsonSerializerOptions.Web)!;
     }
 
@@ -98,7 +104,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
     {
         // Arrange
         var request = Request() with { Auth = new(AuthKind.Basic, "hobo") };
-        new SecretStore(Folder).Save(request.Id, "hemmelig");
+        await Secrets().SaveAsync(request.Id, "hemmelig", Cancellation);
 
         // Act
         var echo = await EchoOf(request);
@@ -112,7 +118,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
     {
         // Arrange
         var request = Request() with { Auth = new(AuthKind.Bearer) };
-        new SecretStore(Folder).Save(request.Id, "token");
+        await Secrets().SaveAsync(request.Id, "token", Cancellation);
 
         // Act
         var echo = await EchoOf(request);
@@ -125,7 +131,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
     public async Task SendAsync_WhenTheServerAnswers_ThenGivesStatusSizeHeadersAndBody()
     {
         // Arrange
-        using var sender = Sender();
+        using var sender = await SenderAsync();
 
         // Act
         var response = await sender.SendAsync(Request(), null, Cancellation);
@@ -137,10 +143,24 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
     }
 
     [Fact]
+    public async Task SendAsync_WhenTheServerSetsACookie_ThenDoesNotSendItBack()
+    {
+        // Arrange
+        using var sender = await SenderAsync();
+        await sender.SendAsync(Request(), null, Cancellation);
+
+        // Act
+        var echo = EchoIn(await sender.SendAsync(Request(), null, Cancellation));
+
+        // Assert
+        Assert.DoesNotContain("Cookie", echo.Headers.Keys);
+    }
+
+    [Fact]
     public async Task SendAsync_WhenTheCertificateIsUntrusted_ThenFails()
     {
         // Arrange
-        using var sender = Sender();
+        using var sender = await SenderAsync();
 
         // Act
         var sending = sender.SendAsync(ApiRequest.New() with { Url = server.Https.ToString() }, null, Cancellation);
@@ -153,7 +173,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
     public async Task SendAsync_WhenCertificateErrorsAreIgnored_ThenGetsTheAnswer()
     {
         // Arrange
-        using var sender = Sender(ignoreCertificateErrors: true);
+        using var sender = await SenderAsync(ignoreCertificateErrors: true);
 
         // Act
         var response = await sender.SendAsync(ApiRequest.New() with { Url = server.Https.ToString() }, null, Cancellation);

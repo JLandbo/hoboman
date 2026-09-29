@@ -48,6 +48,7 @@ public sealed class EchoServer : IAsyncLifetime
     static async Task EchoAsync(HttpContext context)
     {
         using var reader = new StreamReader(context.Request.Body);
+        context.Response.Cookies.Append("session", "1");
         var headers = context.Request.Headers.ToDictionary(header => header.Key, header => header.Value.ToString(), StringComparer.OrdinalIgnoreCase);
         await context.Response.WriteAsJsonAsync(new Echo(context.Request.Method, context.Request.Path + context.Request.QueryString, headers, await reader.ReadToEndAsync()));
     }
