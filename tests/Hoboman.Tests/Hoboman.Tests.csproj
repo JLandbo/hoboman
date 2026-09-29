@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="4.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="System.IO" />
+    <Using Include="Xunit" />
+    <Using Include="Hoboman.Core.Auth" />
+    <Using Include="Hoboman.Core.Environments" />
+    <Using Include="Hoboman.Core.Requests" />
+    <Using Include="Hoboman.Core.Sending" />
+    <Using Include="Hoboman.Core.Settings" />
+    <Using Include="Hoboman.Core.Storage" />
+    <Using Include="Hoboman.Desktop" />
+    <Using Include="Hoboman.Mvvm" />
+    <Using Include="Hoboman.ViewModels" />
+    <Using Include="Hoboman.Views" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Hoboman.Core\Hoboman.Core.csproj" />
+    <ProjectReference Include="..\..\src\Hoboman\Hoboman.csproj" />
+  </ItemGroup>
+
+</Project>

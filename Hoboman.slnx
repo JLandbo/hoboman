@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Hoboman.Core/Hoboman.Core.csproj" />
+    <Project Path="src/Hoboman/Hoboman.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Hoboman.Tests/Hoboman.Tests.csproj" />
+  </Folder>
+</Solution>
