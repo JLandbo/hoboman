@@ -13,7 +13,8 @@ public sealed class Harness : IDisposable
         EnvironmentStore = new(Folder, NullLogger<EnvironmentStore>.Instance);
         SettingsStore = new(Folder, NullLogger<SettingsStore>.Instance);
         Environments = Restarted();
-        var runner = new RequestRunner(new FakeSender(send ?? (() => Task.FromResult(new ApiResponse(200, "OK", 0, 2, [], "{}")))), History(), NullLogger<RequestRunner>.Instance);
+        Sender = new(send ?? (() => Task.FromResult(new ApiResponse(200, "OK", 0, 2, [], "{}"))));
+        var runner = new RequestRunner(Sender, Library, History(), NullLogger<RequestRunner>.Instance);
         Secrets = new(Folder, NullLogger<SecretStore>.Instance);
         Services = new(runner, Secrets, Library, Environments, Dialogs, _translator, NullLogger<RequestTabViewModel>.Instance);
     }
@@ -21,6 +22,8 @@ public sealed class Harness : IDisposable
     public AppFolder Folder { get; }
 
     public FakeDialogs Dialogs { get; }
+
+    public FakeSender Sender { get; }
 
     public RequestLibrary Library { get; }
 
@@ -42,11 +45,14 @@ public sealed class Harness : IDisposable
         Environments,
         new(SettingsStore, _translator, NullLogger<SettingsViewModel>.Instance),
         EnvironmentEditor(),
+        FolderAuth(),
         Services,
         Library,
         Dialogs,
         _translator,
         NullLogger<MainViewModel>.Instance);
+
+    public FolderAuthViewModel FolderAuth() => new(Library, Secrets, _translator, NullLogger<FolderAuthViewModel>.Instance);
 
     public EnvironmentEditorViewModel EnvironmentEditor() => new(EnvironmentStore, Environments, _translator, NullLogger<EnvironmentEditorViewModel>.Instance);
 

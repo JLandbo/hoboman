@@ -17,7 +17,7 @@ hoboman-cli send <METODE> <url> [--env <navn>] [-H "Navn: Værdi"]... [--json <t
 ```
 
 - `list` viser de gemte requests som stier relativt til `requests\`, fx `Brugere/Hent bruger`.
-- `send <gemt request>` sender en gemt request med dens egne headers, body og auth.
+- `send <gemt request>` sender en gemt request med dens egne headers, body og auth. Arver den auth, bruges auth fra den nærmeste mappe, der har en, ligesom i GUI'en.
 - `send GET https://…` sender et direkte kald. Auth angives med `-H "Authorization: …"`.
 - `--env` vælger environment. Uden den bruges `EnvironmentName` fra `settings.json`.
 - `@fil` læser body fra en fil.

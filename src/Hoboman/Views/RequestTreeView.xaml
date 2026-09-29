@@ -7,6 +7,9 @@
             <MenuItem Header="{DynamicResource Tree.Rename}" Click="Rename_Click" />
             <MenuItem Header="{DynamicResource Tree.Delete}" Click="Delete_Click" />
         </ContextMenu>
+        <ContextMenu x:Key="FolderMenu" x:Shared="False" Style="{StaticResource PopupMenu}">
+            <MenuItem Header="{DynamicResource Tree.FolderAuth}" Click="FolderAuth_Click" />
+        </ContextMenu>
     </UserControl.Resources>
     <Grid>
         <TreeView ItemsSource="{Binding Tree.Nodes}" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource Text}"
@@ -14,6 +17,7 @@
             <TreeView.ItemContainerStyle>
                 <Style TargetType="TreeViewItem" BasedOn="{StaticResource TreeItem}">
                     <EventSetter Event="MouseLeftButtonUp" Handler="Item_MouseLeftButtonUp" />
+                    <Setter Property="ContextMenu" Value="{StaticResource FolderMenu}" />
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding IsFolder}" Value="False">
                             <Setter Property="ContextMenu" Value="{StaticResource RequestMenu}" />

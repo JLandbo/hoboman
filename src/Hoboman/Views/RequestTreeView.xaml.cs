@@ -27,5 +27,7 @@ public partial class RequestTreeView : UserControl
 
     async void Delete_Click(object sender, RoutedEventArgs e) => await ViewModel.DeleteAsync(NodeOf(sender));
 
+    async void FolderAuth_Click(object sender, RoutedEventArgs e) => await ViewModel.EditFolderAuthAsync(NodeOf(sender));
+
     static RequestNodeViewModel NodeOf(object sender) => (RequestNodeViewModel)((FrameworkElement)sender).DataContext;
 }

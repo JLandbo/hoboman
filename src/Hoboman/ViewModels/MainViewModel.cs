@@ -13,6 +13,7 @@ public sealed class MainViewModel(
     EnvironmentsViewModel environments,
     SettingsViewModel settings,
     EnvironmentEditorViewModel environmentEditor,
+    FolderAuthViewModel folderAuth,
     RequestTabServices tabServices,
     RequestLibrary library,
     IDialogs dialogs,
@@ -194,6 +195,12 @@ public sealed class MainViewModel(
     {
         await environmentEditor.LoadAsync(CancellationToken.None);
         dialogs.EditEnvironments(environmentEditor);
+    }
+
+    public async Task EditFolderAuthAsync(RequestNodeViewModel folder)
+    {
+        await folderAuth.LoadAsync(folder.Path, CancellationToken.None);
+        dialogs.EditFolderAuth(folderAuth);
     }
 
     async Task ReloadRequestsAsync()

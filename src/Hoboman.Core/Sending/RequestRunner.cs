@@ -6,14 +6,15 @@ using Microsoft.Extensions.Logging;
 
 namespace Hoboman.Core.Sending;
 
-public sealed class RequestRunner(IRequestSender sender, HistoryStore history, ILogger<RequestRunner> logger)
+public sealed class RequestRunner(IRequestSender sender, RequestLibrary library, HistoryStore history, ILogger<RequestRunner> logger)
 {
     public async Task<ApiResponse> RunAsync(ApiRequest request, string? name, ApiEnvironment? environment, HistorySource source, CancellationToken cancellationToken)
     {
         ApiResponse response;
         try
         {
-            response = await sender.SendAsync(request, environment, cancellationToken).ConfigureAwait(false);
+            var auth = await library.AuthOfAsync(name, request, cancellationToken).ConfigureAwait(false);
+            response = await sender.SendAsync(request, auth, environment, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (!(exception is OperationCanceledException && cancellationToken.IsCancellationRequested))
         {

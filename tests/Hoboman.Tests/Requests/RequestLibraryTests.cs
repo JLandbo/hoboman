@@ -84,6 +84,7 @@ public sealed class RequestLibraryTests : IDisposable
     [InlineData("Auth: get token")]
     [InlineData("Users//Get user")]
     [InlineData("Users./Get user")]
+    [InlineData("Users/.folder")]
     public async Task SaveAsync_WhenTheNameIsInvalid_ThenThrows(string name)
     {
         // Act
@@ -183,5 +184,126 @@ public sealed class RequestLibraryTests : IDisposable
 
         // Assert
         Assert.Empty(await Library().NamesAsync(Cancellation));
+    }
+
+    [Fact]
+    public async Task NamesAsync_WhenAFolderHasSettings_ThenLeavesThemOut()
+    {
+        // Arrange
+        await Library().SaveAsync("Users/Get user", ApiRequest.New(), Cancellation);
+        await Library().SaveFolderAsync("Users", new FolderSettings { Id = Guid.NewGuid() }, Cancellation);
+
+        // Act
+        var names = await Library().NamesAsync(Cancellation);
+
+        // Assert
+        Assert.Equal(["Users/Get user"], names);
+    }
+
+    [Fact]
+    public async Task AuthOfAsync_WhenTheRequestHasItsOwnAuth_ThenUsesIt()
+    {
+        // Arrange
+        var users = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
+        await Library().SaveFolderAsync("Users", users, Cancellation);
+
+        // Act
+        var auth = await Library().AuthOfAsync("Users/Admin/Get user", ApiRequest.New() with { Auth = new(AuthKind.Basic) }, Cancellation);
+
+        // Assert
+        Assert.Equal(AuthKind.Basic, auth.Settings.Kind);
+
+    }
+
+    [Fact]
+    public async Task AuthOfAsync_WhenAFolderAboveHasAuth_ThenUsesTheFolders()
+    {
+        // Arrange
+        var users = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
+        await Library().SaveFolderAsync("Users", users, Cancellation);
+
+        // Act
+        var auth = await Library().AuthOfAsync("Users/Admin/Get user", ApiRequest.New(), Cancellation);
+
+        // Assert
+        Assert.Equal(users.Id, auth.Id);
+
+    }
+
+    [Fact]
+    public async Task AuthOfAsync_WhenTheNearestFolderHasAuth_ThenItWins()
+    {
+        // Arrange
+        var users = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
+        await Library().SaveFolderAsync("Users", users, Cancellation);
+        var admin = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Basic) };
+        await Library().SaveFolderAsync("Users/Admin", admin, Cancellation);
+
+        // Act
+        var auth = await Library().AuthOfAsync("Users/Admin/Get user", ApiRequest.New(), Cancellation);
+
+        // Assert
+        Assert.Equal(admin.Id, auth.Id);
+
+    }
+
+    [Fact]
+    public async Task AuthOfAsync_WhenTheNearestFolderInherits_ThenLooksFurtherUp()
+    {
+        // Arrange
+        var users = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
+        await Library().SaveFolderAsync("Users", users, Cancellation);
+        await Library().SaveFolderAsync("Users/Admin", new FolderSettings { Id = Guid.NewGuid() }, Cancellation);
+
+        // Act
+        var auth = await Library().AuthOfAsync("Users/Admin/Get user", ApiRequest.New(), Cancellation);
+
+        // Assert
+        Assert.Equal(users.Id, auth.Id);
+
+    }
+
+    [Fact]
+    public async Task AuthOfAsync_WhenTheNearestFolderSaysNone_ThenSendsNoAuth()
+    {
+        // Arrange
+        var users = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
+        await Library().SaveFolderAsync("Users", users, Cancellation);
+        await Library().SaveFolderAsync("Users/Admin", new FolderSettings { Id = Guid.NewGuid(), Auth = AuthSettings.None }, Cancellation);
+
+        // Act
+        var auth = await Library().AuthOfAsync("Users/Admin/Get user", ApiRequest.New(), Cancellation);
+
+        // Assert
+        Assert.Equal(AuthKind.None, auth.Settings.Kind);
+
+    }
+
+    [Fact]
+    public async Task AuthOfAsync_WhenNoFolderHasAuth_ThenSendsNoAuth()
+    {
+        // Arrange
+
+        // Act
+        var auth = await Library().AuthOfAsync("Users/Admin/Get user", ApiRequest.New(), Cancellation);
+
+        // Assert
+        Assert.Equal(AuthKind.None, auth.Settings.Kind);
+
+    }
+
+    [Fact]
+    public async Task AuthOfAsync_WhenTheRequestHasNoName_ThenSendsNoAuth()
+    {
+        // Arrange
+        var users = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
+        await Library().SaveFolderAsync("Users", users, Cancellation);
+
+        // Act
+        var auth = await Library().AuthOfAsync(null, ApiRequest.New(), Cancellation);
+
+        // Assert
+        Assert.Equal(AuthKind.None, auth.Settings.Kind);
+
     }
 }

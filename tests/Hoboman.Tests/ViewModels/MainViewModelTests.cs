@@ -365,4 +365,20 @@ public sealed class MainViewModelTests
         // Assert
         Assert.Equal("Dev", Assert.Single(Assert.IsType<EnvironmentEditorViewModel>(harness.Dialogs.Shown).Environments).Name);
     }
+
+    [Fact]
+    public async Task EditFolderAuthAsync_WhenCalled_ThenShowsTheFoldersAuth()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveFolderAsync("Users", new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) }, Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+
+        // Act
+        await main.EditFolderAuthAsync(main.Tree.Nodes.Single());
+
+        // Assert
+        Assert.Equal(AuthKind.Bearer, Assert.IsType<FolderAuthViewModel>(harness.Dialogs.Shown).AuthKind);
+    }
 }

@@ -1,3 +1,3 @@
 namespace Hoboman.Core.Auth;
 
-public enum AuthKind { None, Basic, Bearer, OAuth2 }
+public enum AuthKind { Inherit, None, Basic, Bearer, OAuth2 }

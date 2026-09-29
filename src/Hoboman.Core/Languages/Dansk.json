@@ -1,6 +1,8 @@
 {
   "culture": "da-DK",
   "texts": {
+    "Auth.Inherit": "Arv fra mappe",
+    "Auth.InheritHint": "Bruger auth fra den nærmeste mappe, der har en.",
     "Auth.None": "Ingen",
     "Auth.Basic": "Basic",
     "Auth.Bearer": "Bearer token",
@@ -52,6 +54,9 @@
     "Folder.Title": "Ny mappe",
     "Folder.Create": "Opret",
     "Folder.Failed": "Mappen kunne ikke oprettes",
+    "FolderAuth.Title": "Auth for {0}",
+    "FolderAuth.LoadFailed": "Mappens auth kunne ikke indlæses: {0}",
+    "FolderAuth.SaveFailed": "Mappens auth kunne ikke gemmes: {0}",
     "History.Today": "I dag",
     "History.Yesterday": "I går",
     "History.Failed": "Fejl",
@@ -66,8 +71,8 @@
     "Response.Body": "Body",
     "Response.Headers": "Headers",
     "Response.Failed": "Requesten kunne ikke sendes",
-    "Response.MissingPassword": "Der er ikke gemt en adgangskode til denne request.",
-    "Response.MissingToken": "Der er ikke gemt et token til denne request.",
+    "Response.MissingPassword": "Der er ikke gemt en adgangskode til requesten eller dens mappe.",
+    "Response.MissingToken": "Der er ikke gemt et token til requesten eller dens mappe.",
     "Response.SecretsFailed": "Adgangskode og token kunne ikke indlæses",
     "Response.Empty": "Send en request for at se svaret",
     "Response.Sending": "Sender…",
@@ -96,6 +101,7 @@
     "Table.Add": "Tilføj…",
     "Table.Remove": "Fjern",
     "Tree.Empty": "Ingen requests endnu",
+    "Tree.FolderAuth": "Auth…",
     "Tree.Rename": "Omdøb…",
     "Tree.Delete": "Slet"
   }

@@ -18,7 +18,7 @@ public sealed record ApiRequest
 
     public string Body { get; init; } = "";
 
-    public AuthSettings Auth { get; init; } = AuthSettings.None;
+    public AuthSettings Auth { get; init; } = AuthSettings.Inherit;
 
     public static ApiRequest New() => new() { Id = Guid.NewGuid(), Url = "" };
 }

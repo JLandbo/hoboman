@@ -31,7 +31,7 @@ public sealed class RequestTabViewModelTests
         await tab.SendAsync();
 
         // Assert
-        Assert.Equal(new ProblemMessage("The request could not be sent", "No token is saved for this request."), tab.Problem);
+        Assert.Equal(new ProblemMessage("The request could not be sent", "No token is saved for the request or its folder."), tab.Problem);
     }
 
     [Fact]
@@ -367,5 +367,37 @@ public sealed class RequestTabViewModelTests
 
         // Assert
         Assert.Empty(await harness.Library.NamesAsync(Cancellation));
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheRequestInherits_ThenSendsWithTheFoldersAuth()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var folder = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
+        await harness.Library.SaveFolderAsync("Users", folder, Cancellation);
+        var tab = harness.Tab(ApiRequest.New(), "Users/Get user");
+
+        // Act
+        await tab.SendAsync();
+
+        // Assert
+        Assert.Equal(folder.Id, harness.Sender.Auth?.Id);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenAHistoryTabInherits_ThenUsesTheFolderOfItsRequest()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var folder = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
+        await harness.Library.SaveFolderAsync("Users", folder, Cancellation);
+        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), suggestedName: "Users/Get user", fromHistory: true);
+
+        // Act
+        await tab.SendAsync();
+
+        // Assert
+        Assert.Equal(folder.Id, harness.Sender.Auth?.Id);
     }
 }

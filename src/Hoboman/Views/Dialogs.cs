@@ -19,4 +19,6 @@ public sealed class Dialogs(Translator translator) : IDialogs
     public void EditSettings(SettingsViewModel settings) => new SettingsWindow(settings).ShowDialog();
 
     public void EditEnvironments(EnvironmentEditorViewModel editor) => new EnvironmentEditorWindow(editor).ShowDialog();
+
+    public void EditFolderAuth(FolderAuthViewModel folderAuth) => new FolderAuthWindow(folderAuth).ShowDialog();
 }

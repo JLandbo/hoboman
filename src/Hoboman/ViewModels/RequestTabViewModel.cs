@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
 
-public sealed class RequestTabViewModel : ObservableObject
+public sealed class RequestTabViewModel : ObservableObject, IAuthFields
 {
     readonly RequestTabServices _services;
     Guid _id;
@@ -235,7 +235,7 @@ public sealed class RequestTabViewModel : ObservableObject
         try
         {
             await SaveSecretsAsync(sending.Token);
-            Response = ResponseDisplay.Of(await _services.Runner.RunAsync(ToRequest(), Name, _services.Environments.Selected, HistorySource.App, sending.Token));
+            Response = ResponseDisplay.Of(await _services.Runner.RunAsync(ToRequest(), Name ?? SuggestedName, _services.Environments.Selected, HistorySource.App, sending.Token));
         }
         catch (OperationCanceledException) when (sending.IsCancellationRequested)
         {

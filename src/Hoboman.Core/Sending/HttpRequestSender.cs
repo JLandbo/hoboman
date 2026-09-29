@@ -12,12 +12,12 @@ public sealed class HttpRequestSender(SecretStore secrets, HttpClients clients, 
 {
     const string _tokenSymbols = "!#$%&'*+-.^_`|~";
 
-    public async Task<ApiResponse> SendAsync(ApiRequest request, ApiEnvironment? environment, CancellationToken cancellationToken)
+    public async Task<ApiResponse> SendAsync(ApiRequest request, AuthSource auth, ApiEnvironment? environment, CancellationToken cancellationToken)
     {
         Uri? address = null;
         try
         {
-            using var message = await MessageOfAsync(request, environment ?? new ApiEnvironment("", []), cancellationToken).ConfigureAwait(false);
+            using var message = await MessageOfAsync(request, auth, environment ?? new ApiEnvironment("", []), cancellationToken).ConfigureAwait(false);
             address = message.RequestUri;
             var client = await clients.CurrentAsync(cancellationToken).ConfigureAwait(false);
             logger.LogInformation("Sending {Method} {Url}", message.Method, LoggableOf(address));
@@ -46,7 +46,7 @@ public sealed class HttpRequestSender(SecretStore secrets, HttpClients clients, 
         }
     }
 
-    async Task<HttpRequestMessage> MessageOfAsync(ApiRequest request, ApiEnvironment environment, CancellationToken cancellationToken)
+    async Task<HttpRequestMessage> MessageOfAsync(ApiRequest request, AuthSource auth, ApiEnvironment environment, CancellationToken cancellationToken)
     {
         if (!IsToken(request.Method))
         {
@@ -62,7 +62,7 @@ public sealed class HttpRequestSender(SecretStore secrets, HttpClients clients, 
             },
         };
         AddHeaders(message, request, environment);
-        if (await AuthorizationOfAsync(request, environment, cancellationToken).ConfigureAwait(false) is { } authorization)
+        if (await AuthorizationOfAsync(auth, environment, cancellationToken).ConfigureAwait(false) is { } authorization)
         {
             message.Headers.Authorization = authorization;
         }
@@ -106,15 +106,15 @@ public sealed class HttpRequestSender(SecretStore secrets, HttpClients clients, 
         return new Uri($"{address}{(address.Contains('?') ? '&' : '?')}{query}{fragment}", UriKind.Absolute);
     }
 
-    async Task<AuthenticationHeaderValue?> AuthorizationOfAsync(ApiRequest request, ApiEnvironment environment, CancellationToken cancellationToken) => request.Auth.Kind switch
+    async Task<AuthenticationHeaderValue?> AuthorizationOfAsync(AuthSource auth, ApiEnvironment environment, CancellationToken cancellationToken) => auth.Settings.Kind switch
     {
-        AuthKind.Basic => new("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{environment.Resolve(request.Auth.UserName)}:{environment.Resolve(await SecretOfAsync(request, SecretKind.Password, cancellationToken).ConfigureAwait(false))}"))),
-        AuthKind.Bearer => new("Bearer", environment.Resolve(await SecretOfAsync(request, SecretKind.Token, cancellationToken).ConfigureAwait(false))),
+        AuthKind.Basic => new("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{environment.Resolve(auth.Settings.UserName)}:{environment.Resolve(await SecretOfAsync(auth, SecretKind.Password, cancellationToken).ConfigureAwait(false))}"))),
+        AuthKind.Bearer => new("Bearer", environment.Resolve(await SecretOfAsync(auth, SecretKind.Token, cancellationToken).ConfigureAwait(false))),
         _ => null,
     };
 
-    async Task<string> SecretOfAsync(ApiRequest request, SecretKind kind, CancellationToken cancellationToken) =>
-        await secrets.OfAsync(request.Id, kind, cancellationToken).ConfigureAwait(false) ?? throw new MissingSecretException(kind);
+    async Task<string> SecretOfAsync(AuthSource auth, SecretKind kind, CancellationToken cancellationToken) =>
+        await secrets.OfAsync(auth.Id, kind, cancellationToken).ConfigureAwait(false) ?? throw new MissingSecretException(kind);
 
     static string LoggableOf(Uri? address) => address is null ? "(no address yet)" : SafeAddress.Of(address);
 

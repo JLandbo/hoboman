@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -8,35 +7,9 @@ namespace Hoboman.Views;
 
 public partial class RequestEditorView : UserControl
 {
-    public RequestEditorView()
-    {
-        InitializeComponent();
-        DataContextChanged += (_, e) =>
-        {
-            if (e.OldValue is RequestTabViewModel old)
-            {
-                old.PropertyChanged -= Tab_PropertyChanged;
-            }
-            if (e.NewValue is RequestTabViewModel tab)
-            {
-                tab.PropertyChanged += Tab_PropertyChanged;
-                PasswordBox.Password = tab.Password;
-            }
-        };
-    }
+    public RequestEditorView() => InitializeComponent();
 
     RequestTabViewModel Tab => (RequestTabViewModel)DataContext;
-
-    // A password box cannot be bound, so it is kept in step with the view model by hand.
-    void Tab_PropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(RequestTabViewModel.Password) && PasswordBox.Password != Tab.Password)
-        {
-            PasswordBox.Password = Tab.Password;
-        }
-    }
-
-    void PasswordBox_PasswordChanged(object sender, RoutedEventArgs e) => Tab.Password = PasswordBox.Password;
 
     void Cancel_Click(object sender, RoutedEventArgs e) => Tab.Cancel();
 

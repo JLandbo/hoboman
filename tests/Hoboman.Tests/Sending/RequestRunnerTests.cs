@@ -10,7 +10,11 @@ public sealed class RequestRunnerTests : IDisposable
 
     HistoryStore History() => new(new AppFolder(_temporary.Path), NullLogger<HistoryStore>.Instance);
 
-    RequestRunner Runner(Func<Task<ApiResponse>> send) => new(new FakeSender(send), History(), NullLogger<RequestRunner>.Instance);
+    RequestLibrary Library() => new(new AppFolder(_temporary.Path), NullLogger<RequestLibrary>.Instance);
+
+    RequestRunner Runner(Func<Task<ApiResponse>> send) => Runner(new FakeSender(send));
+
+    RequestRunner Runner(FakeSender sender) => new(sender, Library(), History(), NullLogger<RequestRunner>.Instance);
 
     static ApiRequest Request() => ApiRequest.New() with { Url = "https://dev.local:5001/users?key=secret" };
 
@@ -94,5 +98,34 @@ public sealed class RequestRunnerTests : IDisposable
 
         // Assert
         Assert.Empty(await History().LatestAsync(10, null, Cancellation));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheRequestInherits_ThenSendsWithTheFoldersAuth()
+    {
+        // Arrange
+        var folder = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
+        await Library().SaveFolderAsync("Brugere", folder, Cancellation);
+        var sender = new FakeSender(() => Task.FromResult(new ApiResponse(200, "OK", 0, 2, [], "{}")));
+
+        // Act
+        await Runner(sender).RunAsync(Request(), "Brugere/Hent", null, HistorySource.App, Cancellation);
+
+        // Assert
+        Assert.Equal(folder.Id, sender.Auth?.Id);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheFolderSettingsAreInvalid_ThenRemembersTheError()
+    {
+        // Arrange
+        Directory.CreateDirectory(Path.Combine(_temporary.Path, "requests", "Brugere"));
+        File.WriteAllText(Path.Combine(_temporary.Path, "requests", "Brugere", ".folder.json"), "{");
+
+        // Act
+        await Record.ExceptionAsync(() => Runner(() => Task.FromResult(new ApiResponse(200, "OK", 0, 2, [], "{}"))).RunAsync(Request(), "Brugere/Hent", null, HistorySource.App, Cancellation));
+
+        // Assert
+        Assert.NotNull(Assert.Single(await History().LatestAsync(10, null, Cancellation)).Entry.Error);
     }
 }

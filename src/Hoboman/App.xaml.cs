@@ -101,6 +101,7 @@ public partial class App : Application
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<EnvironmentsViewModel>();
         services.AddSingleton<EnvironmentEditorViewModel>();
+        services.AddSingleton<FolderAuthViewModel>();
         services.AddSingleton<RequestTreeViewModel>();
         services.AddSingleton<HistoryViewModel>();
         services.AddSingleton<RequestTabServices>();

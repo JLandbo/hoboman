@@ -1,6 +1,8 @@
 {
   "culture": "en-GB",
   "texts": {
+    "Auth.Inherit": "Inherit from folder",
+    "Auth.InheritHint": "Uses the auth of the nearest folder that has one.",
     "Auth.None": "None",
     "Auth.Basic": "Basic",
     "Auth.Bearer": "Bearer token",
@@ -52,6 +54,9 @@
     "Folder.Title": "New folder",
     "Folder.Create": "Create",
     "Folder.Failed": "The folder could not be created",
+    "FolderAuth.Title": "Auth for {0}",
+    "FolderAuth.LoadFailed": "The folder's auth could not be loaded: {0}",
+    "FolderAuth.SaveFailed": "The folder's auth could not be saved: {0}",
     "History.Today": "Today",
     "History.Yesterday": "Yesterday",
     "History.Failed": "Failed",
@@ -66,8 +71,8 @@
     "Response.Body": "Body",
     "Response.Headers": "Headers",
     "Response.Failed": "The request could not be sent",
-    "Response.MissingPassword": "No password is saved for this request.",
-    "Response.MissingToken": "No token is saved for this request.",
+    "Response.MissingPassword": "No password is saved for the request or its folder.",
+    "Response.MissingToken": "No token is saved for the request or its folder.",
     "Response.SecretsFailed": "The password and token could not be loaded",
     "Response.Empty": "Send a request to see the response",
     "Response.Sending": "Sending…",
@@ -96,6 +101,7 @@
     "Table.Add": "Add…",
     "Table.Remove": "Remove",
     "Tree.Empty": "No requests yet",
+    "Tree.FolderAuth": "Auth…",
     "Tree.Rename": "Rename…",
     "Tree.Delete": "Delete"
   }

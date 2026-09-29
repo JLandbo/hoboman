@@ -4,8 +4,7 @@
              xmlns:local="clr-namespace:Hoboman.Views"
              xmlns:controls="clr-namespace:Hoboman.Controls"
              xmlns:viewModels="clr-namespace:Hoboman.ViewModels"
-             xmlns:requests="clr-namespace:Hoboman.Core.Requests;assembly=Hoboman.Core"
-             xmlns:auth="clr-namespace:Hoboman.Core.Auth;assembly=Hoboman.Core">
+             xmlns:requests="clr-namespace:Hoboman.Core.Requests;assembly=Hoboman.Core">
     <UserControl.Resources>
         <Style x:Key="Count" TargetType="TextBlock">
             <Setter Property="Margin" Value="4,0,0,0" />
@@ -132,56 +131,7 @@
                     </TextBox>
                 </DockPanel>
 
-                <DockPanel Visibility="{Binding IsChecked, ElementName=AuthSection, Converter={StaticResource VisibleWhenTrue}}">
-                    <Border DockPanel.Dock="Top" HorizontalAlignment="Left" Padding="2" CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,12">
-                        <StackPanel Orientation="Horizontal">
-                            <RadioButton Content="{DynamicResource Auth.None}" GroupName="AuthKind" Style="{StaticResource Segment}"
-                                         IsChecked="{Binding AuthKind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:AuthKind.None}}" />
-                            <RadioButton Content="{DynamicResource Auth.Basic}" GroupName="AuthKind" Style="{StaticResource Segment}"
-                                         IsChecked="{Binding AuthKind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:AuthKind.Basic}}" />
-                            <RadioButton Content="{DynamicResource Auth.Bearer}" GroupName="AuthKind" Style="{StaticResource Segment}"
-                                         IsChecked="{Binding AuthKind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:AuthKind.Bearer}}" />
-                        </StackPanel>
-                    </Border>
-                    <StackPanel HorizontalAlignment="Left" Width="420">
-                        <StackPanel>
-                            <StackPanel.Style>
-                                <Style TargetType="StackPanel">
-                                    <Setter Property="Visibility" Value="Collapsed" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding AuthKind}" Value="{x:Static auth:AuthKind.Basic}">
-                                            <Setter Property="Visibility" Value="Visible" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </StackPanel.Style>
-                            <TextBlock Text="{DynamicResource Auth.UserName}" Style="{StaticResource Label}" />
-                            <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
-                                <TextBox Text="{Binding UserName, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
-                            </Border>
-                            <TextBlock Text="{DynamicResource Auth.Password}" Style="{StaticResource Label}" />
-                            <Border CornerRadius="8" Background="{DynamicResource Input}">
-                                <PasswordBox x:Name="PasswordBox" Style="{StaticResource PasswordCell}" PasswordChanged="PasswordBox_PasswordChanged" />
-                            </Border>
-                        </StackPanel>
-                        <StackPanel>
-                            <StackPanel.Style>
-                                <Style TargetType="StackPanel">
-                                    <Setter Property="Visibility" Value="Collapsed" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding AuthKind}" Value="{x:Static auth:AuthKind.Bearer}">
-                                            <Setter Property="Visibility" Value="Visible" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </StackPanel.Style>
-                            <TextBlock Text="{DynamicResource Auth.Token}" Style="{StaticResource Label}" />
-                            <Border CornerRadius="8" Background="{DynamicResource Input}">
-                                <TextBox Text="{Binding Token, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
-                            </Border>
-                        </StackPanel>
-                    </StackPanel>
-                </DockPanel>
+                <local:AuthEditor Visibility="{Binding IsChecked, ElementName=AuthSection, Converter={StaticResource VisibleWhenTrue}}" />
             </Grid>
         </DockPanel>
     </Border>

@@ -11,4 +11,6 @@ public interface IDialogs
     void EditSettings(SettingsViewModel settings);
 
     void EditEnvironments(EnvironmentEditorViewModel editor);
+
+    void EditFolderAuth(FolderAuthViewModel folderAuth);
 }
