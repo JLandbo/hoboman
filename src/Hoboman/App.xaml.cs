@@ -1,7 +1,10 @@
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Hoboman.Core.Auth;
+using Hoboman.Core.Environments;
 using Hoboman.Core.Languages;
+using Hoboman.Core.Requests;
+using Hoboman.Core.Sending;
 using Hoboman.Core.Settings;
 using Hoboman.Core.Storage;
 using Hoboman.Desktop;
@@ -37,6 +40,10 @@ public partial class App : Application
         services.AddSingleton(folder);
         services.AddSingleton(_ => new JsonFile<AppSettings>(folder.Settings, AppSettings.Default));
         services.AddSingleton(provider => new Translator(Translation.Find(provider.GetRequiredService<JsonFile<AppSettings>>().Load().LanguageName)));
+        services.AddSingleton(_ => new JsonFile<IReadOnlyList<ApiEnvironment>>(folder.Environments, []));
+        services.AddSingleton<RequestLibrary>();
+        services.AddSingleton<SecretStore>();
+        services.AddSingleton<IRequestSender, HttpRequestSender>();
         services.AddSingleton<IBrowser, ShellBrowser>();
         services.AddSingleton<RequestTreeViewModel>();
         services.AddSingleton<RequestEditorViewModel>();

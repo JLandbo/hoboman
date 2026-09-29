@@ -10,6 +10,7 @@ public sealed class JsonFile<T>(string path, T empty)
     static readonly JsonSerializerOptions _options = new()
     {
         WriteIndented = true,
+        PropertyNameCaseInsensitive = true,
         RespectRequiredConstructorParameters = true,
         RespectNullableAnnotations = true,
         Converters = { new JsonStringEnumConverter() },
