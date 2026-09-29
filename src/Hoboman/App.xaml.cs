@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
@@ -38,7 +39,7 @@ public partial class App : Application
             if (MainWindow?.IsVisible == true)
             {
                 args.Handled = true;
-                MessageBox.Show(MainWindow, translator.Format("Common.UnexpectedError", args.Exception.Message), "Hoboman", MessageBoxButton.OK, MessageBoxImage.Error);
+                _services.GetRequiredService<IDialogs>().Tell(translator.Of("Common.UnexpectedError"), args.Exception.Message);
             }
         };
         logger.LogInformation("Hoboman started in {Folder}", AppContext.BaseDirectory);
@@ -121,6 +122,10 @@ public partial class App : Application
 
     void Use(Translation translation)
     {
+        CultureInfo.DefaultThreadCurrentCulture = translation.Culture;
+        CultureInfo.DefaultThreadCurrentUICulture = translation.Culture;
+        CultureInfo.CurrentCulture = translation.Culture;
+        CultureInfo.CurrentUICulture = translation.Culture;
         if (_texts is not null)
         {
             Resources.MergedDictionaries.Remove(_texts);

@@ -11,7 +11,7 @@
                 <Button DockPanel.Dock="Right" Content="&#xE711;" ToolTip="{DynamicResource Common.Close}" Click="Cancel_Click" IsCancel="True" Style="{StaticResource SmallIconButton}" FontSize="12" VerticalAlignment="Center" />
                 <TextBlock x:Name="TitleText" FontSize="18" FontWeight="SemiBold" />
             </DockPanel>
-            <TextBlock Text="{DynamicResource Editor.Name}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,0,0,4" />
+            <TextBlock Text="{DynamicResource Common.Name}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,0,0,4" />
             <Border CornerRadius="8" Background="{DynamicResource Input}">
                 <TextBox x:Name="NameBox" Style="{StaticResource Field}" Background="Transparent" Padding="8,6" FontFamily="{StaticResource CodeFont}"
                          CaretBrush="{DynamicResource Text}" TextChanged="NameBox_TextChanged" />

@@ -144,7 +144,7 @@ public sealed class MainViewModel(RequestTreeViewModel tree, HistoryViewModel hi
 
     public async Task RenameAsync(RequestNodeViewModel node)
     {
-        if (Dialogs.AskName(Translator.Of("Rename.Title"), node.Path, Translator.Of("Editor.Save"), candidate => SameName(candidate, node.Path) ? null : services.ProblemOfName(candidate)) is not { } name || name == node.Path)
+        if (Dialogs.AskName(Translator.Of("Rename.Title"), node.Path, Translator.Of("Common.Save"), candidate => SameName(candidate, node.Path) ? null : services.ProblemOfName(candidate)) is not { } name || name == node.Path)
         {
             return;
         }

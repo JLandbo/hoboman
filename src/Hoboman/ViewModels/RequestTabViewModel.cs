@@ -1,3 +1,4 @@
+using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Hoboman.Core.Auth;
@@ -201,7 +202,7 @@ public sealed class RequestTabViewModel : ObservableObject
     public async Task<bool> SaveAsync()
     {
         var translator = _services.Translator;
-        var name = Name ?? _services.Dialogs.AskName(translator.Of("Save.Title"), SuggestedName ?? "", translator.Of("Editor.Save"), _services.ProblemOfName);
+        var name = Name ?? _services.Dialogs.AskName(translator.Of("Save.Title"), SuggestedName ?? "", translator.Of("Common.Save"), _services.ProblemOfName);
         if (name is null)
         {
             return false;
@@ -272,12 +273,25 @@ public sealed class RequestTabViewModel : ObservableObject
         }
     }
 
-    string ProblemOf(Exception exception) => exception switch
+    string ProblemOf(Exception exception)
     {
-        MissingSecretException { Kind: SecretKind.Password } => _services.Translator.Of("Response.MissingPassword"),
-        MissingSecretException => _services.Translator.Of("Response.MissingToken"),
-        _ => exception.Message,
-    };
+        var translator = _services.Translator;
+        var reason = exception switch
+        {
+            MissingSecretException { Kind: SecretKind.Password } => translator.Of("Response.MissingPassword"),
+            MissingSecretException => translator.Of("Response.MissingToken"),
+            InvalidHeaderException header => translator.Format("Response.InvalidHeader", header.Name),
+            InvalidMethodException method => translator.Format("Response.InvalidMethod", method.Method),
+            UriFormatException => translator.Of("Response.InvalidUrl"),
+            HttpRequestException { HttpRequestError: HttpRequestError.NameResolutionError } => translator.Of("Response.UnknownHost"),
+            HttpRequestException { HttpRequestError: HttpRequestError.ConnectionError } => translator.Of("Response.NoConnection"),
+            HttpRequestException { HttpRequestError: HttpRequestError.SecureConnectionError } => translator.Of("Response.SecureConnection"),
+            TaskCanceledException { InnerException: TimeoutException } => translator.Of("Response.Timeout"),
+            _ => null,
+        };
+        var cause = exception.GetBaseException().Message;
+        return reason is null ? cause : exception is MissingSecretException or InvalidHeaderException or InvalidMethodException ? reason : $"{reason}{Environment.NewLine}{cause}";
+    }
 
     async Task SaveSecretsAsync(CancellationToken cancellationToken)
     {

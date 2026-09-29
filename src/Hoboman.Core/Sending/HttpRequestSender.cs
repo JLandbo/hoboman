@@ -48,6 +48,10 @@ public sealed class HttpRequestSender(SecretStore secrets, HttpClients clients, 
 
     async Task<HttpRequestMessage> MessageOfAsync(ApiRequest request, ApiEnvironment environment, CancellationToken cancellationToken)
     {
+        if (!IsToken(request.Method))
+        {
+            throw new InvalidMethodException(request.Method);
+        }
         var message = new HttpRequestMessage(new HttpMethod(request.Method), UrlOf(request, environment))
         {
             Content = request.BodyKind switch
@@ -74,9 +78,9 @@ public sealed class HttpRequestSender(SecretStore secrets, HttpClients clients, 
             {
                 continue;
             }
-            if (!name.All(symbol => char.IsAsciiLetterOrDigit(symbol) || _tokenSymbols.Contains(symbol)))
+            if (!IsToken(name))
             {
-                throw new FormatException($"'{name}' is not a valid header name");
+                throw new InvalidHeaderException(name);
             }
             if (message.Content is null)
             {
@@ -113,4 +117,6 @@ public sealed class HttpRequestSender(SecretStore secrets, HttpClients clients, 
         await secrets.OfAsync(request.Id, kind, cancellationToken).ConfigureAwait(false) ?? throw new MissingSecretException(kind);
 
     static string LoggableOf(Uri? address) => address is null ? "(no address yet)" : SafeAddress.Of(address);
+
+    static bool IsToken(string text) => text.Length > 0 && text.All(symbol => char.IsAsciiLetterOrDigit(symbol) || _tokenSymbols.Contains(symbol));
 }

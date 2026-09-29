@@ -11,8 +11,8 @@
                     <ColumnDefinition />
                     <ColumnDefinition Width="28" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="1" Text="{DynamicResource Editor.Name}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="4,0" />
-                <TextBlock Grid.Column="2" Text="{DynamicResource Editor.Value}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="4,0" />
+                <TextBlock Grid.Column="1" Text="{DynamicResource Table.Name}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="4,0" />
+                <TextBlock Grid.Column="2" Text="{DynamicResource Table.Value}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="4,0" />
             </Grid>
             <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
                 <ItemsControl ItemsSource="{Binding Rows}">
@@ -27,11 +27,11 @@
                                         <ColumnDefinition Width="28" />
                                     </Grid.ColumnDefinitions>
                                     <CheckBox x:Name="Enabled" IsChecked="{Binding Enabled}" VerticalAlignment="Center" />
-                                    <TextBlock x:Name="Placeholder" Grid.Column="1" Text="{DynamicResource Editor.Add}" Foreground="{DynamicResource Muted}" FontSize="12"
+                                    <TextBlock x:Name="Placeholder" Grid.Column="1" Text="{DynamicResource Table.Add}" Foreground="{DynamicResource Muted}" FontSize="12"
                                                Margin="6,0" VerticalAlignment="Center" Visibility="Collapsed" />
                                     <TextBox x:Name="NameBox" Grid.Column="1" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" />
                                     <TextBox x:Name="ValueBox" Grid.Column="2" Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" />
-                                    <Button x:Name="Remove" Grid.Column="3" Content="&#xE711;" ToolTip="{DynamicResource Tree.Delete}" Click="Remove_Click" Style="{StaticResource SmallIconButton}" VerticalAlignment="Center" />
+                                    <Button x:Name="Remove" Grid.Column="3" Content="&#xE711;" ToolTip="{DynamicResource Table.Remove}" Click="Remove_Click" Style="{StaticResource SmallIconButton}" VerticalAlignment="Center" />
                                 </Grid>
                             </Border>
                             <DataTemplate.Triggers>

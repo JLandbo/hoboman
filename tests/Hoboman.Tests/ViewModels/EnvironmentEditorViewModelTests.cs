@@ -40,7 +40,7 @@ public sealed class EnvironmentEditorViewModelTests
 
         // Assert
         Assert.False(saved);
-        Assert.Equal("Every environment needs a name, and the names must be different.", editor.Problem);
+        Assert.Equal("Every environment needs a name, and the names must be unique.", editor.Problem);
     }
 
     [Fact]

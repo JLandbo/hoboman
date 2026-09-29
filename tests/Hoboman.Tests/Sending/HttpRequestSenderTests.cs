@@ -139,7 +139,20 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
         var sending = sender.SendAsync(Request() with { Headers = [new("X Key", "1")] }, null, Cancellation);
 
         // Assert
-        await Assert.ThrowsAsync<FormatException>(() => sending);
+        await Assert.ThrowsAsync<InvalidHeaderException>(() => sending);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheMethodIsInvalid_ThenThrows()
+    {
+        // Arrange
+        var sender = await SenderAsync();
+
+        // Act
+        var sending = sender.SendAsync(Request() with { Method = "GE T" }, null, Cancellation);
+
+        // Assert
+        await Assert.ThrowsAsync<InvalidMethodException>(() => sending);
     }
 
     [Fact]

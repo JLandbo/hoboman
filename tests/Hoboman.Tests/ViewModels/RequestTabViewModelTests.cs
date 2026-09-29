@@ -1,3 +1,5 @@
+using System.Net.Http;
+
 namespace Hoboman.Tests.ViewModels;
 
 public sealed class RequestTabViewModelTests
@@ -32,6 +34,20 @@ public sealed class RequestTabViewModelTests
         // Assert
         Assert.Equal(new ProblemMessage("The request could not be sent", "No token is saved for this request."), tab.Problem);
         Assert.Null(tab.Response);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheServerCannotBeFound_ThenSaysSoWithTheCauseBelow()
+    {
+        // Arrange
+        using var harness = new Harness(send: () => throw new HttpRequestException(HttpRequestError.NameResolutionError, "No such host is known."));
+        var tab = harness.Tab();
+
+        // Act
+        await tab.SendAsync();
+
+        // Assert
+        Assert.Equal($"The server could not be found.{Environment.NewLine}No such host is known.", tab.Problem?.Details);
     }
 
     [Fact]

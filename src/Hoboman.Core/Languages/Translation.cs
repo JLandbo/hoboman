@@ -13,9 +13,16 @@ public sealed record Translation(string Name, IReadOnlyDictionary<string, string
 
     public static IReadOnlyList<Translation> All { get; } = [Danish, English];
 
+    // Dates and numbers follow the chosen language, not the language of Windows.
+    public CultureInfo Culture { get; init; } = CultureInfo.InvariantCulture;
+
     public static Translation Find(string? name) => All.FirstOrDefault(translation => translation.Name == name) ?? Danish;
 
-    public static Translation Parse(string name, string json) => new(name, JsonSerializer.Deserialize<SavedTranslation>(json, _options)?.Texts ?? []);
+    public static Translation Parse(string name, string json)
+    {
+        var saved = JsonSerializer.Deserialize<SavedTranslation>(json, _options);
+        return new(name, saved?.Texts ?? []) { Culture = saved?.Culture is { } culture ? CultureInfo.GetCultureInfo(culture) : CultureInfo.InvariantCulture };
+    }
 
     public string Of(string key) => Texts.GetValueOrDefault(key) ?? Danish.Texts.GetValueOrDefault(key) ?? key;
 
@@ -23,11 +30,11 @@ public sealed record Translation(string Name, IReadOnlyDictionary<string, string
     {
         try
         {
-            return string.Format(CultureInfo.CurrentCulture, Of(key), values);
+            return string.Format(Culture, Of(key), values);
         }
         catch (FormatException)
         {
-            return string.Format(CultureInfo.CurrentCulture, Danish.Of(key), values);
+            return string.Format(Culture, Danish.Of(key), values);
         }
     }
 
@@ -37,5 +44,5 @@ public sealed record Translation(string Name, IReadOnlyDictionary<string, string
         return Parse(name, reader.ReadToEnd());
     }
 
-    sealed record SavedTranslation(Dictionary<string, string>? Texts);
+    sealed record SavedTranslation(Dictionary<string, string>? Texts, string? Culture);
 }

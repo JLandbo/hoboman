@@ -49,8 +49,10 @@
                     <Grid>
                         <local:RequestTreeView Visibility="{Binding IsChecked, ElementName=CollectionsSection, Converter={StaticResource VisibleWhenTrue}}" />
                         <DockPanel Visibility="{Binding IsChecked, ElementName=HistorySection, Converter={StaticResource VisibleWhenTrue}}">
-                            <TextBlock DockPanel.Dock="Bottom" Text="{DynamicResource History.Latest}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="8,10,0,0"
-                                       Visibility="{Binding History.IsFull, Converter={StaticResource VisibleWhenTrue}}" />
+                            <TextBlock DockPanel.Dock="Bottom" Foreground="{DynamicResource Muted}" FontSize="12" Margin="8,10,0,0"
+                                       Visibility="{Binding History.IsFull, Converter={StaticResource VisibleWhenTrue}}">
+                                <Run Text="{DynamicResource History.Latest}" /> <Run Text="{Binding Source={x:Static viewModels:HistoryViewModel.LatestCount}, Mode=OneWay}" />
+                            </TextBlock>
                             <local:HistoryView />
                         </DockPanel>
                     </Grid>

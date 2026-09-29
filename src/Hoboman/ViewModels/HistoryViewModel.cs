@@ -53,5 +53,6 @@ public sealed class HistoryViewModel(HistoryStore store, Translator translator, 
     string DayOf(DateTime day, DateTime today) =>
         day == today ? translator.Of("History.Today")
         : day == today.AddDays(-1) ? translator.Of("History.Yesterday")
-        : day.ToString("d. MMMM yyyy", CultureInfo.CurrentCulture);
+        : day.Year == today.Year ? day.ToString("M", CultureInfo.CurrentCulture)
+        : $"{day.ToString("M", CultureInfo.CurrentCulture)} {day.Year}";
 }

@@ -16,7 +16,7 @@
             <DockPanel DockPanel.Dock="Bottom" Margin="0,14,0,0">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                     <Button Content="{DynamicResource Common.Cancel}" Click="Cancel_Click" Style="{StaticResource PillButton}" Margin="0,0,8,0" />
-                    <Button Content="{DynamicResource Editor.Save}" Click="Save_Click" IsDefault="True" IsEnabled="{Binding CanSave}" Style="{StaticResource PrimaryButton}" />
+                    <Button Content="{DynamicResource Common.Save}" Click="Save_Click" IsDefault="True" IsEnabled="{Binding CanSave}" Style="{StaticResource PrimaryButton}" />
                 </StackPanel>
                 <TextBlock Text="{Binding Problem}" Foreground="{DynamicResource Error}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0" />
             </DockPanel>
@@ -66,7 +66,7 @@
                         </Style>
                     </DockPanel.Style>
                     <StackPanel DockPanel.Dock="Top">
-                        <TextBlock Text="{DynamicResource Editor.Name}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,0,0,4" />
+                        <TextBlock Text="{DynamicResource Common.Name}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,0,0,4" />
                         <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,14">
                             <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
                         </Border>
