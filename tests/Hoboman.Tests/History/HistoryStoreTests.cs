@@ -60,16 +60,13 @@ public sealed class HistoryStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task LatestAsync_WhenAnEntryHasNoError_ThenLeavesTheErrorOutOfTheFile()
+    public async Task AddAsync_WhenTheEntryHasNoError_ThenLeavesTheErrorOutOfTheFile()
     {
-        // Arrange
+        // Act
         await Store().AddAsync(EntryAt(1), Cancellation);
 
-        // Act
-        var text = File.ReadAllText(Directory.EnumerateFiles(Path.Combine(_temporary.Path, "history")).Single());
-
         // Assert
-        Assert.DoesNotContain("error", text);
+        Assert.DoesNotContain("error", File.ReadAllText(Directory.EnumerateFiles(Path.Combine(_temporary.Path, "history")).Single()));
     }
 
     [Fact]

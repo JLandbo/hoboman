@@ -135,7 +135,7 @@ public sealed class MainViewModelTests
         await main.RequestsChangedAsync();
 
         // Assert
-        Assert.Null(main.SelectedTab?.Name);
+        Assert.Null(main.SelectedTab!.Name);
     }
 
     [Fact]
@@ -499,5 +499,56 @@ public sealed class MainViewModelTests
 
         // Assert
         Assert.Null(b.Name);
+    }
+
+    [Fact]
+    public async Task Close_WhenTheSelectedTabIsClosed_ThenSelectsTheNextTab()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var main = harness.Main();
+        await main.LoadAsync();
+        var first = main.SelectedTab!;
+        main.NewTab();
+        var second = main.SelectedTab;
+        main.SelectedTab = first;
+
+        // Act
+        main.Close(first);
+
+        // Assert
+        Assert.Same(second, main.SelectedTab);
+    }
+
+    [Fact]
+    public async Task OpenAsync_WhenAHistoryItemIsOpened_ThenShowsItsResponse()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var entry = new HistoryEntry(DateTimeOffset.Now, HistorySource.App, "dev.local", ApiRequest.New(), Response: new(200, "OK", 5, 2, [], "{}"));
+        var main = harness.Main();
+
+        // Act
+        await main.OpenAsync(new HistoryItemViewModel(entry, "Today"));
+
+        // Assert
+        Assert.Equal("200 OK", main.SelectedTab?.Response?.Status);
+    }
+
+    [Fact]
+    public async Task RenameAsync_WhenTheNewNameIsTaken_ThenKeepsBothFiles()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(answer: "Taken"));
+        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAsync("Taken", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+
+        // Act
+        await main.RenameAsync(main.Tree.Nodes.Single(node => node.Path == "Ping"));
+
+        // Assert
+        Assert.Equal(["Ping", "Taken"], (await harness.Library.NamesAsync(Cancellation)).Order());
     }
 }

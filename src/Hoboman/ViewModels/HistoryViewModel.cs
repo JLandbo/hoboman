@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Globalization;
 using Hoboman.Core.History;
 using Hoboman.Core.Languages;
 using Hoboman.Core.Storage;
@@ -53,6 +52,6 @@ public sealed class HistoryViewModel(HistoryStore store, Translator translator, 
     string DayOf(DateTime day, DateTime today) =>
         day == today ? translator.Of("History.Today")
         : day == today.AddDays(-1) ? translator.Of("History.Yesterday")
-        : day.Year == today.Year ? day.ToString("M", CultureInfo.CurrentCulture)
-        : $"{day.ToString("M", CultureInfo.CurrentCulture)} {day.Year}";
+        : day.Year == today.Year ? day.ToString("M", translator.Current.Culture)
+        : $"{day.ToString("M", translator.Current.Culture)} {day.Year}";
 }

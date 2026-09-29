@@ -128,4 +128,19 @@ public sealed class RequestRunnerTests : IDisposable
         // Assert
         Assert.NotNull(Assert.Single(await History().LatestAsync(10, null, Cancellation)).Entry.Error);
     }
+
+    [Fact]
+    public async Task RunAsync_WhenTheHistoryCannotBeWritten_ThenStillGivesTheResponse()
+    {
+        // Arrange
+        Directory.CreateDirectory(_temporary.Path);
+        File.WriteAllText(Path.Combine(_temporary.Path, "history"), "");
+        var runner = Runner(() => Task.FromResult(new ApiResponse(200, "OK", 0, 2, [], "{}")));
+
+        // Act
+        var response = await runner.RunAsync(Request(), null, null, HistorySource.App, Cancellation);
+
+        // Assert
+        Assert.Equal(200, response.StatusCode);
+    }
 }

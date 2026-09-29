@@ -19,7 +19,7 @@ public sealed class CoalescerTests
         await coalescer.RunAsync();
         await coalescer.RunAsync();
         finish.SetResult();
-        await first;
+        await first.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(2, runs);

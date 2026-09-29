@@ -167,4 +167,112 @@ public sealed class FolderAuthViewModelTests
         // Assert
         Assert.Equal("users", await harness.Secrets.OfAsync(users.Id, SecretKind.Token, Cancellation));
     }
+
+    [Fact]
+    public async Task SaveAsync_WhenAPasswordIsGiven_ThenSavesItForTheFolder()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.CreateFolderAsync("Users", Cancellation);
+        var folderAuth = harness.FolderAuth();
+        await folderAuth.LoadAsync("Users", Cancellation);
+        folderAuth.AuthKind = AuthKind.Basic;
+        folderAuth.Password = "hemmelig";
+
+        // Act
+        await folderAuth.SaveAsync();
+
+        // Assert
+        Assert.Equal("hemmelig", await harness.Secrets.OfAsync((await harness.Library.LoadFolderAsync("Users", Cancellation))!.Id, SecretKind.Password, Cancellation));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenBasicIsChosen_ThenSavesTheUserName()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.CreateFolderAsync("Users", Cancellation);
+        var folderAuth = harness.FolderAuth();
+        await folderAuth.LoadAsync("Users", Cancellation);
+        folderAuth.AuthKind = AuthKind.Basic;
+        folderAuth.UserName = "hobo";
+
+        // Act
+        await folderAuth.SaveAsync();
+
+        // Assert
+        Assert.Equal("hobo", (await harness.Library.LoadFolderAsync("Users", Cancellation))?.Auth.UserName);
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenSavedAgain_ThenKeepsTheId()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.CreateFolderAsync("Users", Cancellation);
+        var folderAuth = harness.FolderAuth();
+        await folderAuth.LoadAsync("Users", Cancellation);
+        folderAuth.AuthKind = AuthKind.Bearer;
+        await folderAuth.SaveAsync();
+        var id = (await harness.Library.LoadFolderAsync("Users", Cancellation))!.Id;
+        folderAuth.UserName = "again";
+
+        // Act
+        await folderAuth.SaveAsync();
+
+        // Assert
+        Assert.Equal(id, (await harness.Library.LoadFolderAsync("Users", Cancellation))?.Id);
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenTheSecretsCannotBeSaved_ThenWritesNoFolderFile()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.CreateFolderAsync("Users", Cancellation);
+        var folderAuth = harness.FolderAuth();
+        await folderAuth.LoadAsync("Users", Cancellation);
+        File.WriteAllText(harness.Folder.Secrets, "{");
+        folderAuth.AuthKind = AuthKind.Bearer;
+        folderAuth.Token = "token";
+
+        // Act
+        await folderAuth.SaveAsync();
+
+        // Assert
+        Assert.Null(await harness.Library.LoadFolderAsync("Users", Cancellation));
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenTheFolderHasAPassword_ThenShowsIt()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var folder = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Basic, "hobo") };
+        await harness.Library.SaveFolderAsync("Users", folder, Cancellation);
+        await harness.Secrets.SaveAsync(folder.Id, SecretKind.Password, "hemmelig", Cancellation);
+        var folderAuth = harness.FolderAuth();
+
+        // Act
+        await folderAuth.LoadAsync("Users", Cancellation);
+
+        // Assert
+        Assert.Equal("hemmelig", folderAuth.Password);
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenTheSettingsCannotBeRead_ThenShowsTheProblem()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.CreateFolderAsync("Users", Cancellation);
+        File.WriteAllText(Path.Combine(harness.Folder.Requests, "Users", ".folder.json"), "{");
+        var folderAuth = harness.FolderAuth();
+
+        // Act
+        await folderAuth.LoadAsync("Users", Cancellation);
+
+        // Assert
+        Assert.StartsWith("The folder's auth could not be loaded", folderAuth.Problem);
+    }
 }

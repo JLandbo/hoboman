@@ -58,7 +58,7 @@ public sealed class RequestTabViewModelTests
 
         // Act
         tab.Cancel();
-        await sending;
+        await sending.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
 
         // Assert
         Assert.Null(tab.Problem);
@@ -479,5 +479,21 @@ public sealed class RequestTabViewModelTests
 
         // Assert
         Assert.Equal("second", await harness.Secrets.OfAsync(request.Id, SecretKind.Password, Cancellation));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenThePasswordChanged_ThenSavesIt()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var request = ApiRequest.New() with { Auth = new(AuthKind.Basic, "hobo") };
+        var tab = harness.Tab(request, "Ping");
+        tab.Password = "hemmelig";
+
+        // Act
+        await tab.SaveAsync();
+
+        // Assert
+        Assert.Equal("hemmelig", await harness.Secrets.OfAsync(request.Id, SecretKind.Password, Cancellation));
     }
 }

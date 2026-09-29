@@ -79,21 +79,24 @@ public sealed class EnvironmentEditorViewModelTests
     }
 
     [Fact]
-    public async Task SaveAsync_WhenTheFileCouldNotBeRead_ThenLeavesItUntouched()
+    public async Task SaveAsync_WhenTheLastLoadFailed_ThenLeavesTheFileUntouched()
     {
         // Arrange
         using var harness = new Harness();
-        Directory.CreateDirectory(harness.Folder.Root);
-        File.WriteAllText(harness.Folder.Environments, "[{");
+        await harness.EnvironmentStore.SaveAsync([new("Dev", [])], Cancellation);
         var editor = harness.EnvironmentEditor();
         await editor.LoadAsync(Cancellation);
+        using (new FileStream(harness.Folder.Environments, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            await editor.LoadAsync(Cancellation);
+        }
         editor.Add();
 
         // Act
         await editor.SaveAsync();
 
         // Assert
-        Assert.Equal("[{", File.ReadAllText(harness.Folder.Environments));
+        Assert.NotNull(await harness.EnvironmentStore.FindAsync("Dev", Cancellation));
     }
 
     [Fact]
@@ -144,7 +147,6 @@ public sealed class EnvironmentEditorViewModelTests
         var editor = harness.EnvironmentEditor();
         await editor.LoadAsync(Cancellation);
         editor.Selected!.Name = "Development";
-
         var restarted = harness.Restarted();
 
         // Act
@@ -185,5 +187,22 @@ public sealed class EnvironmentEditorViewModelTests
 
         // Assert
         Assert.Same(editor.Environments[0], editor.Selected);
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenTheFileIsLocked_ThenShowsTheProblem()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.EnvironmentStore.SaveAsync([new("Dev", [])], Cancellation);
+        var editor = harness.EnvironmentEditor();
+        await editor.LoadAsync(Cancellation);
+        using var locked = new FileStream(harness.Folder.Environments, FileMode.Open, FileAccess.Read, FileShare.None);
+
+        // Act
+        await editor.SaveAsync();
+
+        // Assert
+        Assert.StartsWith("The environments could not be saved", editor.Problem);
     }
 }

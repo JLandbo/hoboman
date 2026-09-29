@@ -100,6 +100,7 @@ public sealed class RequestLibraryTests : IDisposable
     [InlineData("Auth: get token")]
     [InlineData("Users//Get user")]
     [InlineData("Users./Get user")]
+    [InlineData("Users/.folder")]
     public async Task SaveAsync_WhenTheNameIsInvalid_ThenWritesNothing(string name)
     {
         // Act
@@ -207,12 +208,13 @@ public sealed class RequestLibraryTests : IDisposable
         var users = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
         await Library().SaveFolderAsync("Users", users, Cancellation);
 
+        var request = ApiRequest.New() with { Auth = new(AuthKind.Basic) };
+
         // Act
-        var auth = await Library().AuthOfAsync("Users/Admin/Get user", ApiRequest.New() with { Auth = new(AuthKind.Basic) }, Cancellation);
+        var auth = await Library().AuthOfAsync("Users/Admin/Get user", request, Cancellation);
 
         // Assert
-        Assert.Equal(AuthKind.Basic, auth.Settings.Kind);
-
+        Assert.Equal(new AuthSource(request.Id, request.Auth), auth);
     }
 
     [Fact]
@@ -226,8 +228,7 @@ public sealed class RequestLibraryTests : IDisposable
         var auth = await Library().AuthOfAsync("Users/Admin/Get user", ApiRequest.New(), Cancellation);
 
         // Assert
-        Assert.Equal(users.Id, auth.SecretsId);
-
+        Assert.Equal(new AuthSource(users.Id, users.Auth), auth);
     }
 
     [Fact]
@@ -244,7 +245,6 @@ public sealed class RequestLibraryTests : IDisposable
 
         // Assert
         Assert.Equal(admin.Id, auth.SecretsId);
-
     }
 
     [Fact]
@@ -260,7 +260,6 @@ public sealed class RequestLibraryTests : IDisposable
 
         // Assert
         Assert.Equal(users.Id, auth.SecretsId);
-
     }
 
     [Fact]
@@ -276,20 +275,16 @@ public sealed class RequestLibraryTests : IDisposable
 
         // Assert
         Assert.Equal(AuthKind.None, auth.Settings.Kind);
-
     }
 
     [Fact]
     public async Task AuthOfAsync_WhenNoFolderHasAuth_ThenSendsNoAuth()
     {
-        // Arrange
-
         // Act
         var auth = await Library().AuthOfAsync("Users/Admin/Get user", ApiRequest.New(), Cancellation);
 
         // Assert
         Assert.Equal(AuthKind.None, auth.Settings.Kind);
-
     }
 
     [Fact]
@@ -304,7 +299,6 @@ public sealed class RequestLibraryTests : IDisposable
 
         // Assert
         Assert.Equal(AuthKind.None, auth.Settings.Kind);
-
     }
 
     [Fact]
@@ -319,5 +313,15 @@ public sealed class RequestLibraryTests : IDisposable
 
         // Assert
         await Assert.ThrowsAsync<InvalidDataException>(() => loading);
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenTheNameHasADotInside_ThenSavesIt()
+    {
+        // Act
+        await Library().SaveAsync("Api v1.2/Get user", ApiRequest.New(), Cancellation);
+
+        // Assert
+        Assert.Equal(["Api v1.2/Get user"], await Library().NamesAsync(Cancellation));
     }
 }

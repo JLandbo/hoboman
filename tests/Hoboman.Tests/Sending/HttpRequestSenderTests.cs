@@ -40,6 +40,8 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
 
     static AuthSource OwnAuth(ApiRequest request) => new(request.Id, request.Auth);
 
+    static Task<ApiResponse> SendAsync(HttpRequestSender sender, ApiRequest request, CancellationToken cancellationToken) => sender.SendAsync(request, OwnAuth(request), null, cancellationToken);
+
     static Echo EchoOf(ApiResponse response) => JsonSerializer.Deserialize<Echo>(response.Body, JsonSerializerOptions.Web)!;
 
     [Fact]
@@ -165,7 +167,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
         var sender = await SenderAsync();
 
         // Act
-        var sending = sender.SendAsync(Request() with { Headers = [new("X Key", "1")] }, OwnAuth(Request() with { Headers = [new("X Key", "1")] }), null, Cancellation);
+        var sending = SendAsync(sender, Request() with { Headers = [new("X Key", "1")] }, Cancellation);
 
         // Assert
         await Assert.ThrowsAsync<InvalidHeaderException>(() => sending);
@@ -178,7 +180,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
         var sender = await SenderAsync();
 
         // Act
-        var sending = sender.SendAsync(Request() with { Method = "GE T" }, OwnAuth(Request() with { Method = "GE T" }), null, Cancellation);
+        var sending = SendAsync(sender, Request() with { Method = "GE T" }, Cancellation);
 
         // Assert
         await Assert.ThrowsAsync<InvalidMethodException>(() => sending);
@@ -234,7 +236,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
         var sender = await SenderAsync();
 
         // Act
-        var sending = sender.SendAsync(Request() with { Auth = new(AuthKind.Bearer) }, OwnAuth(Request() with { Auth = new(AuthKind.Bearer) }), null, Cancellation);
+        var sending = SendAsync(sender, Request() with { Auth = new(AuthKind.Bearer) }, Cancellation);
 
         // Assert
         Assert.Equal(SecretKind.Token, (await Assert.ThrowsAsync<MissingSecretException>(() => sending)).Kind);
@@ -247,7 +249,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
         var sender = await SenderAsync();
 
         // Act
-        var response = await sender.SendAsync(Request(), OwnAuth(Request()), null, Cancellation);
+        var response = await SendAsync(sender, Request(), Cancellation);
 
         // Assert
         Assert.Equal(200, response.StatusCode);
@@ -260,7 +262,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
         var sender = await SenderAsync();
 
         // Act
-        var response = await sender.SendAsync(Request(), OwnAuth(Request()), null, Cancellation);
+        var response = await SendAsync(sender, Request(), Cancellation);
 
         // Assert
         Assert.Contains(new ResponseHeader("Content-Type", "application/json; charset=utf-8"), response.Headers);
@@ -273,7 +275,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
         var sender = await SenderAsync();
 
         // Act
-        var response = await sender.SendAsync(Request() with { Method = "POST", BodyKind = BodyKind.Text, Body = "Ærø" }, OwnAuth(Request() with { Method = "POST", BodyKind = BodyKind.Text, Body = "Ærø" }), null, Cancellation);
+        var response = await SendAsync(sender, Request() with { Method = "POST", BodyKind = BodyKind.Text, Body = "Ærø" }, Cancellation);
 
         // Assert
         Assert.Equal(Encoding.UTF8.GetByteCount(response.Body), response.Size);
@@ -284,10 +286,10 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
     {
         // Arrange
         var sender = await SenderAsync();
-        await sender.SendAsync(Request(), OwnAuth(Request()), null, Cancellation);
+        await SendAsync(sender, Request(), Cancellation);
 
         // Act
-        var echo = EchoOf(await sender.SendAsync(Request(), OwnAuth(Request()), null, Cancellation));
+        var echo = EchoOf(await SendAsync(sender, Request(), Cancellation));
 
         // Assert
         Assert.DoesNotContain("Cookie", echo.Headers.Keys);
@@ -302,7 +304,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
         var request = Request() with { Url = $"http://bob:pa55@{server.Http.Authority}/items?api_key=k3y" };
 
         // Act
-        await sender.SendAsync(request, OwnAuth(request), null, Cancellation);
+        await SendAsync(sender, request, Cancellation);
 
         // Assert
         Assert.NotEmpty(logger.Entries);
@@ -319,7 +321,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
         var request = Request() with { Url = $"{server.Http}slow" };
 
         // Act
-        await Record.ExceptionAsync(() => sender.SendAsync(request, OwnAuth(request), null, cancellation.Token));
+        await Record.ExceptionAsync(() => SendAsync(sender, request, cancellation.Token));
 
         // Assert
         Assert.DoesNotContain(logger.Entries, entry => entry.Level == LogLevel.Warning);
@@ -332,7 +334,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
         var sender = await SenderAsync();
 
         // Act
-        var sending = sender.SendAsync(ApiRequest.New() with { Url = server.Https.ToString() }, OwnAuth(ApiRequest.New() with { Url = server.Https.ToString() }), null, Cancellation);
+        var sending = SendAsync(sender, ApiRequest.New() with { Url = server.Https.ToString() }, Cancellation);
 
         // Assert
         await Assert.ThrowsAsync<HttpRequestException>(() => sending);
@@ -345,7 +347,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
         var sender = await SenderAsync(ignoreCertificateErrors: true);
 
         // Act
-        var response = await sender.SendAsync(ApiRequest.New() with { Url = server.Https.ToString() }, OwnAuth(ApiRequest.New() with { Url = server.Https.ToString() }), null, Cancellation);
+        var response = await SendAsync(sender, ApiRequest.New() with { Url = server.Https.ToString() }, Cancellation);
 
         // Assert
         Assert.Equal(200, response.StatusCode);

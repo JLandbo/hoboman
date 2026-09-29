@@ -65,4 +65,20 @@ public sealed class EnvironmentsViewModelTests
         // Assert
         Assert.Empty(harness.Environments.Items);
     }
+
+    [Fact]
+    public async Task ChooseAsync_WhenTheChoiceCannotBeSaved_ThenStillChoosesIt()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.EnvironmentStore.SaveAsync([new("Dev", [])], Cancellation);
+        await harness.Environments.LoadAsync(Cancellation);
+        File.WriteAllText(harness.Folder.Settings, "{");
+
+        // Act
+        await harness.Environments.ChooseAsync(harness.Environments.Items.Single());
+
+        // Assert
+        Assert.Equal("Dev", harness.Environments.Selected?.Name);
+    }
 }

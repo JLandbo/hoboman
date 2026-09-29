@@ -113,4 +113,19 @@ public sealed class SecretStoreTests : IDisposable
         // Assert
         Assert.Equal("token", await Store().OfAsync(other, SecretKind.Token, Cancellation));
     }
+
+    [Fact]
+    public async Task OfAsync_WhenTheSecretCannotBeDecrypted_ThenGivesNull()
+    {
+        // Arrange
+        var id = Guid.NewGuid();
+        Directory.CreateDirectory(_temporary.Path);
+        File.WriteAllText(Folder.Secrets, $$"""{"{{id}}/Token": "{{Convert.ToBase64String("not encrypted"u8.ToArray())}}"}""");
+
+        // Act
+        var secret = await Store().OfAsync(id, SecretKind.Token, Cancellation);
+
+        // Assert
+        Assert.Null(secret);
+    }
 }
