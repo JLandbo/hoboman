@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Serilog;
 using Hoboman.Core.Auth;
 using Hoboman.Core.Environments;
+using Hoboman.Core.History;
 using Hoboman.Core.Languages;
 using Hoboman.Core.Requests;
 using Hoboman.Core.Sending;
@@ -68,6 +69,8 @@ public partial class App : Application
         services.AddSingleton<SecretStore>();
         services.AddSingleton<HttpClients>();
         services.AddSingleton<IRequestSender, HttpRequestSender>();
+        services.AddSingleton<HistoryStore>();
+        services.AddSingleton<RequestRunner>();
         services.AddSingleton<IBrowser, ShellBrowser>();
         services.AddSingleton<RequestTreeViewModel>();
         services.AddSingleton<RequestEditorViewModel>();

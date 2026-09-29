@@ -5,7 +5,7 @@ Et konsolprogram, så AI-agenter og scripts kan sende requests uden GUI'en, med 
 ## Opbygning
 
 - Eget projekt: `src/Hoboman.Cli` (konsolapp), som kun refererer `Hoboman.Core`.
-- Udgives som `hoboman-cli.exe` i samme mappe som `Hoboman.exe` og deler derfor `requests\`, `environments.json`, `secrets.json` og `settings.json`. Navnet kan ikke være `hoboman.exe`, fordi Windows ikke skelner mellem store og små bogstaver.
+- Udgives som `hoboman-cli.exe` i samme mappe som `Hoboman.exe` og deler derfor `requests\`, `history\`, `environments.json`, `secrets.json` og `settings.json`. Navnet kan ikke være `hoboman.exe`, fordi Windows ikke skelner mellem store og små bogstaver.
 - Forudsætning allerede nu: al logik (indlæsning af requests, `{{variabler}}`, auth, hemmeligheder, afsendelse) ligger i `Hoboman.Core` uden WPF. GUI'en er kun visning.
 
 ## Kommandoer
@@ -47,10 +47,7 @@ Fejl skrives som `{ "error": "..." }` på stderr.
 
 ## Regler
 
-- CLI'et ændrer aldrig filer.
+- CLI'et skriver kun i historikken (`history\`). Ellers ændrer det ingen filer.
+- Hvert kald gemmes i historikken ligesom kald fra GUI'en, også direkte kald og kald, der fejler. Derfor kan de ses i GUI'ens historik.
 - `IgnoreCertificateErrors` fra `settings.json` gælder også her.
 - OAuth bruger det token, der er gemt i `secrets.json`. Mangler det, fejler kaldet med besked om at hente et token i Hoboman. CLI'et åbner aldrig en browser.
-
-## Åbne spørgsmål
-
-- Skal GUI'en vise svar på kald sendt fra CLI'et, eller er stdout nok?
