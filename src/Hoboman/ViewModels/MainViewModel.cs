@@ -104,9 +104,15 @@ public sealed class MainViewModel(
 
     public async Task OpenAsync(HistoryItemViewModel item)
     {
+        if (Tabs.FirstOrDefault(tab => tab.HistoryName == item.File.Name) is { } open)
+        {
+            SelectedTab = open;
+            return;
+        }
         logger.LogInformation("Opened the call to {Address} from the history", item.Address);
-        var tab = new RequestTabViewModel(tabServices, item.Entry.Request, suggestedName: item.Entry.Name, fromHistory: true);
-        await tab.ShowAsync(item.Entry);
+        var entry = item.File.Entry;
+        var tab = new RequestTabViewModel(tabServices, entry.Request, suggestedName: entry.Name, historyName: item.File.Name);
+        await tab.ShowAsync(entry);
         Add(tab);
         await tab.LoadSecretsAsync(CancellationToken.None);
     }

@@ -529,7 +529,7 @@ public sealed class MainViewModelTests
         var main = harness.Main();
 
         // Act
-        await main.OpenAsync(new HistoryItemViewModel(entry, "Today"));
+        await main.OpenAsync(new HistoryItemViewModel(new("call.json", entry), "Today"));
 
         // Assert
         Assert.Equal("200 OK", main.SelectedTab?.Response?.Status);
@@ -550,5 +550,59 @@ public sealed class MainViewModelTests
 
         // Assert
         Assert.Equal(["Ping", "Taken"], (await harness.Library.NamesAsync(Cancellation)).Order());
+    }
+
+    [Fact]
+    public async Task OpenAsync_WhenTheHistoryItemIsAlreadyOpen_ThenSelectsItsTab()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var entry = new HistoryEntry(DateTimeOffset.Now, HistorySource.App, "dev.local", ApiRequest.New());
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.OpenAsync(new HistoryItemViewModel(new("call.json", entry), "Today"));
+        var opened = main.SelectedTab;
+        main.NewTab();
+
+        // Act
+        await main.OpenAsync(new HistoryItemViewModel(new("call.json", entry), "Today"));
+
+        // Assert
+        Assert.Same(opened, main.SelectedTab);
+    }
+
+    [Fact]
+    public async Task OpenAsync_WhenTheHistoryItemIsAlreadyOpen_ThenOpensNoNewTab()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var entry = new HistoryEntry(DateTimeOffset.Now, HistorySource.App, "dev.local", ApiRequest.New());
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.OpenAsync(new HistoryItemViewModel(new("call.json", entry), "Today"));
+
+        // Act
+        await main.OpenAsync(new HistoryItemViewModel(new("call.json", entry), "Today"));
+
+        // Assert
+        Assert.Equal(2, main.Tabs.Count);
+    }
+
+    [Fact]
+    public async Task OpenAsync_WhenTheOpenHistoryTabWasChanged_ThenOpensTheCallAgain()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var entry = new HistoryEntry(DateTimeOffset.Now, HistorySource.App, "dev.local", ApiRequest.New() with { Url = "https://dev.local" });
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.OpenAsync(new HistoryItemViewModel(new("call.json", entry), "Today"));
+        main.SelectedTab!.Url = "https://changed.local";
+
+        // Act
+        await main.OpenAsync(new HistoryItemViewModel(new("call.json", entry), "Today"));
+
+        // Assert
+        Assert.Equal("https://dev.local", main.SelectedTab?.Url);
     }
 }

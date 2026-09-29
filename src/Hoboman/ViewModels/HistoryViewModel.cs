@@ -34,7 +34,7 @@ public sealed class HistoryViewModel(HistoryStore store, Translator translator, 
             }
             foreach (var file in files.Reverse())
             {
-                Items.Insert(0, new(file.Entry, DayOf(file.Entry.At.LocalDateTime.Date, DateTime.Today)));
+                Items.Insert(0, new(file, DayOf(file.Entry.At.LocalDateTime.Date, DateTime.Today)));
             }
             while (Items.Count > LatestCount)
             {

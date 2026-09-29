@@ -212,7 +212,7 @@ public sealed class RequestTabViewModelTests
         using var harness = new Harness();
         var original = ApiRequest.New() with { Auth = new(AuthKind.Bearer) };
         await harness.Secrets.SaveAsync(original.Id, SecretKind.Token, "original", Cancellation);
-        var tab = new RequestTabViewModel(harness.Services, original, fromHistory: true);
+        var tab = new RequestTabViewModel(harness.Services, original, historyName: "call.json");
         await tab.LoadSecretsAsync(Cancellation);
         tab.Token = "changed";
 
@@ -230,7 +230,7 @@ public sealed class RequestTabViewModelTests
         using var harness = new Harness();
         var original = ApiRequest.New() with { Auth = new(AuthKind.Bearer) };
         await harness.Secrets.SaveAsync(original.Id, SecretKind.Token, "original", Cancellation);
-        var tab = new RequestTabViewModel(harness.Services, original, fromHistory: true);
+        var tab = new RequestTabViewModel(harness.Services, original, historyName: "call.json");
         await tab.LoadSecretsAsync(Cancellation);
         tab.Token = "changed";
 
@@ -248,7 +248,7 @@ public sealed class RequestTabViewModelTests
         using var harness = new Harness(new FakeDialogs(answer: "Copy"));
         var original = ApiRequest.New() with { Auth = new(AuthKind.Bearer) };
         await harness.Secrets.SaveAsync(original.Id, SecretKind.Token, "token", Cancellation);
-        var tab = new RequestTabViewModel(harness.Services, original, fromHistory: true);
+        var tab = new RequestTabViewModel(harness.Services, original, historyName: "call.json");
         await tab.LoadSecretsAsync(Cancellation);
 
         // Act
@@ -265,7 +265,7 @@ public sealed class RequestTabViewModelTests
         using var harness = new Harness(new FakeDialogs(answer: "Copy"));
         var original = ApiRequest.New() with { Auth = new(AuthKind.Bearer) };
         await harness.Secrets.SaveAsync(original.Id, SecretKind.Token, "token", Cancellation);
-        var tab = new RequestTabViewModel(harness.Services, original, fromHistory: true);
+        var tab = new RequestTabViewModel(harness.Services, original, historyName: "call.json");
         await tab.LoadSecretsAsync(Cancellation);
 
         // Act
@@ -392,7 +392,7 @@ public sealed class RequestTabViewModelTests
         using var harness = new Harness();
         var folder = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
         await harness.Library.SaveFolderAsync("Users", folder, Cancellation);
-        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), suggestedName: "Users/Get user", fromHistory: true);
+        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), suggestedName: "Users/Get user", historyName: "call.json");
 
         // Act
         await tab.SendAsync();
@@ -495,5 +495,19 @@ public sealed class RequestTabViewModelTests
 
         // Assert
         Assert.Equal("hemmelig", await harness.Secrets.OfAsync(request.Id, SecretKind.Password, Cancellation));
+    }
+
+    [Fact]
+    public void Url_WhenAHistoryTabIsChanged_ThenIsNoLongerFromTheHistory()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), historyName: "call.json");
+
+        // Act
+        tab.Url = "https://changed.local";
+
+        // Assert
+        Assert.False(tab.FromHistory);
     }
 }

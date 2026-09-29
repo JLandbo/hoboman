@@ -24,13 +24,13 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
     bool _loading;
     CancellationTokenSource? _sending;
 
-    public RequestTabViewModel(RequestTabServices services, ApiRequest request, string? name = null, string? suggestedName = null, bool fromHistory = false)
+    public RequestTabViewModel(RequestTabServices services, ApiRequest request, string? name = null, string? suggestedName = null, string? historyName = null)
     {
         _services = services;
         Name = name;
         SuggestedName = suggestedName;
-        FromHistory = fromHistory;
-        _ownsId = !fromHistory;
+        HistoryName = historyName;
+        _ownsId = historyName is null;
         Query.Changed += MarkDirty;
         Headers.Changed += MarkDirty;
         Send = new AsyncCommand(SendAsync);
@@ -71,7 +71,20 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
     // so it can send with that request's secrets, but gets its own id before it changes a secret or is saved.
     public bool OwnsId => _ownsId;
 
-    public bool FromHistory { get; }
+    // The history file the tab was opened from, so opening that call again shows this tab.
+    public string? HistoryName
+    {
+        get;
+        private set
+        {
+            if (Set(ref field, value))
+            {
+                OnPropertyChanged(nameof(FromHistory));
+            }
+        }
+    }
+
+    public bool FromHistory => HistoryName is not null;
 
     public string? Title => (Name ?? SuggestedName) is { } name ? RequestLibrary.LastPartOf(name) : null;
 
@@ -330,9 +343,12 @@ public sealed class RequestTabViewModel : ObservableObject, IAuthFields
 
     void MarkDirty()
     {
-        if (!_loading)
+        if (_loading)
         {
-            IsDirty = true;
+            return;
         }
+        IsDirty = true;
+        // A changed call is a new request, and the history keeps the call as it was.
+        HistoryName = null;
     }
 }
