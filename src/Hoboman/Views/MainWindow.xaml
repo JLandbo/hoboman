@@ -2,30 +2,116 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:Hoboman.Views"
-        Title="Hoboman" Width="1200" Height="800" MinWidth="720" MinHeight="480"
+        xmlns:viewModels="clr-namespace:Hoboman.ViewModels"
+        Title="Hoboman" Width="1400" Height="860" MinWidth="900" MinHeight="560"
         Background="{DynamicResource Input}" Foreground="{DynamicResource Text}"
-        FontFamily="{StaticResource UiFont}" FontSize="13">
+        FontFamily="{StaticResource UiFont}" FontSize="13" Closing="Window_Closing">
+    <Window.InputBindings>
+        <KeyBinding Key="S" Modifiers="Control" Command="{Binding SelectedTab.Save}" />
+        <KeyBinding Key="Enter" Modifiers="Control" Command="{Binding SelectedTab.Send}" />
+    </Window.InputBindings>
+    <Window.Resources>
+        <DataTemplate DataType="{x:Type viewModels:RequestTabViewModel}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition MinHeight="200" />
+                    <RowDefinition Height="12" />
+                    <RowDefinition MinHeight="160" />
+                </Grid.RowDefinitions>
+                <local:RequestEditorView />
+                <GridSplitter Grid.Row="1" HorizontalAlignment="Stretch" Background="Transparent" />
+                <local:ResponseView Grid.Row="2" />
+            </Grid>
+        </DataTemplate>
+    </Window.Resources>
     <Grid Margin="12">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="260" MinWidth="180" />
+            <ColumnDefinition Width="290" MinWidth="200" />
             <ColumnDefinition Width="12" />
-            <ColumnDefinition MinWidth="360" />
+            <ColumnDefinition MinWidth="500" />
         </Grid.ColumnDefinitions>
+
         <DockPanel>
             <Button DockPanel.Dock="Bottom" Content="&#xE713;" ToolTip="{DynamicResource Settings.Title}" Click="Settings_Click"
                     Style="{StaticResource IconButton}" Foreground="{DynamicResource Muted}" HorizontalAlignment="Left" Margin="0,8,0,0" />
-            <local:RequestTreeView DataContext="{Binding Tree}" />
+            <Border Style="{StaticResource Panel}">
+                <DockPanel>
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                        <Button DockPanel.Dock="Right" Content="&#xE710;" ToolTip="{DynamicResource Sidebar.NewRequest}" Click="NewRequest_Click" Style="{StaticResource SmallIconButton}" FontSize="13" />
+                        <Button DockPanel.Dock="Right" Content="&#xE8F4;" ToolTip="{DynamicResource Sidebar.NewFolder}" Click="NewFolder_Click" Style="{StaticResource SmallIconButton}" FontSize="13" Margin="0,0,4,0" />
+                        <Border HorizontalAlignment="Left" Padding="2" CornerRadius="8" Background="{DynamicResource Input}">
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="CollectionsSection" Content="{DynamicResource Sidebar.Collections}" GroupName="Sidebar" IsChecked="True" Style="{StaticResource Segment}" />
+                                <RadioButton x:Name="HistorySection" Content="{DynamicResource Sidebar.History}" GroupName="Sidebar" Style="{StaticResource Segment}" />
+                            </StackPanel>
+                        </Border>
+                    </DockPanel>
+                    <Grid>
+                        <local:RequestTreeView Visibility="{Binding IsChecked, ElementName=CollectionsSection, Converter={StaticResource VisibleWhenTrue}}" />
+                        <DockPanel Visibility="{Binding IsChecked, ElementName=HistorySection, Converter={StaticResource VisibleWhenTrue}}">
+                            <TextBlock DockPanel.Dock="Bottom" Text="{DynamicResource History.Latest}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="8,10,0,0" />
+                            <local:HistoryView />
+                        </DockPanel>
+                    </Grid>
+                </DockPanel>
+            </Border>
         </DockPanel>
+
         <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" Background="Transparent" />
+
         <Grid Grid.Column="2">
             <Grid.RowDefinitions>
-                <RowDefinition MinHeight="160" />
-                <RowDefinition Height="12" />
-                <RowDefinition MinHeight="160" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition />
             </Grid.RowDefinitions>
-            <local:RequestEditorView DataContext="{Binding Editor}" />
-            <GridSplitter Grid.Row="1" HorizontalAlignment="Stretch" Background="Transparent" />
-            <local:ResponseView Grid.Row="2" DataContext="{Binding Response}" />
+            <DockPanel Margin="0,0,0,6">
+                <Button DockPanel.Dock="Right" Click="Environment_Click" Style="{StaticResource PillButton}" Background="{DynamicResource Surface}" Padding="12,5" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="{DynamicResource Environment.Label}" Foreground="{DynamicResource Muted}" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <TextBlock FontWeight="SemiBold">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="{Binding Environments.Selected.Name}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Environments.Selected}" Value="{x:Null}">
+                                            <Setter Property="Text" Value="{DynamicResource Environment.None}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock Text="&#xE70D;" FontFamily="{StaticResource IconFont}" FontSize="9" Foreground="{DynamicResource Muted}" Margin="8,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
+                    <ListBox ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab}" Style="{StaticResource Tabs}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type viewModels:RequestTabViewModel}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Method}" Foreground="{Binding Method, Converter={StaticResource MethodBrush}}" FontSize="11" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                    <TextBlock MaxWidth="180" TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="{Binding Title}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Title}" Value="{x:Null}">
+                                                        <Setter Property="Text" Value="{DynamicResource Tab.New}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <Ellipse Width="7" Height="7" Fill="{DynamicResource Attention}" Margin="6,0,0,0" VerticalAlignment="Center"
+                                             Visibility="{Binding IsDirty, Converter={StaticResource VisibleWhenTrue}}" />
+                                    <Button Content="&#xE711;" ToolTip="{DynamicResource Common.Close}" Click="CloseTab_Click" Style="{StaticResource SmallIconButton}" Margin="4,0,0,0" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <Button Content="&#xE710;" ToolTip="{DynamicResource Sidebar.NewRequest}" Click="NewRequest_Click" Style="{StaticResource SmallIconButton}" FontSize="12" Margin="2,0,0,4" VerticalAlignment="Center" />
+                </StackPanel>
+            </DockPanel>
+            <ContentControl Grid.Row="1" Content="{Binding SelectedTab}" Focusable="False" />
         </Grid>
     </Grid>
 </Window>

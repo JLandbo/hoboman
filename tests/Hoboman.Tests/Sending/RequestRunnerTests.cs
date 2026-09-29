@@ -65,9 +65,4 @@ public sealed class RequestRunnerTests : IDisposable
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => running);
         Assert.Empty(await History().LatestAsync(10, Cancellation));
     }
-
-    sealed class FakeSender(Func<Task<ApiResponse>> send) : IRequestSender
-    {
-        public Task<ApiResponse> SendAsync(ApiRequest request, ApiEnvironment? environment, CancellationToken cancellationToken) => send();
-    }
 }

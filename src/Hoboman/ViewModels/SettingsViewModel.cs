@@ -1,4 +1,3 @@
-using System.IO;
 using Hoboman.Core.Languages;
 using Hoboman.Core.Settings;
 using Hoboman.Core.Storage;
@@ -36,6 +35,16 @@ public sealed class SettingsViewModel(JsonFile<AppSettings> file, Translator tra
         }
     }
 
+    public string? EnvironmentName
+    {
+        get => _saved.EnvironmentName;
+        set
+        {
+            logger.LogInformation("Environment changed to {Environment}", value);
+            Saving = SaveAsync(settings => settings with { EnvironmentName = value });
+        }
+    }
+
     public string? Problem { get; private set => Set(ref field, value); }
 
     internal Task Saving { get; private set; } = Task.CompletedTask;
@@ -50,7 +59,7 @@ public sealed class SettingsViewModel(JsonFile<AppSettings> file, Translator tra
             translator.Use(Translation.Find(_saved.LanguageName));
             logger.LogInformation("Using {Language}", translator.Current.Name);
         }
-        catch (Exception exception) when (IsFileProblem(exception))
+        catch (Exception exception) when (FileProblem.Is(exception))
         {
             logger.LogError(exception, "Could not load the settings, keeping the current ones");
         }
@@ -63,7 +72,7 @@ public sealed class SettingsViewModel(JsonFile<AppSettings> file, Translator tra
             _saved = await file.UpdateAsync(change, CancellationToken.None);
             Problem = null;
         }
-        catch (Exception exception) when (IsFileProblem(exception))
+        catch (Exception exception) when (FileProblem.Is(exception))
         {
             logger.LogError(exception, "Could not save the settings");
             // The sender reads the file, so show what the file really holds.
@@ -71,6 +80,4 @@ public sealed class SettingsViewModel(JsonFile<AppSettings> file, Translator tra
             Problem = translator.Format("Settings.SaveFailed", exception.Message);
         }
     }
-
-    static bool IsFileProblem(Exception exception) => exception is IOException or UnauthorizedAccessException or InvalidDataException;
 }

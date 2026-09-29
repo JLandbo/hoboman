@@ -1,0 +1,27 @@
+<Window x:Class="Hoboman.Views.NameDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="460" SizeToContent="Height"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent" ResizeMode="NoResize"
+        ShowInTaskbar="False" WindowStartupLocation="CenterOwner" UseLayoutRounding="True"
+        Foreground="{DynamicResource Text}" FontFamily="{StaticResource UiFont}" FontSize="13">
+    <Border Style="{StaticResource DialogPanel}" MouseLeftButtonDown="Border_MouseLeftButtonDown">
+        <StackPanel>
+            <DockPanel Margin="0,0,0,14">
+                <Button DockPanel.Dock="Right" Content="&#xE711;" ToolTip="{DynamicResource Common.Close}" Click="Cancel_Click" IsCancel="True" Style="{StaticResource SmallIconButton}" FontSize="12" VerticalAlignment="Center" />
+                <TextBlock x:Name="TitleText" FontSize="18" FontWeight="SemiBold" />
+            </DockPanel>
+            <TextBlock Text="{DynamicResource Editor.Name}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,0,0,4" />
+            <Border CornerRadius="8" Background="{DynamicResource Input}">
+                <TextBox x:Name="NameBox" Style="{StaticResource Field}" Background="Transparent" Padding="8,6" FontFamily="{StaticResource CodeFont}"
+                         CaretBrush="{DynamicResource Text}" TextChanged="NameBox_TextChanged" />
+            </Border>
+            <TextBlock Text="{DynamicResource Dialog.FolderHint}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,6,0,0" />
+            <TextBlock x:Name="ProblemText" Foreground="{DynamicResource Error}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Visibility="Collapsed" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+                <Button Content="{DynamicResource Common.Cancel}" Click="Cancel_Click" Style="{StaticResource PillButton}" Margin="0,0,8,0" />
+                <Button x:Name="ConfirmButton" Click="Confirm_Click" IsDefault="True" Style="{StaticResource PrimaryButton}" />
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>

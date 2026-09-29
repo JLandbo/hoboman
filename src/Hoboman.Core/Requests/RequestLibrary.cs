@@ -15,6 +15,8 @@ public sealed class RequestLibrary(AppFolder folder, ILogger<RequestLibrary> log
     public Task<IReadOnlyList<string>> FoldersAsync(CancellationToken cancellationToken) =>
         ListAsync(root => Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories), cancellationToken);
 
+    public bool Exists(string name) => File.Exists(PathOf(name));
+
     public async Task<ApiRequest?> LoadAsync(string name, CancellationToken cancellationToken) => await FileOf(name).LoadAsync(cancellationToken).ConfigureAwait(false);
 
     public async Task SaveAsync(string name, ApiRequest request, CancellationToken cancellationToken) => await FileOf(name).SaveAsync(request, cancellationToken).ConfigureAwait(false);

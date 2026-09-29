@@ -45,6 +45,7 @@ public partial class App : Application
         Use(translator.Current);
         translator.Changed += () => Use(translator.Current);
         await _services.GetRequiredService<SettingsViewModel>().LoadAsync(CancellationToken.None);
+        await _services.GetRequiredService<MainViewModel>().LoadAsync(CancellationToken.None);
         _services.GetRequiredService<MainWindow>().Show();
     }
 
@@ -72,11 +73,13 @@ public partial class App : Application
         services.AddSingleton<HistoryStore>();
         services.AddSingleton<RequestRunner>();
         services.AddSingleton<IBrowser, ShellBrowser>();
-        services.AddSingleton<RequestTreeViewModel>();
-        services.AddSingleton<RequestEditorViewModel>();
-        services.AddSingleton<ResponseViewModel>();
-        services.AddSingleton<MainViewModel>();
+        services.AddSingleton<IDialogs, Dialogs>();
         services.AddSingleton<SettingsViewModel>();
+        services.AddSingleton<EnvironmentsViewModel>();
+        services.AddSingleton<RequestTreeViewModel>();
+        services.AddSingleton<HistoryViewModel>();
+        services.AddSingleton<RequestTabServices>();
+        services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();
         return services;
     }
