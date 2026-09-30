@@ -2,13 +2,13 @@ using System.Windows.Input;
 
 namespace Hoboman.Mvvm;
 
-public sealed class AsyncCommand(Func<Task> execute) : ICommand
+public sealed class AsyncCommand(Func<Task> execute, Func<bool>? canExecute = null) : ICommand
 {
     bool _running;
 
     public event EventHandler? CanExecuteChanged;
 
-    public bool CanExecute(object? parameter) => !_running;
+    public bool CanExecute(object? parameter) => !_running && (canExecute?.Invoke() ?? true);
 
     public async void Execute(object? parameter)
     {
@@ -25,5 +25,5 @@ public sealed class AsyncCommand(Func<Task> execute) : ICommand
         }
     }
 
-    void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+    public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
 }

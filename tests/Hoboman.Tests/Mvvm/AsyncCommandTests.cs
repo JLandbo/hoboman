@@ -3,6 +3,19 @@ namespace Hoboman.Tests.Mvvm;
 public sealed class AsyncCommandTests
 {
     [Fact]
+    public void CanExecute_WhenItsConditionIsNotMet_ThenIsFalse()
+    {
+        // Arrange
+        var command = new AsyncCommand(() => Task.CompletedTask, () => false);
+
+        // Act
+        var canExecute = command.CanExecute(null);
+
+        // Assert
+        Assert.False(canExecute);
+    }
+
+    [Fact]
     public void CanExecute_WhenTheCommandIsRunning_ThenIsFalse()
     {
         // Arrange

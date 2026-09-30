@@ -169,6 +169,50 @@ public sealed class RequestTabViewModelTests
     }
 
     [Fact]
+    public void Send_WhenTheUrlIsEmpty_ThenCannotBeUsed()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var tab = harness.Tab();
+
+        // Act
+        tab.Url = "   ";
+
+        // Assert
+        Assert.False(tab.Send.CanExecute(null));
+    }
+
+    [Fact]
+    public void Send_WhenAUrlIsTyped_ThenCanBeUsed()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var tab = harness.Tab();
+
+        // Act
+        tab.Url = "{{base}}/users";
+
+        // Assert
+        Assert.True(tab.Send.CanExecute(null));
+    }
+
+    [Fact]
+    public void Url_WhenChanged_ThenTellsTheSendButton()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var tab = harness.Tab();
+        var told = false;
+        tab.Send.CanExecuteChanged += (_, _) => told = true;
+
+        // Act
+        tab.Url = "https://dev.local";
+
+        // Assert
+        Assert.True(told);
+    }
+
+    [Fact]
     public void Url_WhenChanged_ThenMarksTheTabUnsaved()
     {
         // Arrange

@@ -41,7 +41,8 @@ public sealed class RequestTabViewModel : ObservableObject
         };
         Query.Changed += MarkDirty;
         Headers.Changed += MarkDirty;
-        Send = new AsyncCommand(SendAsync);
+        // Without an address there is nothing to send, and trying would only leave a failed call in the history.
+        Send = new AsyncCommand(SendAsync, () => !string.IsNullOrWhiteSpace(Url));
         Save = new AsyncCommand(SaveAsync);
         Load(request);
     }
@@ -107,7 +108,15 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public string Method { get; set => Change(ref field, value); } = "GET";
 
-    public string Url { get; set => Change(ref field, value); } = "";
+    public string Url
+    {
+        get;
+        set
+        {
+            Change(ref field, value);
+            Send.RaiseCanExecuteChanged();
+        }
+    } = "";
 
     public KeyValueListViewModel Query { get; } = new();
 
