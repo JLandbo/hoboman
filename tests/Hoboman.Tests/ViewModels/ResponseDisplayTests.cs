@@ -151,4 +151,34 @@ public sealed class ResponseDisplayTests
         // Assert
         Assert.Equal(BodyFormat.Raw, format);
     }
+
+    [Fact]
+    public void Format_WhenTheXmlHasALineBreakBetweenSomeTags_ThenIndentsEveryTag()
+    {
+        // Act
+        var body = ResponseDisplay.Format("<svg>\n<g><rect/></g></svg>", BodyFormat.Xml).Body;
+
+        // Assert
+        Assert.Equal(string.Join(Environment.NewLine, "<svg>", "  <g>", "    <rect />", "  </g>", "</svg>"), body);
+    }
+
+    [Fact]
+    public void Format_WhenALineBreakComesBeforeTheDeclaration_ThenStillFormatsIt()
+    {
+        // Act
+        var (_, coloring) = ResponseDisplay.Format("\n<?xml version=\"1.0\"?><a><b/></a>", BodyFormat.Xml);
+
+        // Assert
+        Assert.Equal(BodyFormat.Xml, coloring);
+    }
+
+    [Fact]
+    public void Format_WhenTheXmlStartsWithAByteOrderMark_ThenStillFormatsIt()
+    {
+        // Act
+        var (_, coloring) = ResponseDisplay.Format("\uFEFF<?xml version=\"1.0\"?><a><b/></a>", BodyFormat.Xml);
+
+        // Assert
+        Assert.Equal(BodyFormat.Xml, coloring);
+    }
 }

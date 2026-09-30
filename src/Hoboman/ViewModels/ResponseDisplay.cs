@@ -74,7 +74,9 @@ public sealed record ResponseDisplay(string Status, bool IsSuccess, string Elaps
     {
         try
         {
-            using var reader = XmlReader.Create(new StringReader(body), new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore });
+            // Line breaks between tags would count as text, and the writer does not indent text mixed with tags, so they are ignored.
+            // Browsers also accept a byte order mark or line breaks before the declaration, which XML itself does not.
+            using var reader = XmlReader.Create(new StringReader(body.TrimStart('\uFEFF').TrimStart()), new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore, IgnoreWhitespace = true });
             var document = XDocument.Load(reader);
             return document.Declaration is { } declaration ? $"{declaration}{Environment.NewLine}{document}" : document.ToString();
         }

@@ -130,8 +130,7 @@ public sealed class JsonFileTests : IDisposable
     public async Task LoadAsync_WhenTheFileIsLockedForAMoment_ThenReadsItOnceItIsReleased()
     {
         // Arrange
-        await Store().SaveAsync(new AppSettings("Test"), Cancellation);
-        ReleaseSoon(new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.None));
+        ReleaseSoon(Locked("""{"environmentName": "Test"}"""));
 
         // Act
         var settings = await Store().LoadAsync(Cancellation);
@@ -144,8 +143,7 @@ public sealed class JsonFileTests : IDisposable
     public async Task LoadAsync_WhenTheFileStaysLocked_ThenThrows()
     {
         // Arrange
-        await Store().SaveAsync(AppSettings.Default, Cancellation);
-        using var locked = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.None);
+        using var locked = Locked("{}");
 
         // Act
         var loading = Store().LoadAsync(Cancellation);
@@ -158,8 +156,7 @@ public sealed class JsonFileTests : IDisposable
     public async Task SaveAsync_WhenTheFileIsLockedForAMoment_ThenSavesOnceItIsReleased()
     {
         // Arrange
-        await Store().SaveAsync(AppSettings.Default, Cancellation);
-        ReleaseSoon(new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.None));
+        ReleaseSoon(Locked("{}"));
 
         // Act
         await Store().SaveAsync(new AppSettings("Test"), Cancellation);
@@ -213,6 +210,16 @@ public sealed class JsonFileTests : IDisposable
 
         // Assert
         Assert.DoesNotContain(logger.Entries, entry => entry.Thread == caller.ManagedThreadId);
+    }
+
+    // Writing and locking through one handle leaves no moment in between for another program, such as a virus scanner, to open the file.
+    FileStream Locked(string json)
+    {
+        Directory.CreateDirectory(_temporary.Path);
+        var locked = new FileStream(FilePath, FileMode.Create, FileAccess.Write, FileShare.None);
+        locked.Write(System.Text.Encoding.UTF8.GetBytes(json));
+        locked.Flush();
+        return locked;
     }
 
     static void ReleaseSoon(FileStream locked) => new Thread(() =>
