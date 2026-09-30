@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using Hoboman.Core.Auth;
+using Hoboman.Core.Base64;
 using Hoboman.Core.Environments;
 using Hoboman.Core.Requests;
 using Microsoft.Extensions.Logging;
@@ -57,8 +59,8 @@ public sealed class HttpRequestSender(SecretStore secrets, HttpClients clients, 
         {
             Content = request.BodyKind switch
             {
-                BodyKind.Json => new StringContent(environment.Resolve(request.Body), Encoding.UTF8, "application/json"),
-                BodyKind.Text => new StringContent(environment.Resolve(request.Body), Encoding.UTF8, "text/plain"),
+                BodyKind.Json => new StringContent(BodyOf(request, environment), Encoding.UTF8, "application/json"),
+                BodyKind.Text => new StringContent(BodyOf(request, environment), Encoding.UTF8, "text/plain"),
                 _ => null,
             },
         };
@@ -127,6 +129,26 @@ public sealed class HttpRequestSender(SecretStore secrets, HttpClients clients, 
         await secrets.OfAsync(auth.SecretsId, kind, cancellationToken).ConfigureAwait(false) ?? throw new MissingSecretException(kind);
 
     static string LoggableOf(Uri? address) => address is null ? "(no address yet)" : SafeAddress.Of(address);
+
+    // The variables are filled in first, so a variable inside a chosen value is encoded with it.
+    // A text body has no properties, so only the whole of it can go as Base64, and the Content-Type stays the one of the body's kind.
+    static string BodyOf(ApiRequest request, ApiEnvironment environment)
+    {
+        var body = environment.Resolve(request.Body);
+        var chosen = (request.Base64?.Encode ?? []).Where(path => request.BodyKind == BodyKind.Json || path == JsonPath.Root);
+        if (!chosen.Any())
+        {
+            return body;
+        }
+        try
+        {
+            return Base64Json.Encode(body, chosen);
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidBase64RequestBodyException(exception);
+        }
+    }
 
     static bool IsToken(string text) => text.Length > 0 && text.All(symbol => char.IsAsciiLetterOrDigit(symbol) || _tokenSymbols.Contains(symbol));
 }

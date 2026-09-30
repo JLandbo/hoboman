@@ -240,6 +240,41 @@
         </Setter>
     </Style>
 
+    <Style x:Key="Switch" TargetType="ToggleButton">
+        <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <StackPanel Orientation="Horizontal" Background="Transparent">
+                        <Border x:Name="Track" Width="30" Height="16" CornerRadius="8" VerticalAlignment="Center"
+                                Background="{DynamicResource Input}" BorderBrush="{DynamicResource Edge}" BorderThickness="1">
+                            <Ellipse x:Name="Thumb" Width="10" Height="10" Margin="2" HorizontalAlignment="Left" Fill="{DynamicResource Muted}" />
+                        </Border>
+                        <ContentPresenter Margin="6,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource Text}" />
+                            <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource Muted}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Track" Property="Background" Value="{DynamicResource Attention}" />
+                            <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource Attention}" />
+                            <Setter TargetName="Thumb" Property="Fill" Value="{DynamicResource OnAttention}" />
+                            <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.5" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="ChoiceItem" TargetType="MenuItem">
         <Setter Property="Foreground" Value="{DynamicResource Text}" />
         <Setter Property="Cursor" Value="Hand" />
@@ -467,6 +502,18 @@
         <Setter Property="FontSize" Value="13" />
         <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
         <Setter Property="ContextMenu" Value="{DynamicResource BodyMenu}" />
+    </Style>
+
+    <Style TargetType="controls:BodyEditor">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource Text}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="10,8" />
+        <Setter Property="FontFamily" Value="{StaticResource CodeFont}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+        <Setter Property="HorizontalScrollBarVisibility" Value="Auto" />
+        <Setter Property="ContextMenu" Value="{DynamicResource TextMenu}" />
     </Style>
 
     <Style x:Key="Tabs" TargetType="ListBox">

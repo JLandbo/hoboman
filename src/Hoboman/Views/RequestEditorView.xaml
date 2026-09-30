@@ -97,27 +97,63 @@
                 <local:KeyValueEditor DataContext="{Binding Headers}" Visibility="{Binding IsChecked, ElementName=HeadersSection, Converter={StaticResource VisibleWhenTrue}}" />
 
                 <DockPanel Visibility="{Binding IsChecked, ElementName=BodySection, Converter={StaticResource VisibleWhenTrue}}">
-                    <Border DockPanel.Dock="Top" Style="{StaticResource SegmentGroup}" Margin="0,0,0,8">
-                        <StackPanel Orientation="Horizontal">
-                            <RadioButton Content="{DynamicResource Body.None}" GroupName="BodyKind" Style="{StaticResource Segment}"
-                                         IsChecked="{Binding BodyKind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static requests:BodyKind.None}}" />
-                            <RadioButton Content="{DynamicResource Body.Json}" GroupName="BodyKind" Style="{StaticResource Segment}"
-                                         IsChecked="{Binding BodyKind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static requests:BodyKind.Json}}" />
-                            <RadioButton Content="{DynamicResource Body.Text}" GroupName="BodyKind" Style="{StaticResource Segment}"
-                                         IsChecked="{Binding BodyKind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static requests:BodyKind.Text}}" />
-                        </StackPanel>
-                    </Border>
-                    <TextBox Text="{Binding Body, UpdateSourceTrigger=PropertyChanged}">
-                        <TextBox.Style>
-                            <Style TargetType="TextBox" BasedOn="{StaticResource Code}">
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <ToggleButton DockPanel.Dock="Right" Content="{DynamicResource Base64.WholeBody}" IsChecked="{Binding Base64.EncodesWholeBody}" Margin="12,0,0,0">
+                            <ToggleButton.Style>
+                                <Style TargetType="ToggleButton" BasedOn="{StaticResource Switch}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding BodyKind}" Value="{x:Static requests:BodyKind.None}">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ToggleButton.Style>
+                        </ToggleButton>
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding Base64.EncodeSummary}" Foreground="{DynamicResource Muted}" FontSize="12" VerticalAlignment="Center" Margin="12,0,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding BodyKind}" Value="{x:Static requests:BodyKind.Json}">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <Border Style="{StaticResource SegmentGroup}">
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton Content="{DynamicResource Body.None}" GroupName="BodyKind" Style="{StaticResource Segment}"
+                                             IsChecked="{Binding BodyKind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static requests:BodyKind.None}}" />
+                                <RadioButton Content="{DynamicResource Body.Json}" GroupName="BodyKind" Style="{StaticResource Segment}"
+                                             IsChecked="{Binding BodyKind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static requests:BodyKind.Json}}" />
+                                <RadioButton Content="{DynamicResource Body.Text}" GroupName="BodyKind" Style="{StaticResource Segment}"
+                                             IsChecked="{Binding BodyKind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static requests:BodyKind.Text}}" />
+                            </StackPanel>
+                        </Border>
+                    </DockPanel>
+                    <Border CornerRadius="8" Background="{DynamicResource Input}">
+                        <Border.Style>
+                            <Style TargetType="Border">
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding BodyKind}" Value="{x:Static requests:BodyKind.None}">
                                         <Setter Property="Visibility" Value="Collapsed" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
-                        </TextBox.Style>
-                    </TextBox>
+                        </Border.Style>
+                        <controls:BodyEditor Body="{Binding Body}" Marks="{Binding Base64.BodyMarks}" MarksAreCurrent="{Binding Base64.BodyMarksAreCurrent}" MarkToggled="Body_MarkToggled">
+                            <controls:BodyEditor.Style>
+                                <Style TargetType="controls:BodyEditor" BasedOn="{StaticResource {x:Type controls:BodyEditor}}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding BodyKind}" Value="{x:Static requests:BodyKind.Json}">
+                                            <Setter Property="Coloring" Value="{x:Static viewModels:BodyFormat.Json}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </controls:BodyEditor.Style>
+                        </controls:BodyEditor>
+                    </Border>
                 </DockPanel>
 
                 <local:AuthEditor DataContext="{Binding Auth}" Visibility="{Binding IsChecked, ElementName=AuthSection, Converter={StaticResource VisibleWhenTrue}}" />

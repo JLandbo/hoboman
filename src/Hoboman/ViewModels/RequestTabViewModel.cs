@@ -2,6 +2,7 @@ using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Hoboman.Core.Auth;
+using Hoboman.Core.Base64;
 using Hoboman.Core.History;
 using Hoboman.Core.Requests;
 using Hoboman.Core.Sending;
@@ -21,6 +22,7 @@ public sealed class RequestTabViewModel : ObservableObject
     bool _loading;
     bool _pinned;
     CancellationTokenSource? _sending;
+    CancellationTokenSource? _formatting;
 
     public RequestTabViewModel(RequestTabServices services, ApiRequest request, string? name = null, string? suggestedName = null, string? historyName = null)
     {
@@ -41,6 +43,9 @@ public sealed class RequestTabViewModel : ObservableObject
         };
         Query.Changed += MarkDirty;
         Headers.Changed += MarkDirty;
+        Base64 = new(services.Translator, services.Clock);
+        Base64.Changed += MarkDirty;
+        Base64.DecodeChanged += ShowResponseAgain;
         // Without an address there is nothing to send, and trying would only leave a failed call in the history.
         Send = new AsyncCommand(SendAsync, () => !string.IsNullOrWhiteSpace(Url));
         Save = new AsyncCommand(SaveAsync);
@@ -124,7 +129,20 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public BodyKind BodyKind { get; set => Change(ref field, value); }
 
-    public string Body { get; set => Change(ref field, value); } = "";
+    public string Body
+    {
+        get;
+        set
+        {
+            if (Set(ref field, value))
+            {
+                MarkDirty();
+                Base64.BodyChanged(value);
+            }
+        }
+    } = "";
+
+    public Base64ViewModel Base64 { get; }
 
     public AuthViewModel Auth { get; }
 
@@ -134,15 +152,19 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public ResponseDisplay? Response { get; private set => Set(ref field, value); }
 
+    public string? ResponseBodyProblem { get; private set => Set(ref field, value); }
+
+    public IReadOnlyList<Base64Mark> ResponseMarks { get; private set => Set(ref field, value); } = [];
+
     // Chosen from the Content-Type of each new response, and changed by the user when it does not fit.
     public BodyFormat BodyFormat
     {
         get => _bodyFormat;
         set
         {
-            if (Set(ref _bodyFormat, value) && _response is { } response)
+            if (Set(ref _bodyFormat, value))
             {
-                Formatting = FormatAsync(response);
+                ShowResponseAgain();
             }
         }
     }
@@ -241,6 +263,8 @@ public sealed class RequestTabViewModel : ObservableObject
     {
         _response = response;
         Response = null;
+        ResponseBodyProblem = null;
+        ResponseMarks = [];
         if (response is not null)
         {
             Set(ref _bodyFormat, ResponseDisplay.FormatOf(response), nameof(BodyFormat));
@@ -248,14 +272,41 @@ public sealed class RequestTabViewModel : ObservableObject
         }
     }
 
-    // Formatting a large body takes a while, so it is kept off the UI thread, and a newer response or format wins.
+    // Formatting a large body takes a while, so it is kept off the UI thread, and a newer response, format or choice of what to decode wins.
+    // The one before it is stopped, so quick clicks do not leave several at work.
     async Task FormatAsync(ApiResponse response)
     {
+        _formatting?.Cancel();
+        using var formatting = _formatting = new CancellationTokenSource();
         var format = _bodyFormat;
-        var display = await Task.Run(() => ResponseDisplay.Of(response, format));
-        if (ReferenceEquals(response, _response) && format == _bodyFormat)
+        var decode = Base64.Decode;
+        try
         {
-            Response = display;
+            var shown = await Task.Run(() => Base64ViewModel.ShowResponse(response, format, decode, _services.Translator, formatting.Token), formatting.Token);
+            if (ReferenceEquals(response, _response) && format == _bodyFormat && ReferenceEquals(decode, Base64.Decode))
+            {
+                Response = shown.Display;
+                ResponseMarks = shown.Marks;
+                ResponseBodyProblem = shown.Problem;
+            }
+        }
+        catch (OperationCanceledException) when (formatting.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            if (_formatting == formatting)
+            {
+                _formatting = null;
+            }
+        }
+    }
+
+    void ShowResponseAgain()
+    {
+        if (_response is { } response)
+        {
+            Formatting = FormatAsync(response);
         }
     }
 
@@ -265,6 +316,9 @@ public sealed class RequestTabViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(Title));
         Auth.Relabel();
+        Base64.Relabel();
+        // What is written beside the response's properties is in the language too.
+        ShowResponseAgain();
     }
 
     public void Unlink()
@@ -283,6 +337,7 @@ public sealed class RequestTabViewModel : ObservableObject
         Headers = Headers.ToList(),
         BodyKind = BodyKind,
         Body = Body,
+        Base64 = Base64.ToPaths(),
         Auth = Auth.ToSettings(),
     };
 
@@ -293,6 +348,8 @@ public sealed class RequestTabViewModel : ObservableObject
         Problem = null;
         _response = null;
         Response = null;
+        ResponseBodyProblem = null;
+        ResponseMarks = [];
         IsSending = true;
         // The environment chosen when Send is pressed is the one used, even if another is chosen while the secrets are saved.
         var environment = _services.Environments.Selected;
@@ -333,6 +390,8 @@ public sealed class RequestTabViewModel : ObservableObject
             ExpiredTokenException expired => translator.Format("Response.ExpiredToken", expired.ExpiresAt.ToLocalTime()),
             InvalidHeaderException header => translator.Format("Response.InvalidHeader", header.Name),
             InvalidMethodException method => translator.Format("Response.InvalidMethod", method.Method),
+            InvalidBase64RequestBodyException => translator.Of("Response.InvalidBase64RequestBody"),
+            MissingBase64PathException missing => translator.Format("Response.MissingBase64Path", missing.Path),
             _ => NetworkProblem.Of(exception, translator) ?? cause,
         };
     }
@@ -371,9 +430,13 @@ public sealed class RequestTabViewModel : ObservableObject
 
     bool HasUnsavedChanges() => SavedJsonOf(ToRequest()) != _savedJson || Auth.HasUnsavedSecrets;
 
-    // The lists leave blank rows out, so a file with blank rows is compared the same way.
-    static string SavedJsonOf(ApiRequest request) =>
-        JsonSerializer.Serialize(request with { Query = KeyValueListViewModel.WithoutBlanks(request.Query), Headers = KeyValueListViewModel.WithoutBlanks(request.Headers) });
+    // The lists leave blank rows out, and a tab without Base64 choices leaves them out, so a file with either is compared the same way.
+    static string SavedJsonOf(ApiRequest request) => JsonSerializer.Serialize(request with
+    {
+        Query = KeyValueListViewModel.WithoutBlanks(request.Query),
+        Headers = KeyValueListViewModel.WithoutBlanks(request.Headers),
+        Base64 = request.Base64 is { Encode: [], Decode: [] } ? null : request.Base64,
+    });
 
     void Load(ApiRequest request)
     {
@@ -386,6 +449,7 @@ public sealed class RequestTabViewModel : ObservableObject
         Headers.Load(request.Headers);
         BodyKind = request.BodyKind;
         Body = request.Body;
+        Base64.Load(request.Base64, request.Body);
         Auth.Load(request.Auth);
         _loading = false;
         IsDirty = false;

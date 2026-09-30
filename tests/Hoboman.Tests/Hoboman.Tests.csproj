@@ -16,6 +16,7 @@
     <Using Include="Xunit" />
     <Using Include="Microsoft.Extensions.Logging.Abstractions" />
     <Using Include="Hoboman.Core.Auth" />
+    <Using Include="Hoboman.Core.Base64" />
     <Using Include="Hoboman.Core.Environments" />
     <Using Include="Hoboman.Core.History" />
     <Using Include="Hoboman.Core.Languages" />

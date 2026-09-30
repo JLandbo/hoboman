@@ -109,6 +109,93 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
     }
 
     [Fact]
+    public async Task SendAsync_WhenPropertiesAreChosenForBase64_ThenSendsThemEncodedAfterFillingInTheVariables()
+    {
+        // Arrange
+        var request = Request() with
+        {
+            Method = "POST",
+            BodyKind = BodyKind.Json,
+            Body = """{"html":"<p>{{place}}</p>","data":{"name":"Hobo"},"rendered":false}""",
+            Base64 = new() { Encode = ["$.html", "$.data"] },
+        };
+
+        // Act
+        var echo = await SendAndEchoAsync(request, new ApiEnvironment("dev", [new("place", "Ærø")]));
+
+        // Assert
+        using var body = JsonDocument.Parse(echo.Body);
+        Assert.Equal("<p>Ærø</p>", Base64Text.Decode(body.RootElement.GetProperty("html").GetString()!));
+        Assert.Equal("""{"name":"Hobo"}""", Base64Text.Decode(body.RootElement.GetProperty("data").GetString()!));
+        Assert.False(body.RootElement.GetProperty("rendered").GetBoolean());
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheWholeJsonBodyIsChosenForBase64_ThenSendsItEncodedAsJson()
+    {
+        // Arrange
+        var request = Request() with { Method = "POST", BodyKind = BodyKind.Json, Body = """{"a": 1}""", Base64 = new() { Encode = [JsonPath.Root] } };
+
+        // Act
+        var echo = await SendAndEchoAsync(request);
+
+        // Assert
+        Assert.Equal((Base64Text.Encode("""{"a": 1}"""), "application/json; charset=utf-8"), (echo.Body, echo.Headers["Content-Type"]));
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheWholeTextBodyIsChosenForBase64_ThenSendsItEncodedAsText()
+    {
+        // Arrange
+        var request = Request() with { Method = "POST", BodyKind = BodyKind.Text, Body = "Hej {{place}}", Base64 = new() { Encode = [JsonPath.Root] } };
+
+        // Act
+        var echo = await SendAndEchoAsync(request, new ApiEnvironment("dev", [new("place", "Ærø")]));
+
+        // Assert
+        Assert.Equal((Base64Text.Encode("Hej Ærø"), "text/plain; charset=utf-8"), (echo.Body, echo.Headers["Content-Type"]));
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenATextBodyHasPropertiesChosenForBase64_ThenSendsItAsItIs()
+    {
+        // Arrange
+        var request = Request() with { Method = "POST", BodyKind = BodyKind.Text, Body = "not json", Base64 = new() { Encode = ["$.html"] } };
+
+        // Act
+        var echo = await SendAndEchoAsync(request);
+
+        // Assert
+        Assert.Equal("not json", echo.Body);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenAChosenPropertyIsNotInTheBody_ThenRejectsIt()
+    {
+        // Arrange
+        var request = Request() with { Method = "POST", BodyKind = BodyKind.Json, Body = """{"a": 1}""", Base64 = new() { Encode = ["$.html"] } };
+
+        // Act
+        var sending = SendAndEchoAsync(request);
+
+        // Assert
+        await Assert.ThrowsAsync<MissingBase64PathException>(() => sending);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenPropertiesAreChosenForBase64AndTheBodyIsNotJson_ThenRejectsIt()
+    {
+        // Arrange
+        var request = Request() with { Method = "POST", BodyKind = BodyKind.Json, Body = "not json", Base64 = new() { Encode = ["$.html"] } };
+
+        // Act
+        var sending = SendAndEchoAsync(request);
+
+        // Assert
+        await Assert.ThrowsAsync<InvalidBase64RequestBodyException>(() => sending);
+    }
+
+    [Fact]
     public async Task SendAsync_WhenAHeaderHasAVariable_ThenSendsItResolved()
     {
         // Arrange

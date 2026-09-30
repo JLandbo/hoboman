@@ -16,7 +16,7 @@ public sealed class RequestLibraryTests : IDisposable
     public async Task LoadAsync_WhenTheRequestWasSaved_ThenGivesItBack()
     {
         // Arrange
-        var request = ApiRequest.New() with { Method = "POST", Url = "https://dev.local", Headers = [new("Accept", "application/json")], BodyKind = BodyKind.Json, Body = "{}" };
+        var request = ApiRequest.New() with { Method = "POST", Url = "https://dev.local", Headers = [new("Accept", "application/json")], BodyKind = BodyKind.Json, Body = "{}", Base64 = new() { Encode = ["$.html"], Decode = ["$.token"] } };
         await Library().SaveAsync("Users/Create user", request, Cancellation);
 
         // Act

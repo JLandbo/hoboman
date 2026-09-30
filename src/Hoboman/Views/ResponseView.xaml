@@ -97,13 +97,29 @@
             </Border>
 
             <Grid>
-                <Border CornerRadius="8" Background="{DynamicResource Input}" Visibility="{Binding IsChecked, ElementName=BodySection, Converter={StaticResource VisibleWhenTrue}}">
-                    <Grid>
-                        <controls:BodyView x:Name="BodyText" Body="{Binding Response.Body}" Coloring="{Binding Response.Coloring, FallbackValue={x:Static viewModels:BodyFormat.Raw}}" />
-                        <TextBlock Text="{DynamicResource Response.Loading}" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                   Visibility="{Binding IsLoading, ElementName=BodyText, Converter={StaticResource VisibleWhenTrue}}" />
-                    </Grid>
-                </Border>
+                <DockPanel Visibility="{Binding IsChecked, ElementName=BodySection, Converter={StaticResource VisibleWhenTrue}}">
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <DockPanel.Style>
+                            <Style TargetType="DockPanel">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Response}" Value="{x:Null}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DockPanel.Style>
+                        <ToggleButton DockPanel.Dock="Right" Content="{DynamicResource Base64.WholeBody}" IsChecked="{Binding Base64.DecodesWholeResponse}" Style="{StaticResource Switch}" />
+                        <TextBlock Text="{Binding ResponseBodyProblem}" Foreground="{DynamicResource Error}" FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap" />
+                    </DockPanel>
+                    <Border CornerRadius="8" Background="{DynamicResource Input}">
+                        <Grid>
+                            <controls:BodyView x:Name="BodyText" Body="{Binding Response.Body}" Coloring="{Binding Response.Coloring, FallbackValue={x:Static viewModels:BodyFormat.Raw}}"
+                                               Marks="{Binding ResponseMarks}" MarkToggled="Body_MarkToggled" />
+                            <TextBlock Text="{DynamicResource Response.Loading}" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Visibility="{Binding IsLoading, ElementName=BodyText, Converter={StaticResource VisibleWhenTrue}}" />
+                        </Grid>
+                    </Border>
+                </DockPanel>
                 <TextBox Text="{Binding Response.Headers, Mode=OneWay}" IsReadOnly="True" Style="{StaticResource Code}"
                          Visibility="{Binding IsChecked, ElementName=HeadersSection, Converter={StaticResource VisibleWhenTrue}}" />
                 <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource Muted}">

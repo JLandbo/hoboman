@@ -14,6 +14,8 @@ public partial class RequestEditorView : UserControl
 
     void Cancel_Click(object sender, RoutedEventArgs e) => Tab.Cancel();
 
+    void Body_MarkToggled(object? sender, string path) => Tab.Base64.ToggleEncode(path);
+
     void Method_Click(object sender, RoutedEventArgs e) => Choose((string)((FrameworkElement)sender).DataContext);
 
     void CustomMethod_KeyDown(object sender, KeyEventArgs e)

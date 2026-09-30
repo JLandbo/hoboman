@@ -532,6 +532,66 @@ public sealed class RequestTabViewModelTests
     }
 
     [Fact]
+    public void Base64_WhenAPropertyIsChosen_ThenTheTabIsUnsaved()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var tab = harness.Tab(ApiRequest.New() with { BodyKind = BodyKind.Json, Body = """{"html": "<p>"}""" }, "Ping");
+
+        // Act
+        tab.Base64.ToggleEncode("$.html");
+
+        // Assert
+        Assert.True(tab.IsDirty);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenAPropertyIsChosenForBase64_ThenSendsItsPath()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var tab = harness.Tab(ApiRequest.New() with { BodyKind = BodyKind.Json, Body = """{"html": "<p>"}""" });
+        tab.Base64.ToggleEncode("$.html");
+
+        // Act
+        await tab.SendAsync();
+
+        // Assert
+        Assert.Equal(["$.html"], harness.Sender.Request!.Base64!.Encode);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenAChosenPropertyIsMissing_ThenSaysWhich()
+    {
+        // Arrange
+        using var harness = new Harness(send: () => throw new MissingBase64PathException("$.html"));
+        var tab = harness.Tab();
+
+        // Act
+        await tab.SendAsync();
+
+        // Assert
+        Assert.Equal("The property $.html is not in the body, so it cannot be sent as Base64.", tab.Problem?.Details);
+    }
+
+    [Fact]
+    public async Task Base64_WhenAResponseValueIsChosen_ThenShowsItDecoded()
+    {
+        // Arrange
+        var body = $$"""{"html": "{{Base64Text.Encode("<p>Ærø</p>")}}"}""";
+        using var harness = new Harness(send: () => Task.FromResult(new ApiResponse(200, "OK", 0, body.Length, [new("Content-Type", "application/json")], body)));
+        var tab = harness.Tab();
+        await tab.SendAsync();
+
+        // Act
+        tab.Base64.ToggleDecode("$.html");
+        await tab.Formatting;
+
+        // Assert
+        Assert.Equal((Base64MarkState.Decoded, true), (tab.ResponseMarks.Single().State, tab.Response!.Body.Contains("<p>Ærø</p>")));
+    }
+
+    [Fact]
     public async Task SendAsync_WhenTheRequestInherits_ThenSendsWithTheFoldersAuth()
     {
         // Arrange
@@ -791,5 +851,58 @@ public sealed class RequestTabViewModelTests
 
         // Assert
         Assert.Equal($"{{{Environment.NewLine}  \"a\": 1{Environment.NewLine}}}", tab.Response?.Body);
+    }
+
+    [Fact]
+    public async Task ReloadIfChanged_WhenTheFileDecodesAnotherValue_ThenShowsTheResponseAgain()
+    {
+        // Arrange
+        var body = $$"""{"html": "{{Base64Text.Encode("<p>")}}"}""";
+        using var harness = new Harness(send: () => Task.FromResult(new ApiResponse(200, "OK", 0, body.Length, [new("Content-Type", "application/json")], body)));
+        var request = ApiRequest.New();
+        var tab = harness.Tab(request, "Ping");
+        await tab.SendAsync();
+
+        // Act
+        tab.ReloadIfChanged(request with { Base64 = new() { Decode = ["$.html"] } });
+        await tab.Formatting;
+
+        // Assert
+        Assert.Equal(Base64MarkState.Decoded, tab.ResponseMarks.Single().State);
+    }
+
+    [Fact]
+    public async Task DecodesWholeResponse_WhenSet_ThenShowsTheDecodedBody()
+    {
+        // Arrange
+        var encoded = Base64Text.Encode("""{"a":1}""");
+        using var harness = new Harness(send: () => Task.FromResult(new ApiResponse(200, "OK", 0, encoded.Length, [new("Content-Type", "application/json")], encoded)));
+        var tab = harness.Tab();
+        await tab.SendAsync();
+
+        // Act
+        tab.Base64.DecodesWholeResponse = true;
+        await tab.Formatting;
+
+        // Assert
+        Assert.Equal($"{{{Environment.NewLine}  \"a\": 1{Environment.NewLine}}}", tab.Response?.Body);
+        Assert.Null(tab.ResponseBodyProblem);
+    }
+
+    [Fact]
+    public async Task DecodesWholeResponse_WhenTheBodyIsNotBase64_ThenKeepsItAndShowsTheProblem()
+    {
+        // Arrange
+        using var harness = new Harness(send: () => Task.FromResult(new ApiResponse(200, "OK", 0, 10, [], "not base64")));
+        var tab = harness.Tab();
+        await tab.SendAsync();
+
+        // Act
+        tab.Base64.DecodesWholeResponse = true;
+        await tab.Formatting;
+
+        // Assert
+        Assert.Equal("not base64", tab.Response?.Body);
+        Assert.Equal("The response body is not valid Base64.", tab.ResponseBodyProblem);
     }
 }
