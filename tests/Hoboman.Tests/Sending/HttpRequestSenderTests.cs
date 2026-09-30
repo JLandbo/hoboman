@@ -131,6 +131,19 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
     }
 
     [Fact]
+    public async Task SendAsync_WhenTheBodyIsXml_ThenSendsItAsXml()
+    {
+        // Arrange
+        var request = Request() with { Method = "POST", BodyKind = BodyKind.Xml, Body = "<order id=\"{{id}}\" />" };
+
+        // Act
+        var echo = await SendAndEchoAsync(request, new ApiEnvironment("dev", [new("id", "17")]));
+
+        // Assert
+        Assert.Equal(("<order id=\"17\" />", "application/xml; charset=utf-8"), (echo.Body, echo.Headers["Content-Type"]));
+    }
+
+    [Fact]
     public async Task SendAsync_WhenTheWholeJsonBodyIsChosenForBase64_ThenSendsItEncodedAsJson()
     {
         // Arrange

@@ -19,6 +19,7 @@ public abstract class MarkedEditor : TextEditor
         new(true, (editor, _) => ((MarkedEditor)editor)._margin.Redraw()));
 
     readonly Base64Margin _margin;
+    readonly BodyFolding _folding;
 
     protected MarkedEditor()
     {
@@ -32,6 +33,7 @@ public abstract class MarkedEditor : TextEditor
         _margin = new(this);
         TextArea.LeftMargins.Insert(0, _margin);
         TextArea.TextView.BackgroundRenderers.Add(new Base64Highlighter(this, _margin));
+        _folding = new(this);
     }
 
     // The view that shows the editor knows which choices a click changes.
@@ -64,5 +66,6 @@ public abstract class MarkedEditor : TextEditor
     {
         SyntaxHighlighting = Colorings.Of(Coloring);
         _margin.Refresh();
+        _folding.UpdateSoon();
     }
 }

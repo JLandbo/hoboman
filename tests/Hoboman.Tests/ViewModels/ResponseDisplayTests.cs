@@ -9,7 +9,7 @@ public sealed class ResponseDisplayTests
         var body = ResponseDisplay.Format("""{"navn":"Ærø"}""", BodyFormat.Json).Body;
 
         // Assert
-        Assert.Equal($"{{{Environment.NewLine}  \"navn\": \"Ærø\"{Environment.NewLine}}}", body);
+        Assert.Equal($"{{{Environment.NewLine}\t\"navn\": \"Ærø\"{Environment.NewLine}}}", body);
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public sealed class ResponseDisplayTests
         var body = ResponseDisplay.Format("""<svg xmlns="http://www.w3.org/2000/svg"><rect width="1"/></svg>""", BodyFormat.Xml).Body;
 
         // Assert
-        Assert.Equal($"<svg xmlns=\"http://www.w3.org/2000/svg\">{Environment.NewLine}  <rect width=\"1\" />{Environment.NewLine}</svg>", body);
+        Assert.Equal($"<svg xmlns=\"http://www.w3.org/2000/svg\">{Environment.NewLine}\t<rect width=\"1\" />{Environment.NewLine}</svg>", body);
     }
 
     [Fact]
@@ -99,7 +99,7 @@ public sealed class ResponseDisplayTests
         var display = ResponseDisplay.Of(new ApiResponse(200, "OK", 5, 7, [new("content-type", "application/problem+json; charset=utf-8")], """{"a":1}"""));
 
         // Assert
-        Assert.Equal($"{{{Environment.NewLine}  \"a\": 1{Environment.NewLine}}}", display.Body);
+        Assert.Equal($"{{{Environment.NewLine}\t\"a\": 1{Environment.NewLine}}}", display.Body);
     }
 
     [Fact]
@@ -109,7 +109,7 @@ public sealed class ResponseDisplayTests
         var display = ResponseDisplay.Of(new ApiResponse(200, "OK", 5, 20, [new("Content-Type", "image/svg+xml")], "<svg><g/></svg>"));
 
         // Assert
-        Assert.Equal($"<svg>{Environment.NewLine}  <g />{Environment.NewLine}</svg>", display.Body);
+        Assert.Equal($"<svg>{Environment.NewLine}\t<g />{Environment.NewLine}</svg>", display.Body);
     }
 
     [Fact]
@@ -149,7 +149,7 @@ public sealed class ResponseDisplayTests
         var body = ResponseDisplay.Format("<svg>\n<g><rect/></g></svg>", BodyFormat.Xml).Body;
 
         // Assert
-        Assert.Equal(string.Join(Environment.NewLine, "<svg>", "  <g>", "    <rect />", "  </g>", "</svg>"), body);
+        Assert.Equal(string.Join(Environment.NewLine, "<svg>", "\t<g>", "\t\t<rect />", "\t</g>", "</svg>"), body);
     }
 
     [Fact]

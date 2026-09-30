@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Hoboman.Core.Auth;
 using Hoboman.Core.Base64;
+using Hoboman.Core.Environments;
 using Hoboman.Core.History;
 using Hoboman.Core.Requests;
 using Hoboman.Core.Sending;
@@ -23,6 +24,8 @@ public sealed class RequestTabViewModel : ObservableObject
     bool _pinned;
     CancellationTokenSource? _sending;
     CancellationTokenSource? _formatting;
+    LayoutProblem? _layoutProblem;
+    bool _layingOut;
 
     public RequestTabViewModel(RequestTabServices services, ApiRequest request, string? name = null, string? suggestedName = null, string? historyName = null)
     {
@@ -127,7 +130,15 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public KeyValueListViewModel Headers { get; } = new();
 
-    public BodyKind BodyKind { get; set => Change(ref field, value); }
+    public BodyKind BodyKind
+    {
+        get;
+        set
+        {
+            Change(ref field, value);
+            ShowLayoutProblem(null);
+        }
+    }
 
     public string Body
     {
@@ -137,10 +148,20 @@ public sealed class RequestTabViewModel : ObservableObject
             if (Set(ref field, value))
             {
                 MarkDirty();
+                ShowLayoutProblem(null);
                 Base64.BodyChanged(value);
             }
         }
     } = "";
+
+    // Why the body could not be laid out, until it or its kind changes, in the language of the moment.
+    public string? BodyLayoutProblem => _layoutProblem switch
+    {
+        LayoutProblem.NotJson => _services.Translator.Of("Body.NotJson"),
+        LayoutProblem.NotXml => _services.Translator.Of("Body.NotXml"),
+        LayoutProblem.NeedsVariables => _services.Translator.Of("Body.NeedsVariables"),
+        _ => null,
+    };
 
     public Base64ViewModel Base64 { get; }
 
@@ -312,9 +333,54 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public void Rename(string name) => Name = name;
 
+    // Laid out off the UI thread, as a large body takes a while, and given to the view rather than set here, so the editor can take it in the way typing is, and it can be undone.
+    // A click while one is at work would only do the same work again, so it is left out.
+    public async Task<string?> LaidOutBodyAsync()
+    {
+        if (_layingOut || BodyKind is not (BodyKind.Json or BodyKind.Xml))
+        {
+            return null;
+        }
+        _layingOut = true;
+        try
+        {
+            var (body, kind, environment) = (Body, BodyKind, EnvironmentOrNone());
+            var (laidOut, problem) = await Task.Run<(string? LaidOut, LayoutProblem? Problem)>(() =>
+                BodyLayout.Of(body, kind) is { } text ? (text, null) : (null, ProblemOf(body, kind, environment)));
+            // The body, its kind or the environment that tells whether its variables make it valid changed while it was laid out.
+            if (body != Body || kind != BodyKind || environment != EnvironmentOrNone())
+            {
+                return null;
+            }
+            ShowLayoutProblem(problem);
+            return laidOut;
+        }
+        finally
+        {
+            _layingOut = false;
+        }
+    }
+
+    ApiEnvironment EnvironmentOrNone() => _services.Environments.Selected ?? ApiEnvironment.None;
+
+    static LayoutProblem ProblemOf(string body, BodyKind kind, ApiEnvironment environment) =>
+        BodyLayout.NeedsVariables(body, kind, environment) ? LayoutProblem.NeedsVariables
+        : kind == BodyKind.Xml ? LayoutProblem.NotXml
+        : LayoutProblem.NotJson;
+
+    void ShowLayoutProblem(LayoutProblem? problem)
+    {
+        if (problem != _layoutProblem)
+        {
+            _layoutProblem = problem;
+            OnPropertyChanged(nameof(BodyLayoutProblem));
+        }
+    }
+
     public void Relabel()
     {
         OnPropertyChanged(nameof(Title));
+        OnPropertyChanged(nameof(BodyLayoutProblem));
         Auth.Relabel();
         Base64.Relabel();
         // What is written beside the response's properties is in the language too.
@@ -454,6 +520,8 @@ public sealed class RequestTabViewModel : ObservableObject
         _loading = false;
         IsDirty = false;
     }
+
+    enum LayoutProblem { NotJson, NotXml, NeedsVariables }
 
     void Change<T>(ref T storage, T value, [CallerMemberName] string? name = null)
     {

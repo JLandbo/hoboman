@@ -1,3 +1,3 @@
 namespace Hoboman.Core.Requests;
 
-public enum BodyKind { None, Json, Text }
+public enum BodyKind { None, Json, Xml, Text }

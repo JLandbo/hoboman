@@ -140,7 +140,7 @@ public sealed class Base64ViewModel(Translator translator, TimeProvider clock) :
         paths.Contains(path) ? [.. paths.Where(chosen => chosen != path)] : [.. paths.Where(chosen => !JsonPath.IsInside(chosen, path)), path];
 
     // A variable outside quotes, such as a number, is not JSON until it is filled in, so it is read as a number.
-    static IReadOnlyList<JsonProperty>? OutlineOf(string body) => JsonOutline.Of(ApiEnvironment.WithVariablesAs(body, "0"));
+    static IReadOnlyList<JsonProperty>? OutlineOf(string body) => JsonOutline.Of(ApiEnvironment.WithVariablesAs(body, _ => "0"));
 
     void Use(IReadOnlyList<JsonProperty>? outline, bool letGo)
     {

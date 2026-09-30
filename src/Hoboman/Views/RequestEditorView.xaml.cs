@@ -16,6 +16,28 @@ public partial class RequestEditorView : UserControl
 
     void Body_MarkToggled(object? sender, string path) => Tab.Base64.ToggleEncode(path);
 
+    void Format_Click(object sender, RoutedEventArgs e) => Format();
+
+    // Shift+Alt+F, as in VS Code. Alt makes it a system key.
+    void Body_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.System && e.SystemKey == Key.F && Keyboard.Modifiers == (ModifierKeys.Alt | ModifierKeys.Shift))
+        {
+            e.Handled = true;
+            Format();
+        }
+    }
+
+    // Into the editor's own text, so it can be undone like typing, and only while the same tab is shown.
+    async void Format()
+    {
+        var tab = Tab;
+        if (await tab.LaidOutBodyAsync() is { } body && tab == Tab && body != BodyText.Text)
+        {
+            BodyText.Document.Text = body;
+        }
+    }
+
     void Method_Click(object sender, RoutedEventArgs e) => Choose((string)((FrameworkElement)sender).DataContext);
 
     void CustomMethod_KeyDown(object sender, KeyEventArgs e)

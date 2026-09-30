@@ -532,6 +532,82 @@ public sealed class RequestTabViewModelTests
     }
 
     [Fact]
+    public async Task LaidOutBodyAsync_WhenTheBodyIsNotJson_ThenSaysSo()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var tab = harness.Tab(ApiRequest.New() with { BodyKind = BodyKind.Json, Body = "{\"a\": " });
+
+        // Act
+        var laidOut = await tab.LaidOutBodyAsync();
+
+        // Assert
+        Assert.Equal((null, "The body is not valid JSON"), (laidOut, tab.BodyLayoutProblem));
+    }
+
+    [Fact]
+    public async Task LaidOutBodyAsync_WhenAskedAgainWhileItWorks_ThenLeavesTheSecondOut()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var body = $"[{string.Join(",", Enumerable.Repeat("""{"a":1}""", 50_000))}]";
+        var tab = harness.Tab(ApiRequest.New() with { BodyKind = BodyKind.Json, Body = body });
+        var first = tab.LaidOutBodyAsync();
+
+        // Act
+        var second = await tab.LaidOutBodyAsync();
+
+        // Assert
+        Assert.Equal((true, true), (second is null, await first is not null));
+    }
+
+    [Fact]
+    public async Task LaidOutBodyAsync_WhenTheBodyIsOnlyValidWithItsVariablesFilledIn_ThenSaysSo()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Environments.ChooseAsync(new("Dev", [new("decimal", "5")]));
+        var tab = harness.Tab(ApiRequest.New() with { BodyKind = BodyKind.Json, Body = "{\"amount\": 1.{{decimal}}}" });
+
+        // Act
+        await tab.LaidOutBodyAsync();
+
+        // Assert
+        Assert.Equal("The body is only valid once its variables are filled in, so it cannot be laid out", tab.BodyLayoutProblem);
+    }
+
+    [Fact]
+    public async Task Relabel_WhenTheBodyCouldNotBeLaidOut_ThenSaysWhyInTheNewLanguage()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var tab = harness.Tab(ApiRequest.New() with { BodyKind = BodyKind.Json, Body = "{\"a\": " });
+        await tab.LaidOutBodyAsync();
+        harness.Translator.Use(Translation.Danish);
+
+        // Act
+        tab.Relabel();
+
+        // Assert
+        Assert.Equal("Bodyen er ikke gyldig JSON", tab.BodyLayoutProblem);
+    }
+
+    [Fact]
+    public async Task Body_WhenChangedAfterItCouldNotBeLaidOut_ThenForgetsWhy()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var tab = harness.Tab(ApiRequest.New() with { BodyKind = BodyKind.Json, Body = "{\"a\": " });
+        await tab.LaidOutBodyAsync();
+
+        // Act
+        tab.Body = "{\"a\": 1}";
+
+        // Assert
+        Assert.Null(tab.BodyLayoutProblem);
+    }
+
+    [Fact]
     public void Base64_WhenAPropertyIsChosen_ThenTheTabIsUnsaved()
     {
         // Arrange
@@ -850,7 +926,7 @@ public sealed class RequestTabViewModelTests
         await tab.Formatting;
 
         // Assert
-        Assert.Equal($"{{{Environment.NewLine}  \"a\": 1{Environment.NewLine}}}", tab.Response?.Body);
+        Assert.Equal($"{{{Environment.NewLine}\t\"a\": 1{Environment.NewLine}}}", tab.Response?.Body);
     }
 
     [Fact]
@@ -885,7 +961,7 @@ public sealed class RequestTabViewModelTests
         await tab.Formatting;
 
         // Assert
-        Assert.Equal($"{{{Environment.NewLine}  \"a\": 1{Environment.NewLine}}}", tab.Response?.Body);
+        Assert.Equal($"{{{Environment.NewLine}\t\"a\": 1{Environment.NewLine}}}", tab.Response?.Body);
         Assert.Null(tab.ResponseBodyProblem);
     }
 

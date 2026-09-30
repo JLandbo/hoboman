@@ -22,11 +22,12 @@ sealed class Base64Margin(MarkedEditor editor) : AbstractMargin
     readonly Dictionary<int, Base64Mark> _byLine = [];
     readonly List<(TextAnchor Anchor, Base64Mark Mark)> _anchored = [];
 
-    public Base64Mark? MarkAt(int line) => _byLine.GetValueOrDefault(line);
+    public Base64Mark? MarkAt(int line) => editor.IsReadOnly ? FirstOn(editor.Marks, line) : _byLine.GetValueOrDefault(line);
 
     public void Refresh()
     {
         _anchored.Clear();
+        _byLine.Clear();
         if (!editor.IsReadOnly && Document is { } document)
         {
             foreach (var mark in editor.Marks.Where(mark => mark.Line <= document.LineCount))
@@ -37,10 +38,6 @@ sealed class Base64Margin(MarkedEditor editor) : AbstractMargin
                 _anchored.Add((anchor, mark));
             }
             Follow();
-        }
-        else
-        {
-            Place(editor.Marks.Select(mark => (mark.Line, mark)));
         }
         InvalidateMeasure();
         Redraw();
@@ -133,6 +130,26 @@ sealed class Base64Margin(MarkedEditor editor) : AbstractMargin
     void TextView_VisualLinesChanged(object? sender, EventArgs e) => InvalidateVisual();
 
     void Follow() => Place(_anchored.Where(held => !held.Anchor.IsDeleted).Select(held => (held.Anchor.Line, held.Mark)));
+
+    // A shown body never moves its lines, and its marks come in the order of their lines, so one is found by halving
+    // instead of putting hundreds of thousands into a table on the UI thread. It is the first on the line, as in an editable body.
+    static Base64Mark? FirstOn(IReadOnlyList<Base64Mark> marks, int line)
+    {
+        var (low, high) = (0, marks.Count);
+        while (low < high)
+        {
+            var middle = (low + high) / 2;
+            if (marks[middle].Line < line)
+            {
+                low = middle + 1;
+            }
+            else
+            {
+                high = middle;
+            }
+        }
+        return low < marks.Count && marks[low].Line == line ? marks[low] : null;
+    }
 
     // A line has room for one checkbox, so it is the first property's.
     void Place(IEnumerable<(int Line, Base64Mark Mark)> marks)

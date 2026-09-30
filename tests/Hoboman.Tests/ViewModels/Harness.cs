@@ -25,6 +25,8 @@ public sealed class Harness : IDisposable
 
     public AppFolder Folder { get; }
 
+    public Translator Translator => _translator;
+
     public FakeDialogs Dialogs { get; }
 
     public FakeOAuthClient OAuth { get; }

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Encodings.Web;
 using System.IO;
 using System.Text.Json;
@@ -9,7 +10,8 @@ namespace Hoboman.ViewModels;
 
 public sealed record ResponseDisplay(string Status, bool IsSuccess, string Elapsed, string Size, string Body, string Headers, int HeaderCount, BodyFormat Coloring)
 {
-    static readonly JsonSerializerOptions _pretty = new() { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+    // A tab for each level, the same as the Tab key puts into a request body, so the two look alike.
+    static readonly JsonSerializerOptions _pretty = new() { WriteIndented = true, IndentCharacter = '\t', IndentSize = 1, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     public static ResponseDisplay Of(ApiResponse response) => Of(response, FormatOf(response));
 
@@ -51,7 +53,7 @@ public sealed record ResponseDisplay(string Status, bool IsSuccess, string Elaps
         _ => (body, BodyFormat.Raw),
     };
 
-    static string? PrettyJsonOf(string body)
+    internal static string? PrettyJsonOf(string body)
     {
         try
         {
@@ -65,7 +67,7 @@ public sealed record ResponseDisplay(string Status, bool IsSuccess, string Elaps
     }
 
     // DTDs are ignored, so a body can never make the formatting expand entities or read other files. HTML is rarely valid XML and stays as it is.
-    static string? PrettyXmlOf(string body)
+    internal static string? PrettyXmlOf(string body)
     {
         try
         {
@@ -73,11 +75,22 @@ public sealed record ResponseDisplay(string Status, bool IsSuccess, string Elaps
             // Browsers also accept a byte order mark or line breaks before the declaration, which XML itself does not.
             using var reader = XmlReader.Create(new StringReader(body.TrimStart('\uFEFF').TrimStart()), new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore, IgnoreWhitespace = true });
             var document = XDocument.Load(reader);
-            return document.Declaration is { } declaration ? $"{declaration}{Environment.NewLine}{document}" : document.ToString();
+            return document.Declaration is { } declaration ? $"{declaration}{Environment.NewLine}{TabbedOf(document)}" : TabbedOf(document);
         }
         catch (XmlException)
         {
             return null;
         }
+    }
+
+    // A tab for each level, like JSON. The declaration is written by the caller, as the writer would put its own encoding into it.
+    static string TabbedOf(XDocument document)
+    {
+        var text = new StringWriter(CultureInfo.InvariantCulture);
+        using (var writer = XmlWriter.Create(text, new XmlWriterSettings { Indent = true, IndentChars = "\t", OmitXmlDeclaration = true }))
+        {
+            document.Save(writer);
+        }
+        return text.ToString();
     }
 }

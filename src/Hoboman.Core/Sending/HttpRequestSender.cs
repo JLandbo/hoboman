@@ -60,6 +60,7 @@ public sealed class HttpRequestSender(SecretStore secrets, HttpClients clients, 
             Content = request.BodyKind switch
             {
                 BodyKind.Json => new StringContent(BodyOf(request, environment), Encoding.UTF8, "application/json"),
+                BodyKind.Xml => new StringContent(BodyOf(request, environment), Encoding.UTF8, "application/xml"),
                 BodyKind.Text => new StringContent(BodyOf(request, environment), Encoding.UTF8, "text/plain"),
                 _ => null,
             },
@@ -131,7 +132,7 @@ public sealed class HttpRequestSender(SecretStore secrets, HttpClients clients, 
     static string LoggableOf(Uri? address) => address is null ? "(no address yet)" : SafeAddress.Of(address);
 
     // The variables are filled in first, so a variable inside a chosen value is encoded with it.
-    // A text body has no properties, so only the whole of it can go as Base64, and the Content-Type stays the one of the body's kind.
+    // Only JSON has properties to choose, so of any other body only the whole can go as Base64, and the Content-Type stays the one of the body's kind.
     static string BodyOf(ApiRequest request, ApiEnvironment environment)
     {
         var body = environment.Resolve(request.Body);
