@@ -65,7 +65,9 @@ public partial class App : Application
         };
         watcher.Start();
         await main.LoadAsync();
-        _services.GetRequiredService<MainWindow>().Show();
+        var window = _services.GetRequiredService<MainWindow>();
+        await window.RestoreLayoutAsync();
+        window.Show();
 
         void OnUi(Func<Task> work) => Dispatcher.InvokeAsync(async () =>
         {

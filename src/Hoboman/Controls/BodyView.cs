@@ -52,6 +52,8 @@ public sealed class BodyView : TextEditor
         TextArea.SelectionBrush = new SolidColorBrush(Color.FromArgb(0x66, attention.R, attention.G, attention.B));
         TextArea.SelectionBorder = null;
         TextArea.SelectionForeground = null;
+        // AvalonEdit shows its caret even when read only, which makes the body look like it can be typed in.
+        TextArea.Caret.CaretBrush = Brushes.Transparent;
     }
 
     public string? Body

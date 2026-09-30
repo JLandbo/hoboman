@@ -45,8 +45,8 @@
                     <TextBlock Text="{Binding Response.Size}" Foreground="{DynamicResource Muted}" FontSize="12" VerticalAlignment="Center" />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <RadioButton x:Name="BodySection" Content="{DynamicResource Response.Body}" GroupName="ResponseSection" IsChecked="True" Style="{StaticResource Segment}" />
-                    <RadioButton x:Name="HeadersSection" GroupName="ResponseSection" Style="{StaticResource Segment}">
+                    <RadioButton x:Name="BodySection" Content="{DynamicResource Response.Body}" GroupName="ResponseSection" IsChecked="{Binding ResponseSection, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:ResponseSection.Body}}" Style="{StaticResource Segment}" />
+                    <RadioButton x:Name="HeadersSection" GroupName="ResponseSection" IsChecked="{Binding ResponseSection, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:ResponseSection.Headers}}" Style="{StaticResource Segment}">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="{DynamicResource Response.Headers}" />
                             <TextBlock Text="{Binding Response.HeaderCount}" Margin="4,0,0,0" Opacity="0.7" />

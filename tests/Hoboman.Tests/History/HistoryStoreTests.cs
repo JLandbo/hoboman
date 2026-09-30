@@ -15,6 +15,23 @@ public sealed class HistoryStoreTests : IDisposable
 
     public void Dispose() => _temporary.Dispose();
 
+    async Task<IReadOnlyList<HistoryFile>> ReadLatestAsync(int count) => await Store().ReadAsync(await Store().LatestAsync(count, Cancellation), Cancellation);
+
+    [Fact]
+    public async Task DeleteAsync_WhenCalled_ThenTheCallIsGone()
+    {
+        // Arrange
+        await Store().AddAsync(EntryAt(1), Cancellation);
+        await Store().AddAsync(EntryAt(2), Cancellation);
+        var first = (await ReadLatestAsync(2))[1];
+
+        // Act
+        await Store().DeleteAsync(first.Name, Cancellation);
+
+        // Assert
+        Assert.Equal(["2"], (await ReadLatestAsync(2)).Select(file => file.Entry.Response?.Body));
+    }
+
     [Fact]
     public async Task LatestAsync_WhenCallsWereAdded_ThenGivesTheNewestFirst()
     {
@@ -24,39 +41,24 @@ public sealed class HistoryStoreTests : IDisposable
         await Store().AddAsync(EntryAt(2), Cancellation);
 
         // Act
-        var entries = await Store().LatestAsync(2, null, Cancellation);
+        var entries = await ReadLatestAsync(2);
 
         // Assert
         Assert.Equal(["3", "2"], entries.Select(file => file.Entry.Response?.Body));
     }
 
     [Fact]
-    public async Task LatestAsync_WhenAFileIsInvalid_ThenSkipsIt()
+    public async Task ReadAsync_WhenAFileIsInvalid_ThenSkipsIt()
     {
         // Arrange
         await Store().AddAsync(EntryAt(1), Cancellation);
         File.WriteAllText(Path.Combine(_temporary.Path, "history", "99999999-999999-999-broken.json"), "{");
 
         // Act
-        var entries = await Store().LatestAsync(10, null, Cancellation);
+        var entries = await ReadLatestAsync(10);
 
         // Assert
         Assert.Equal(["1"], entries.Select(file => file.Entry.Response?.Body));
-    }
-
-    [Fact]
-    public async Task LatestAsync_WhenGivenTheNewestName_ThenGivesOnlyNewerCalls()
-    {
-        // Arrange
-        await Store().AddAsync(EntryAt(1), Cancellation);
-        var newest = (await Store().LatestAsync(1, null, Cancellation))[0].Name;
-        await Store().AddAsync(EntryAt(2), Cancellation);
-
-        // Act
-        var entries = await Store().LatestAsync(10, newest, Cancellation);
-
-        // Assert
-        Assert.Equal(["2"], entries.Select(file => file.Entry.Response?.Body));
     }
 
     [Fact]
@@ -73,7 +75,7 @@ public sealed class HistoryStoreTests : IDisposable
     public async Task LatestAsync_WhenNothingWasAdded_ThenGivesNothing()
     {
         // Act
-        var entries = await Store().LatestAsync(10, null, Cancellation);
+        var entries = await ReadLatestAsync(10);
 
         // Assert
         Assert.Empty(entries);
@@ -108,7 +110,7 @@ public sealed class HistoryStoreTests : IDisposable
         File.WriteAllText(Path.Combine(_temporary.Path, "history", "backup.json"), "{}");
 
         // Act
-        var entries = await Store().LatestAsync(10, null, Cancellation);
+        var entries = await ReadLatestAsync(10);
 
         // Assert
         Assert.Equal(["1"], entries.Select(file => file.Entry.Response?.Body));

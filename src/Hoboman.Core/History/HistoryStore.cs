@@ -11,12 +11,15 @@ public sealed partial class HistoryStore(AppFolder folder, ILogger<HistoryStore>
     public Task AddAsync(HistoryEntry entry, CancellationToken cancellationToken) =>
         FileOf(string.Create(CultureInfo.InvariantCulture, $"{entry.At.UtcDateTime:yyyyMMdd-HHmmss-fff}-{Guid.NewGuid():N}.json")).SaveAsync(entry, cancellationToken);
 
-    public async Task<IReadOnlyList<HistoryFile>> LatestAsync(int count, string? newerThan, CancellationToken cancellationToken)
+    // The names of the newest calls first. Only the names are listed, which is cheap next to reading the calls.
+    public Task<IReadOnlyList<string>> LatestAsync(int count, CancellationToken cancellationToken) => Task.Run<IReadOnlyList<string>>(() => Directory.Exists(folder.History)
+        ? [.. Directory.EnumerateFiles(folder.History, "*.json").Select(Path.GetFileName).OfType<string>().Where(IsCall).OrderDescending(StringComparer.Ordinal).Take(count)]
+        : [], cancellationToken);
+
+    public async Task<IReadOnlyList<HistoryFile>> ReadAsync(IReadOnlyList<string> names, CancellationToken cancellationToken)
     {
-        var names = (await NamesAsync(cancellationToken).ConfigureAwait(false))
-            .Where(name => newerThan is null || string.CompareOrdinal(name, newerThan) > 0).OrderDescending(StringComparer.Ordinal).Take(count).ToArray();
-        var files = new HistoryFile?[names.Length];
-        await Parallel.ForEachAsync(Enumerable.Range(0, names.Length), cancellationToken, async (index, token) => files[index] = await LoadAsync(names[index], token).ConfigureAwait(false))
+        var files = new HistoryFile?[names.Count];
+        await Parallel.ForEachAsync(Enumerable.Range(0, names.Count), cancellationToken, async (index, token) => files[index] = await LoadAsync(names[index], token).ConfigureAwait(false))
             .ConfigureAwait(false);
         return [.. files.OfType<HistoryFile>()];
     }
@@ -26,11 +29,6 @@ public sealed partial class HistoryStore(AppFolder folder, ILogger<HistoryStore>
         File.Delete(Path.Combine(folder.History, name));
         logger.LogInformation("Deleted the call {Name} from the history", name);
     }, cancellationToken);
-
-    // Only the names, which is cheap next to reading the calls.
-    public Task<IReadOnlySet<string>> NamesAsync(CancellationToken cancellationToken) => Task.Run<IReadOnlySet<string>>(() => Directory.Exists(folder.History)
-        ? Directory.EnumerateFiles(folder.History, "*.json").Select(Path.GetFileName).OfType<string>().Where(IsCall).ToHashSet(StringComparer.Ordinal)
-        : new HashSet<string>(), cancellationToken);
 
     async Task<HistoryFile?> LoadAsync(string name, CancellationToken cancellationToken)
     {

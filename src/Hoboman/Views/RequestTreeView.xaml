@@ -9,11 +9,13 @@
         </ContextMenu>
         <ContextMenu x:Key="FolderMenu" x:Shared="False" Style="{StaticResource PopupMenu}">
             <MenuItem Header="{DynamicResource Tree.FolderAuth}" Click="FolderAuth_Click" />
+            <MenuItem Header="{DynamicResource Tree.Delete}" Click="DeleteFolder_Click" />
         </ContextMenu>
     </UserControl.Resources>
     <Grid>
-        <TreeView ItemsSource="{Binding Tree.Nodes}" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource Text}"
-                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+        <TreeView x:Name="Tree" ItemsSource="{Binding Tree.Nodes}" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource Text}"
+                  ScrollViewer.HorizontalScrollBarVisibility="Disabled" AllowDrop="True"
+                  PreviewMouseLeftButtonDown="Tree_PreviewMouseLeftButtonDown" PreviewMouseLeftButtonUp="Tree_PreviewMouseLeftButtonUp" MouseMove="Tree_MouseMove" DragOver="Tree_DragOver" Drop="Tree_Drop">
             <TreeView.ItemContainerStyle>
                 <Style TargetType="TreeViewItem" BasedOn="{StaticResource TreeItem}">
                     <EventSetter Event="MouseLeftButtonUp" Handler="Item_MouseLeftButtonUp" />

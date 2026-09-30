@@ -76,20 +76,20 @@
             </DockPanel>
 
             <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,12,0,8">
-                <RadioButton x:Name="ParamsSection" GroupName="RequestSection" IsChecked="True" Style="{StaticResource Segment}">
+                <RadioButton x:Name="ParamsSection" GroupName="RequestSection" IsChecked="{Binding RequestSection, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:RequestSection.Params}}" Style="{StaticResource Segment}">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="{DynamicResource Editor.Params}" />
                         <TextBlock Text="{Binding Query.EnabledCount}" Style="{StaticResource Count}" />
                     </StackPanel>
                 </RadioButton>
-                <RadioButton x:Name="HeadersSection" GroupName="RequestSection" Style="{StaticResource Segment}">
+                <RadioButton x:Name="HeadersSection" GroupName="RequestSection" IsChecked="{Binding RequestSection, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:RequestSection.Headers}}" Style="{StaticResource Segment}">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="{DynamicResource Editor.Headers}" />
                         <TextBlock Text="{Binding Headers.EnabledCount}" Style="{StaticResource Count}" />
                     </StackPanel>
                 </RadioButton>
-                <RadioButton x:Name="BodySection" Content="{DynamicResource Editor.Body}" GroupName="RequestSection" Style="{StaticResource Segment}" />
-                <RadioButton x:Name="AuthSection" Content="{DynamicResource Editor.Auth}" GroupName="RequestSection" Style="{StaticResource Segment}" />
+                <RadioButton x:Name="BodySection" Content="{DynamicResource Editor.Body}" GroupName="RequestSection" IsChecked="{Binding RequestSection, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:RequestSection.Body}}" Style="{StaticResource Segment}" />
+                <RadioButton x:Name="AuthSection" Content="{DynamicResource Editor.Auth}" GroupName="RequestSection" IsChecked="{Binding RequestSection, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:RequestSection.Auth}}" Style="{StaticResource Segment}" />
             </StackPanel>
 
             <Grid>

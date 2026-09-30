@@ -191,6 +191,21 @@ public sealed class RequestLibraryTests : IDisposable
     }
 
     [Fact]
+    public async Task DeleteFolderAsync_WhenCalled_ThenRemovesEverythingInIt()
+    {
+        // Arrange
+        await Library().SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
+        await Library().SaveAsync("Users/Admin/List", ApiRequest.New(), Cancellation);
+        await Library().SaveAsync("Ping", ApiRequest.New(), Cancellation);
+
+        // Act
+        await Library().DeleteFolderAsync("Users", Cancellation);
+
+        // Assert
+        Assert.Equal(["Ping"], await Library().NamesAsync(Cancellation));
+    }
+
+    [Fact]
     public async Task DeleteAsync_WhenCalled_ThenRemovesTheRequest()
     {
         // Arrange

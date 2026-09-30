@@ -15,6 +15,8 @@ public sealed class HistoryItemViewModel(HistoryFile file, string day)
 
     public string Address => Entry.Address;
 
+    public string Time => Entry.At.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+
     public string? Status => Entry.Response?.StatusCode.ToString(CultureInfo.InvariantCulture);
 
     public bool IsSuccess => Entry.Response?.IsSuccess == true;

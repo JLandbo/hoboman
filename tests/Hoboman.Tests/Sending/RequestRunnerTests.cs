@@ -10,6 +10,8 @@ public sealed class RequestRunnerTests : IDisposable
 
     HistoryStore History() => new(new AppFolder(_temporary.Path), NullLogger<HistoryStore>.Instance);
 
+    async Task<IReadOnlyList<HistoryFile>> CallsAsync() => await History().ReadAsync(await History().LatestAsync(10, Cancellation), Cancellation);
+
     RequestLibrary Library() => new(new AppFolder(_temporary.Path), NullLogger<RequestLibrary>.Instance);
 
     RequestRunner Runner(Func<Task<ApiResponse>> send) => Runner(new FakeSender(send));
@@ -30,7 +32,7 @@ public sealed class RequestRunnerTests : IDisposable
         await runner.RunAsync(Request(), "Brugere/Hent", null, HistorySource.App, Cancellation);
 
         // Assert
-        Assert.Equal("{}", Assert.Single(await History().LatestAsync(10, null, Cancellation)).Entry.Response?.Body);
+        Assert.Equal("{}", Assert.Single(await CallsAsync()).Entry.Response?.Body);
     }
 
     [Fact]
@@ -43,7 +45,7 @@ public sealed class RequestRunnerTests : IDisposable
         await runner.RunAsync(Request(), "Brugere/Hent", null, HistorySource.App, Cancellation);
 
         // Assert
-        Assert.Equal("Brugere/Hent", Assert.Single(await History().LatestAsync(10, null, Cancellation)).Entry.Name);
+        Assert.Equal("Brugere/Hent", Assert.Single(await CallsAsync()).Entry.Name);
     }
 
     [Fact]
@@ -56,7 +58,7 @@ public sealed class RequestRunnerTests : IDisposable
         await runner.RunAsync(Request(), "Brugere/Hent", null, HistorySource.App, Cancellation);
 
         // Assert
-        Assert.Equal("dev.local:5001/users", Assert.Single(await History().LatestAsync(10, null, Cancellation)).Entry.Address);
+        Assert.Equal("dev.local:5001/users", Assert.Single(await CallsAsync()).Entry.Address);
     }
 
     [Fact]
@@ -82,7 +84,7 @@ public sealed class RequestRunnerTests : IDisposable
         await Record.ExceptionAsync(() => runner.RunAsync(Request(), null, null, HistorySource.Cli, Cancellation));
 
         // Assert
-        Assert.Equal("Ingen forbindelse", Assert.Single(await History().LatestAsync(10, null, Cancellation)).Entry.Error);
+        Assert.Equal("Ingen forbindelse", Assert.Single(await CallsAsync()).Entry.Error);
     }
 
     [Fact]
@@ -97,7 +99,7 @@ public sealed class RequestRunnerTests : IDisposable
         await Record.ExceptionAsync(() => runner.RunAsync(Request(), null, null, HistorySource.App, cancellation.Token));
 
         // Assert
-        Assert.Empty(await History().LatestAsync(10, null, Cancellation));
+        Assert.Empty(await CallsAsync());
     }
 
     [Fact]
@@ -126,7 +128,7 @@ public sealed class RequestRunnerTests : IDisposable
         await Record.ExceptionAsync(() => Runner(() => Task.FromResult(new ApiResponse(200, "OK", 0, 2, [], "{}"))).RunAsync(Request(), "Brugere/Hent", null, HistorySource.App, Cancellation));
 
         // Assert
-        Assert.NotNull(Assert.Single(await History().LatestAsync(10, null, Cancellation)).Entry.Error);
+        Assert.NotNull(Assert.Single(await CallsAsync()).Entry.Error);
     }
 
     [Fact]

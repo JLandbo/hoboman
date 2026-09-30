@@ -36,6 +36,40 @@ public sealed class HistoryViewModelTests
     }
 
     [Fact]
+    public async Task RefreshAsync_WhenAnOlderCallLandsAfterANewerOne_ThenShowsItInItsPlace()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var history = new HistoryViewModel(harness.History(), new Translator(Translation.English), ClockAt(_noon), NullLogger<HistoryViewModel>.Instance);
+        await harness.History().AddAsync(Entry("newer.local", _noon), Cancellation);
+        await history.RefreshAsync(Cancellation);
+        await harness.History().AddAsync(Entry("older.local", _noon.AddSeconds(-1)), Cancellation);
+
+        // Act
+        await history.RefreshAsync(Cancellation);
+
+        // Assert
+        Assert.Equal(["newer.local", "older.local"], history.Items.Select(item => item.Address));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenCalled_ThenTakesTheCallOutAtOnce()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var history = new HistoryViewModel(harness.History(), new Translator(Translation.English), ClockAt(_noon), NullLogger<HistoryViewModel>.Instance);
+        await harness.History().AddAsync(Entry("first.local", _noon.AddHours(-1)), Cancellation);
+        await harness.History().AddAsync(Entry("second.local", _noon), Cancellation);
+        await history.RefreshAsync(Cancellation);
+
+        // Act
+        await history.DeleteAsync(history.Items.Single(item => item.Address == "first.local"), Cancellation);
+
+        // Assert
+        Assert.Equal(["second.local"], history.Items.Select(item => item.Address));
+    }
+
+    [Fact]
     public async Task RefreshAsync_WhenACallsFileIsDeleted_ThenLeavesTheCallOut()
     {
         // Arrange

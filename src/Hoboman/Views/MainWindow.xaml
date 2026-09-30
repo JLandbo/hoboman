@@ -37,7 +37,7 @@
     </Window.Resources>
     <Grid Margin="12">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="290" MinWidth="200" />
+            <ColumnDefinition x:Name="SidebarColumn" Width="290" MinWidth="200" />
             <ColumnDefinition Width="12" />
             <ColumnDefinition MinWidth="500" />
         </Grid.ColumnDefinitions>

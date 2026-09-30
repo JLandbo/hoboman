@@ -518,6 +518,20 @@ public sealed class RequestTabViewModelTests
     }
 
     [Fact]
+    public void RequestSection_WhenChanged_ThenTheTabStaysSaved()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var tab = harness.Tab(ApiRequest.New(), "Ping");
+
+        // Act
+        tab.RequestSection = RequestSection.Headers;
+
+        // Assert
+        Assert.False(tab.IsDirty);
+    }
+
+    [Fact]
     public async Task SendAsync_WhenTheRequestInherits_ThenSendsWithTheFoldersAuth()
     {
         // Arrange

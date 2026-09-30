@@ -151,6 +151,11 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public ProblemMessage? Problem { get; private set => Set(ref field, value); }
 
+    // All tabs share one view, so each tab keeps which sections it shows.
+    public RequestSection RequestSection { get; set => Set(ref field, value); }
+
+    public ResponseSection ResponseSection { get; set => Set(ref field, value); }
+
     public AsyncCommand Send { get; }
 
     public AsyncCommand Save { get; }

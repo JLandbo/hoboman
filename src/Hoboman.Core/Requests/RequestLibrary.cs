@@ -78,6 +78,12 @@ public sealed class RequestLibrary(AppFolder folder, ILogger<RequestLibrary> log
         logger.LogInformation("Deleted the request {Name}", name);
     }, cancellationToken);
 
+    public Task DeleteFolderAsync(string name, CancellationToken cancellationToken) => Task.Run(() =>
+    {
+        Directory.Delete(FolderOf(name), recursive: true);
+        logger.LogInformation("Deleted the folder {Name} with everything in it", name);
+    }, cancellationToken);
+
     public Task CreateFolderAsync(string name, CancellationToken cancellationToken) => Task.Run(() =>
     {
         Directory.CreateDirectory(FolderOf(name));

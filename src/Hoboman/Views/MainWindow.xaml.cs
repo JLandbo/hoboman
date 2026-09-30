@@ -4,18 +4,45 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using Hoboman.Core.Environments;
+using Hoboman.Core.Settings;
+using Hoboman.Core.Storage;
 using Hoboman.ViewModels;
+using Microsoft.Extensions.Logging;
 
 namespace Hoboman.Views;
 
 public partial class MainWindow : Window
 {
     readonly MainViewModel _viewModel;
+    readonly SettingsStore _settings;
+    readonly ILogger<MainWindow> _logger;
 
-    public MainWindow(MainViewModel viewModel)
+    public MainWindow(MainViewModel viewModel, SettingsStore settings, ILogger<MainWindow> logger)
     {
         InitializeComponent();
         DataContext = _viewModel = viewModel;
+        _settings = settings;
+        _logger = logger;
+    }
+
+    // Called before the window is shown, so it opens as it was left instead of jumping there. A screen that got smaller since caps the size.
+    public async Task RestoreLayoutAsync()
+    {
+        try
+        {
+            if ((await _settings.LoadAsync(CancellationToken.None)).Layout is not { } layout)
+            {
+                return;
+            }
+            Width = Math.Min(layout.Width, SystemParameters.WorkArea.Width);
+            Height = Math.Min(layout.Height, SystemParameters.WorkArea.Height);
+            SidebarColumn.Width = new GridLength(layout.SidebarWidth);
+            WindowState = layout.IsMaximized ? WindowState.Maximized : WindowState.Normal;
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            _logger.LogWarning(exception, "Could not read the saved layout");
+        }
     }
 
     async void Settings_Click(object sender, RoutedEventArgs e) => await _viewModel.EditSettingsAsync();
@@ -71,5 +98,27 @@ public partial class MainWindow : Window
         EnvironmentToggle.Focus();
     }
 
-    void Window_Closing(object? sender, CancelEventArgs e) => e.Cancel = !_viewModel.CanClose();
+    void Window_Closing(object? sender, CancelEventArgs e)
+    {
+        e.Cancel = !_viewModel.CanClose();
+        if (!e.Cancel)
+        {
+            SaveLayout();
+        }
+    }
+
+    // The app ends right after, so the write is waited for here. The store does its work off this thread, so waiting cannot lock up.
+    void SaveLayout()
+    {
+        var size = WindowState == WindowState.Normal ? new Size(ActualWidth, ActualHeight) : RestoreBounds.Size;
+        var layout = new WindowLayout(size.Width, size.Height, WindowState == WindowState.Maximized, SidebarColumn.ActualWidth);
+        try
+        {
+            _settings.UpdateAsync(saved => saved with { Layout = layout }, CancellationToken.None).GetAwaiter().GetResult();
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            _logger.LogWarning(exception, "Could not save the layout");
+        }
+    }
 }

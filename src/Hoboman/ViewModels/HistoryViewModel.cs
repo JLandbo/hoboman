@@ -11,7 +11,6 @@ public sealed class HistoryViewModel(HistoryStore store, Translator translator, 
 {
     public const int LatestCount = 100;
 
-    string? _newest;
     bool _relabel = true;
     DateTime _labelledDay;
     ITimer? _midnight;
@@ -37,29 +36,21 @@ public sealed class HistoryViewModel(HistoryStore store, Translator translator, 
         _midnight = clock.CreateTimer(_ => DayChanged?.Invoke(), null, today.AddDays(1) - now.DateTime, Timeout.InfiniteTimeSpan);
         try
         {
-            var files = await store.LatestAsync(LatestCount, relabel ? null : _newest, cancellationToken);
+            // Every call among the newest that is not shown yet is read, as one can land after a newer one when two finish at once.
+            var latest = await store.LatestAsync(LatestCount, cancellationToken);
             if (relabel)
             {
                 Items.Clear();
             }
-            else
+            foreach (var gone in Items.Where(item => !latest.Contains(item.File.Name)).ToList())
             {
-                // Only newer calls are read, so a call whose file was deleted is taken out by name.
-                var names = await store.NamesAsync(cancellationToken);
-                foreach (var gone in Items.Where(item => !names.Contains(item.File.Name)).ToList())
-                {
-                    Items.Remove(gone);
-                }
+                Items.Remove(gone);
             }
-            foreach (var file in files.Reverse())
+            var shown = Items.Select(item => item.File.Name).ToHashSet(StringComparer.Ordinal);
+            foreach (var file in await store.ReadAsync([.. latest.Where(name => !shown.Contains(name))], cancellationToken))
             {
-                Items.Insert(0, new(file, DayOf(file.Entry.At.LocalDateTime.Date, today)));
+                Items.Insert(PlaceOf(file.Name), new(file, DayOf(file.Entry.At.LocalDateTime.Date, today)));
             }
-            while (Items.Count > LatestCount)
-            {
-                Items.RemoveAt(Items.Count - 1);
-            }
-            _newest = files.Count > 0 ? files[0].Name : _newest;
             OnPropertyChanged(nameof(IsFull));
         }
         catch (Exception exception) when (FileProblem.Is(exception))
@@ -75,6 +66,9 @@ public sealed class HistoryViewModel(HistoryStore store, Translator translator, 
         Items.Remove(item);
         OnPropertyChanged(nameof(IsFull));
     }
+
+    // The names sort by time, newest first like the list.
+    int PlaceOf(string name) => Items.TakeWhile(item => string.CompareOrdinal(item.File.Name, name) > 0).Count();
 
     string DayOf(DateTime day, DateTime today) =>
         day == today ? translator.Of("History.Today")

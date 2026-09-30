@@ -193,6 +193,33 @@ public sealed class MainViewModel(
         {
             return;
         }
+        await RenameToAsync(node, name, translator.Of("Rename.Failed"));
+    }
+
+    // A request dropped on another request goes into the folder that one is in, and one dropped beside the folders goes to the top.
+    public async Task MoveAsync(RequestNodeViewModel node, RequestNodeViewModel? target)
+    {
+        var folder = target is null ? null : target.IsFolder ? target.Path : RequestLibrary.ParentOf(target.Path);
+        var name = folder is null ? node.Name : $"{folder}/{node.Name}";
+        if (SameName(name, node.Path))
+        {
+            return;
+        }
+        // Otherwise the request would seem to vanish into a closed folder.
+        if (target is { IsFolder: true })
+        {
+            target.IsExpanded = true;
+        }
+        if (tabServices.ProblemOfName(name) is { } problem)
+        {
+            dialogs.Tell(translator.Of("Move.Failed"), problem);
+            return;
+        }
+        await RenameToAsync(node, name, translator.Of("Move.Failed"));
+    }
+
+    async Task RenameToAsync(RequestNodeViewModel node, string name, string failed)
+    {
         try
         {
             await library.RenameAsync(node.Path, name, CancellationToken.None);
@@ -201,8 +228,8 @@ public sealed class MainViewModel(
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
-            logger.LogError(exception, "Could not rename {Name}", node.Path);
-            dialogs.Tell(translator.Of("Rename.Failed"), translator.DetailsOf(exception));
+            logger.LogError(exception, "Could not rename {Name} to {NewName}", node.Path, name);
+            dialogs.Tell(failed, translator.DetailsOf(exception));
         }
     }
 
@@ -219,20 +246,88 @@ public sealed class MainViewModel(
             await library.DeleteAsync(node.Path, CancellationToken.None);
             tab?.Unlink();
             await tree.LoadAsync(CancellationToken.None);
-            // A copy with the same id shares the secrets, so they stay while any request still uses them.
-            if (id != Guid.Empty && !tree.IsUsed(id))
-            {
-                await secrets.DeleteAsync(id, CancellationToken.None);
-                foreach (var open in Tabs.Where(open => open.Id == id))
-                {
-                    open.Auth.ForgetSavedSecrets();
-                }
-            }
+            await DeleteSecretsIfUnusedAsync(id);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
             logger.LogError(exception, "Could not delete {Name}", node.Path);
             dialogs.Tell(translator.Of("Delete.Failed"), translator.DetailsOf(exception));
+        }
+    }
+
+    public async Task DeleteFolderAsync(RequestNodeViewModel folder)
+    {
+        var inside = RequestTreeViewModel.Flatten([folder]).ToList();
+        var requests = inside.Where(node => !node.IsFolder).Select(node => node.Path).ToList();
+        if (!dialogs.Confirm(translator.Of("DeleteFolder.Title"), translator.Format("DeleteFolder.Message", folder.Name, requests.Count), translator.Of("Delete.Confirm"), []))
+        {
+            return;
+        }
+        try
+        {
+            var ids = requests.Select(tree.IdOf).ToList();
+            var folders = new List<(string Path, Guid Id)>();
+            foreach (var node in inside.Where(node => node.IsFolder))
+            {
+                folders.Add((node.Path, await FolderIdOfAsync(node.Path)));
+            }
+            try
+            {
+                await library.DeleteFolderAsync(folder.Path, CancellationToken.None);
+            }
+            // A file that cannot be deleted stops only itself, so what is gone is let go of either way, and what is left is kept.
+            finally
+            {
+                foreach (var name in requests.Where(name => !library.Exists(name)))
+                {
+                    TabOf(name)?.Unlink();
+                }
+                await tree.LoadAsync(CancellationToken.None);
+                foreach (var id in ids)
+                {
+                    await DeleteSecretsIfUnusedAsync(id);
+                }
+                foreach (var (path, id) in folders)
+                {
+                    if (id != Guid.Empty && !library.FolderExists(path) && !await library.SharesFolderIdAsync(path, id, CancellationToken.None))
+                    {
+                        await secrets.DeleteAsync(id, CancellationToken.None);
+                    }
+                }
+            }
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            logger.LogError(exception, "Could not delete the folder {Name}", folder.Path);
+            dialogs.Tell(translator.Of("DeleteFolder.Failed"), translator.DetailsOf(exception));
+        }
+    }
+
+    // A copy with the same id shares the secrets, so they stay while any request still uses them.
+    async Task DeleteSecretsIfUnusedAsync(Guid id)
+    {
+        if (id == Guid.Empty || tree.IsUsed(id))
+        {
+            return;
+        }
+        await secrets.DeleteAsync(id, CancellationToken.None);
+        foreach (var open in Tabs.Where(open => open.Id == id))
+        {
+            open.Auth.ForgetSavedSecrets();
+        }
+    }
+
+    // A folder whose settings cannot be read is still deleted; only its secrets cannot be found.
+    async Task<Guid> FolderIdOfAsync(string name)
+    {
+        try
+        {
+            return (await library.LoadFolderAsync(name, CancellationToken.None))?.Id ?? Guid.Empty;
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            logger.LogWarning(exception, "Could not read the settings of the folder {Name}", name);
+            return Guid.Empty;
         }
     }
 

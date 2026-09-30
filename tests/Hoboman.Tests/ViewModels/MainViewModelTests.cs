@@ -357,6 +357,352 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public async Task MoveAsync_WhenDroppedOnAFolder_ThenMovesTheRequestIntoIt()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.CreateFolderAsync("Health", Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+
+        // Act
+        await main.MoveAsync(NodeOf(main, "Ping"), NodeOf(main, "Health"));
+
+        // Assert
+        Assert.Equal(["Health/Ping"], await harness.Library.NamesAsync(Cancellation));
+    }
+
+    [Fact]
+    public async Task MoveAsync_WhenDroppedOnAClosedFolder_ThenOpensIt()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.CreateFolderAsync("Health", Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+
+        // Act
+        await main.MoveAsync(NodeOf(main, "Ping"), NodeOf(main, "Health"));
+
+        // Assert
+        Assert.True(NodeOf(main, "Health").IsExpanded);
+    }
+
+    [Fact]
+    public async Task MoveAsync_WhenDroppedOnARequestInAFolder_ThenMovesItIntoThatFolder()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAsync("Health/Status", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+
+        // Act
+        await main.MoveAsync(NodeOf(main, "Ping"), NodeOf(main, "Health/Status"));
+
+        // Assert
+        Assert.Equal(["Health/Ping", "Health/Status"], (await harness.Library.NamesAsync(Cancellation)).Order());
+    }
+
+    [Fact]
+    public async Task MoveAsync_WhenDroppedOutsideTheFolders_ThenMovesItToTheTop()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("Health/Ping", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+
+        // Act
+        await main.MoveAsync(NodeOf(main, "Health/Ping"), null);
+
+        // Assert
+        Assert.Equal(["Ping"], await harness.Library.NamesAsync(Cancellation));
+    }
+
+    [Fact]
+    public async Task MoveAsync_WhenDroppedInItsOwnFolder_ThenSaysNothing()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("Health/Ping", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+
+        // Act
+        await main.MoveAsync(NodeOf(main, "Health/Ping"), NodeOf(main, "Health"));
+
+        // Assert
+        Assert.Equal(0, harness.Dialogs.Asked);
+    }
+
+    [Fact]
+    public async Task MoveAsync_WhenTheFolderHasARequestWithTheName_ThenKeepsBothAndSaysSo()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAsync("Health/Ping", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+
+        // Act
+        await main.MoveAsync(NodeOf(main, "Ping"), NodeOf(main, "Health"));
+
+        // Assert
+        Assert.Equal((2, 1), ((await harness.Library.NamesAsync(Cancellation)).Count, harness.Dialogs.Asked));
+    }
+
+    [Fact]
+    public async Task MoveAsync_WhenTheRequestInherits_ThenSendsWithTheNewFoldersAuth()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var users = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
+        var admin = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
+        await harness.Library.SaveAsync("Users/Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveFolderAsync("Users", users, Cancellation);
+        await harness.Library.SaveFolderAsync("Admin", admin, Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.OpenAsync(NodeOf(main, "Users/Ping"));
+        await main.MoveAsync(NodeOf(main, "Users/Ping"), NodeOf(main, "Admin"));
+
+        // Act
+        await main.SelectedTab!.SendAsync();
+
+        // Assert
+        Assert.Equal(admin.Id, harness.Sender.Auth?.SecretsId);
+    }
+
+    [Fact]
+    public async Task MoveAsync_WhenTheRequestIsOpen_ThenTheTabFollows()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.CreateFolderAsync("Health", Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.OpenAsync(NodeOf(main, "Ping"));
+
+        // Act
+        await main.MoveAsync(NodeOf(main, "Ping"), NodeOf(main, "Health"));
+
+        // Assert
+        Assert.Equal("Health/Ping", main.SelectedTab?.Name);
+    }
+
+    [Fact]
+    public async Task DeleteHistoryAsync_WhenTheFileCannotBeDeleted_ThenSaysSo()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.History().AddAsync(new(DateTimeOffset.Now, HistorySource.App, "dev.local", ApiRequest.New()), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        var item = main.History.Items.Single();
+        using var locked = new FileStream(Path.Combine(harness.Folder.History, item.File.Name), FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        // Act
+        await main.DeleteHistoryAsync(item);
+
+        // Assert
+        Assert.Equal(1, harness.Dialogs.Asked);
+    }
+
+    static RequestNodeViewModel NodeOf(MainViewModel main, string path) => RequestTreeViewModel.Flatten(main.Tree.Nodes).Single(node => node.Path == path);
+
+    [Fact]
+    public async Task DeleteFolderAsync_WhenConfirmed_ThenDeletesTheFolderWithItsRequests()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(accept: true));
+        await harness.Library.SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAsync("Users/Admin/List", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+
+        // Act
+        await main.DeleteFolderAsync(NodeOf(main, "Users"));
+
+        // Assert
+        Assert.Equal((0, false), ((await harness.Library.NamesAsync(Cancellation)).Count, harness.Library.FolderExists("Users")));
+    }
+
+    [Fact]
+    public async Task DeleteFolderAsync_WhenNotConfirmed_ThenKeepsTheFolder()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(accept: false));
+        await harness.Library.SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+
+        // Act
+        await main.DeleteFolderAsync(NodeOf(main, "Users"));
+
+        // Assert
+        Assert.Equal(["Users/Get"], await harness.Library.NamesAsync(Cancellation));
+    }
+
+    [Fact]
+    public async Task DeleteFolderAsync_WhenConfirmed_ThenDeletesTheSecretsOfItsRequests()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(accept: true));
+        var request = ApiRequest.New() with { Auth = new(AuthKind.Bearer) };
+        await harness.Library.SaveAsync("Users/Admin/List", request, Cancellation);
+        await harness.Secrets.SaveAsync(request.Id, SecretKind.Token, "token", Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+
+        // Act
+        await main.DeleteFolderAsync(NodeOf(main, "Users"));
+
+        // Assert
+        Assert.Null(await harness.Secrets.OfAsync(request.Id, SecretKind.Token, Cancellation));
+    }
+
+    [Fact]
+    public async Task DeleteFolderAsync_WhenConfirmed_ThenDeletesTheSecretsOfTheFoldersAuth()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(accept: true));
+        var admin = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
+        await harness.Library.SaveAsync("Users/Admin/List", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveFolderAsync("Users/Admin", admin, Cancellation);
+        await harness.Secrets.SaveAsync(admin.Id, SecretKind.Token, "token", Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+
+        // Act
+        await main.DeleteFolderAsync(NodeOf(main, "Users"));
+
+        // Assert
+        Assert.Null(await harness.Secrets.OfAsync(admin.Id, SecretKind.Token, Cancellation));
+    }
+
+    [Fact]
+    public async Task DeleteFolderAsync_WhenItsSettingsCannotBeRead_ThenDeletesItAnyway()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(accept: true));
+        await harness.Library.SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
+        File.WriteAllText(Path.Combine(harness.Folder.Requests, "Users", ".folder.json"), "{");
+        var main = harness.Main();
+        await main.LoadAsync();
+
+        // Act
+        await main.DeleteFolderAsync(NodeOf(main, "Users"));
+
+        // Assert
+        Assert.False(harness.Library.FolderExists("Users"));
+    }
+
+    [Fact]
+    public async Task DeleteFolderAsync_WhenAFileCannotBeDeleted_ThenDeletesTheRest()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(accept: true));
+        await harness.Library.SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAsync("Users/Admin/List", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        using var locked = new FileStream(Path.Combine(harness.Folder.Requests, "Users", "Admin", "List.json"), FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        // Act
+        await main.DeleteFolderAsync(NodeOf(main, "Users"));
+
+        // Assert
+        Assert.Equal(["Users/Admin/List"], await harness.Library.NamesAsync(Cancellation));
+    }
+
+    [Fact]
+    public async Task DeleteFolderAsync_WhenAFileCannotBeDeleted_ThenDeletesOnlyTheSecretsOfWhatIsGone()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(accept: true));
+        var get = ApiRequest.New() with { Auth = new(AuthKind.Bearer) };
+        var list = ApiRequest.New() with { Auth = new(AuthKind.Bearer) };
+        await harness.Library.SaveAsync("Users/Get", get, Cancellation);
+        await harness.Library.SaveAsync("Users/Admin/List", list, Cancellation);
+        await harness.Secrets.SaveAsync(get.Id, SecretKind.Token, "get", Cancellation);
+        await harness.Secrets.SaveAsync(list.Id, SecretKind.Token, "list", Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        using var locked = new FileStream(Path.Combine(harness.Folder.Requests, "Users", "Admin", "List.json"), FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        // Act
+        await main.DeleteFolderAsync(NodeOf(main, "Users"));
+
+        // Assert
+        Assert.Equal((null, "list"), (await harness.Secrets.OfAsync(get.Id, SecretKind.Token, Cancellation), await harness.Secrets.OfAsync(list.Id, SecretKind.Token, Cancellation)));
+    }
+
+    [Fact]
+    public async Task DeleteFolderAsync_WhenAFileCannotBeDeleted_ThenOnlyTheTabsOfWhatIsGoneBecomeUnsaved()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(accept: true));
+        await harness.Library.SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAsync("Users/Admin/List", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.OpenAsync(NodeOf(main, "Users/Get"));
+        var get = main.SelectedTab!;
+        await main.OpenAsync(NodeOf(main, "Users/Admin/List"));
+        var list = main.SelectedTab!;
+        using var locked = new FileStream(Path.Combine(harness.Folder.Requests, "Users", "Admin", "List.json"), FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        // Act
+        await main.DeleteFolderAsync(NodeOf(main, "Users"));
+
+        // Assert
+        Assert.Equal((null, "Users/Admin/List"), (get.Name, list.Name));
+    }
+
+    [Fact]
+    public async Task DeleteFolderAsync_WhenACopyOutsideSharesTheId_ThenKeepsItsSecrets()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(accept: true));
+        var request = ApiRequest.New() with { Auth = new(AuthKind.Bearer) };
+        await harness.Library.SaveAsync("Users/Get", request, Cancellation);
+        await harness.Library.SaveAsync("Copy", request, Cancellation);
+        await harness.Secrets.SaveAsync(request.Id, SecretKind.Token, "token", Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+
+        // Act
+        await main.DeleteFolderAsync(NodeOf(main, "Users"));
+
+        // Assert
+        Assert.Equal("token", await harness.Secrets.OfAsync(request.Id, SecretKind.Token, Cancellation));
+    }
+
+    [Fact]
+    public async Task DeleteFolderAsync_WhenARequestInItIsOpen_ThenTheTabKeepsItAsUnsaved()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(accept: true));
+        await harness.Library.SaveAsync("Users/Get", ApiRequest.New() with { Url = "https://dev.local" }, Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.OpenAsync(NodeOf(main, "Users").Children.Single());
+        var tab = main.SelectedTab!;
+
+        // Act
+        await main.DeleteFolderAsync(NodeOf(main, "Users"));
+
+        // Assert
+        Assert.Equal((null, true, "https://dev.local"), (tab.Name, tab.IsDirty, tab.Url));
+    }
+
+    [Fact]
     public async Task DeleteAsync_WhenConfirmed_ThenDeletesTheRequest()
     {
         // Arrange
