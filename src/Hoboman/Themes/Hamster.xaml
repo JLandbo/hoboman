@@ -31,6 +31,10 @@
     <SolidColorBrush x:Key="JsonString" Color="#CE9178" />
     <SolidColorBrush x:Key="JsonNumber" Color="#B5CEA8" />
     <SolidColorBrush x:Key="JsonLiteral" Color="#569CD6" />
+    <SolidColorBrush x:Key="XmlTag" Color="#569CD6" />
+    <SolidColorBrush x:Key="XmlAttribute" Color="#9CDCFE" />
+    <SolidColorBrush x:Key="XmlValue" Color="#CE9178" />
+    <SolidColorBrush x:Key="XmlComment" Color="#6A9955" />
 
     <FontFamily x:Key="UiFont">Segoe UI Variable Text, Segoe UI</FontFamily>
     <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
@@ -451,7 +455,7 @@
         </Setter>
     </Style>
 
-    <Style TargetType="controls:JsonView">
+    <Style TargetType="controls:BodyView">
         <Setter Property="Background" Value="{DynamicResource Input}" />
         <Setter Property="Foreground" Value="{DynamicResource Text}" />
         <Setter Property="BorderThickness" Value="0" />
@@ -464,7 +468,7 @@
         <Setter Property="ContextMenu" Value="{DynamicResource TextMenu}" />
         <Setter Property="Template">
             <Setter.Value>
-                <ControlTemplate TargetType="controls:JsonView">
+                <ControlTemplate TargetType="controls:BodyView">
                     <Border Background="{TemplateBinding Background}" CornerRadius="8">
                         <ScrollViewer x:Name="PART_ContentHost" Focusable="False" />
                     </Border>

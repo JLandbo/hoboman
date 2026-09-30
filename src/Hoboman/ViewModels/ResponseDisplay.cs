@@ -1,5 +1,8 @@
 using System.Text.Encodings.Web;
+using System.IO;
 using System.Text.Json;
+using System.Xml;
+using System.Xml.Linq;
 using Hoboman.Core.Sending;
 
 namespace Hoboman.ViewModels;
@@ -33,7 +36,9 @@ public sealed record ResponseDisplay(string Status, bool IsSuccess, string Elaps
         _ => $"{size / (1024d * 1024):0.#} MB",
     };
 
-    internal static string PrettyOf(string body)
+    internal static string PrettyOf(string body) => body.TrimStart() is ['<', ..] ? PrettyXmlOf(body) : PrettyJsonOf(body);
+
+    static string PrettyJsonOf(string body)
     {
         try
         {
@@ -41,6 +46,21 @@ public sealed record ResponseDisplay(string Status, bool IsSuccess, string Elaps
             return JsonSerializer.Serialize(json.RootElement, _pretty);
         }
         catch (JsonException)
+        {
+            return body;
+        }
+    }
+
+    // DTDs are ignored, so a body can never make the formatting expand entities or read other files. HTML is rarely valid XML and stays as it is.
+    static string PrettyXmlOf(string body)
+    {
+        try
+        {
+            using var reader = XmlReader.Create(new StringReader(body), new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore });
+            var document = XDocument.Load(reader);
+            return document.Declaration is { } declaration ? $"{declaration}{Environment.NewLine}{document}" : document.ToString();
+        }
+        catch (XmlException)
         {
             return body;
         }

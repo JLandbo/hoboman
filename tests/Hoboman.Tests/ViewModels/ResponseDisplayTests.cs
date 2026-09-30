@@ -51,4 +51,44 @@ public sealed class ResponseDisplayTests
         // Assert
         Assert.True(display.IsCut);
     }
+
+    [Fact]
+    public void PrettyOf_WhenTheBodyIsXml_ThenIndentsIt()
+    {
+        // Act
+        var body = ResponseDisplay.PrettyOf("""<svg xmlns="http://www.w3.org/2000/svg"><rect width="1"/></svg>""");
+
+        // Assert
+        Assert.Equal($"<svg xmlns=\"http://www.w3.org/2000/svg\">{Environment.NewLine}  <rect width=\"1\" />{Environment.NewLine}</svg>", body);
+    }
+
+    [Fact]
+    public void PrettyOf_WhenTheXmlHasADeclaration_ThenKeepsIt()
+    {
+        // Act
+        var body = ResponseDisplay.PrettyOf("""<?xml version="1.0"?><a><b/></a>""");
+
+        // Assert
+        Assert.StartsWith("""<?xml version="1.0"?>""", body);
+    }
+
+    [Fact]
+    public void PrettyOf_WhenTheBodyIsHtml_ThenKeepsIt()
+    {
+        // Act
+        var body = ResponseDisplay.PrettyOf("<!DOCTYPE html><html><br></html>");
+
+        // Assert
+        Assert.Equal("<!DOCTYPE html><html><br></html>", body);
+    }
+
+    [Fact]
+    public void PrettyOf_WhenTheXmlDefinesAnEntity_ThenDoesNotExpandIt()
+    {
+        // Act
+        var body = ResponseDisplay.PrettyOf("""<!DOCTYPE a [<!ENTITY x "boom">]><a>&x;</a>""");
+
+        // Assert
+        Assert.Equal("""<!DOCTYPE a [<!ENTITY x "boom">]><a>&x;</a>""", body);
+    }
 }

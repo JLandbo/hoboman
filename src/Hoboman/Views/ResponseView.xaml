@@ -77,7 +77,7 @@
                        Visibility="{Binding Response.IsCut, Converter={StaticResource VisibleWhenTrue}, FallbackValue=Collapsed}" />
 
             <Grid>
-                <controls:JsonView Text="{Binding Response.Body}" Visibility="{Binding IsChecked, ElementName=BodySection, Converter={StaticResource VisibleWhenTrue}}" />
+                <controls:BodyView Text="{Binding Response.Body}" Visibility="{Binding IsChecked, ElementName=BodySection, Converter={StaticResource VisibleWhenTrue}}" />
                 <TextBox Text="{Binding Response.Headers, Mode=OneWay}" IsReadOnly="True" Style="{StaticResource Code}"
                          Visibility="{Binding IsChecked, ElementName=HeadersSection, Converter={StaticResource VisibleWhenTrue}}" />
                 <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource Muted}">
