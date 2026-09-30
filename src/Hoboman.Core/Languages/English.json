@@ -63,6 +63,8 @@
     "Format.Json": "JSON",
     "Format.Xml": "XML",
     "Format.Raw": "Raw",
+    "History.Delete": "Delete from the history",
+    "History.DeleteFailed": "The call could not be deleted from the history",
     "History.Today": "Today",
     "History.Yesterday": "Yesterday",
     "History.Failed": "Failed",

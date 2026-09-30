@@ -63,6 +63,8 @@
     "Format.Json": "JSON",
     "Format.Xml": "XML",
     "Format.Raw": "Rå",
+    "History.Delete": "Slet fra historikken",
+    "History.DeleteFailed": "Kaldet kunne ikke slettes fra historikken",
     "History.Today": "I dag",
     "History.Yesterday": "I går",
     "History.Failed": "Fejl",

@@ -32,6 +32,9 @@ public partial class HistoryView : UserControl
         }
     }
 
+    // The button takes the click, so the call is not opened as well.
+    async void Delete_Click(object sender, RoutedEventArgs e) => await ((MainViewModel)DataContext).DeleteHistoryAsync((HistoryItemViewModel)((FrameworkElement)sender).DataContext);
+
     async Task OpenAsync(DependencyObject source)
     {
         if (ItemsControl.ContainerFromElement(Entries, source) is not ListBoxItem { DataContext: HistoryItemViewModel item })

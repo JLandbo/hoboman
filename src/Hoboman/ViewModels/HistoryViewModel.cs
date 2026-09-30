@@ -68,6 +68,14 @@ public sealed class HistoryViewModel(HistoryStore store, Translator translator, 
         }
     }
 
+    // The call leaves the list at once, instead of when the folder watcher notices.
+    public async Task DeleteAsync(HistoryItemViewModel item, CancellationToken cancellationToken)
+    {
+        await store.DeleteAsync(item.File.Name, cancellationToken);
+        Items.Remove(item);
+        OnPropertyChanged(nameof(IsFull));
+    }
+
     string DayOf(DateTime day, DateTime today) =>
         day == today ? translator.Of("History.Today")
         : day == today.AddDays(-1) ? translator.Of("History.Yesterday")

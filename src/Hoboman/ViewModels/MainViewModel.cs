@@ -236,6 +236,19 @@ public sealed class MainViewModel(
         }
     }
 
+    public async Task DeleteHistoryAsync(HistoryItemViewModel item)
+    {
+        try
+        {
+            await history.DeleteAsync(item, CancellationToken.None);
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            logger.LogError(exception, "Could not delete the call {Name} from the history", item.File.Name);
+            dialogs.Tell(translator.Of("History.DeleteFailed"), translator.DetailsOf(exception));
+        }
+    }
+
     public async Task EditSettingsAsync()
     {
         await settings.LoadAsync(CancellationToken.None);

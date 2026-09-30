@@ -21,6 +21,12 @@ public sealed partial class HistoryStore(AppFolder folder, ILogger<HistoryStore>
         return [.. files.OfType<HistoryFile>()];
     }
 
+    public Task DeleteAsync(string name, CancellationToken cancellationToken) => Task.Run(() =>
+    {
+        File.Delete(Path.Combine(folder.History, name));
+        logger.LogInformation("Deleted the call {Name} from the history", name);
+    }, cancellationToken);
+
     // Only the names, which is cheap next to reading the calls.
     public Task<IReadOnlySet<string>> NamesAsync(CancellationToken cancellationToken) => Task.Run<IReadOnlySet<string>>(() => Directory.Exists(folder.History)
         ? Directory.EnumerateFiles(folder.History, "*.json").Select(Path.GetFileName).OfType<string>().Where(IsCall).ToHashSet(StringComparer.Ordinal)
