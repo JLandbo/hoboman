@@ -600,4 +600,34 @@ public sealed class RequestTabViewModelTests
         // Assert
         Assert.Equal("ping", await harness.Secrets.OfAsync(request.Id, SecretKind.Token, Cancellation));
     }
+
+    [Fact]
+    public async Task SendAsync_WhenTheResponseIsJson_ThenChoosesJson()
+    {
+        // Arrange
+        using var harness = new Harness(send: () => Task.FromResult(new ApiResponse(200, "OK", 0, 7, [new("Content-Type", "application/json")], """{"a":1}""")));
+        var tab = harness.Tab();
+
+        // Act
+        await tab.SendAsync();
+
+        // Assert
+        Assert.Equal(BodyFormat.Json, tab.BodyFormat);
+    }
+
+    [Fact]
+    public async Task BodyFormat_WhenChanged_ThenShowsTheResponseInThatFormat()
+    {
+        // Arrange
+        using var harness = new Harness(send: () => Task.FromResult(new ApiResponse(200, "OK", 0, 7, [new("Content-Type", "text/plain")], """{"a":1}""")));
+        var tab = harness.Tab();
+        await tab.SendAsync();
+
+        // Act
+        tab.BodyFormat = BodyFormat.Json;
+        await tab.Formatting;
+
+        // Assert
+        Assert.Equal($"{{{Environment.NewLine}  \"a\": 1{Environment.NewLine}}}", tab.Response?.Body);
+    }
 }

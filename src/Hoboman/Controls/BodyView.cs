@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using Hoboman.ViewModels;
 
 namespace Hoboman.Controls;
 
@@ -12,22 +13,30 @@ public sealed partial class BodyView : RichTextBox
 
     public static readonly DependencyProperty TextProperty = DependencyProperty.Register(nameof(Text), typeof(string), typeof(BodyView), new(null, (view, _) => ((BodyView)view).Show()));
 
+    public static readonly DependencyProperty ColoringProperty = DependencyProperty.Register(nameof(Coloring), typeof(BodyFormat), typeof(BodyView), new(BodyFormat.Raw, (view, _) => ((BodyView)view).Show()));
+
     public string? Text
     {
         get => (string?)GetValue(TextProperty);
         set => SetValue(TextProperty, value);
     }
 
+    public BodyFormat Coloring
+    {
+        get => (BodyFormat)GetValue(ColoringProperty);
+        set => SetValue(ColoringProperty, value);
+    }
+
     void Show()
     {
         var text = Text ?? "";
         var paragraph = new Paragraph();
-        switch (text.Length > _coloredLength ? "" : text.TrimStart())
+        switch (text.Length > _coloredLength ? BodyFormat.Raw : Coloring)
         {
-            case ['{' or '[', ..]:
+            case BodyFormat.Json:
                 paragraph.Inlines.AddRange(Runs.Of(text, Json().Matches(text), JsonBrushOf));
                 break;
-            case ['<', ..]:
+            case BodyFormat.Xml:
                 paragraph.Inlines.AddRange(Runs.Of(text, Xml().Matches(text), XmlBrushOf));
                 break;
             default:

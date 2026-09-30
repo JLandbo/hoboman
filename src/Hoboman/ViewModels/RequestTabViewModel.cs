@@ -16,6 +16,8 @@ public sealed class RequestTabViewModel : ObservableObject
     readonly RequestTabServices _services;
     string _savedJson = "";
     ProblemMessage? _fileProblem;
+    ApiResponse? _response;
+    BodyFormat _bodyFormat;
     bool _loading;
     CancellationTokenSource? _sending;
 
@@ -107,6 +109,21 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public ResponseDisplay? Response { get; private set => Set(ref field, value); }
 
+    // Chosen from the Content-Type of each new response, and changed by the user when it does not fit.
+    public BodyFormat BodyFormat
+    {
+        get => _bodyFormat;
+        set
+        {
+            if (Set(ref _bodyFormat, value) && _response is { } response)
+            {
+                Formatting = FormatAsync(response);
+            }
+        }
+    }
+
+    internal Task Formatting { get; private set; } = Task.CompletedTask;
+
     public ProblemMessage? Problem { get; private set => Set(ref field, value); }
 
     public AsyncCommand Send { get; }
@@ -134,7 +151,7 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public async Task ShowAsync(HistoryEntry entry)
     {
-        Response = entry.Response is { } response ? await Task.Run(() => ResponseDisplay.Of(response)) : null;
+        await ShowAsync(entry.Response);
         Problem = entry.Error is { } error ? new(_services.Translator.Of("Response.Failed"), error) : null;
     }
 
@@ -184,6 +201,28 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public void Cancel() => _sending?.Cancel();
 
+    async Task ShowAsync(ApiResponse? response)
+    {
+        _response = response;
+        Response = null;
+        if (response is not null)
+        {
+            Set(ref _bodyFormat, ResponseDisplay.FormatOf(response), nameof(BodyFormat));
+            await FormatAsync(response);
+        }
+    }
+
+    // Formatting a large body takes a while, so it is kept off the UI thread, and a newer response or format wins.
+    async Task FormatAsync(ApiResponse response)
+    {
+        var format = _bodyFormat;
+        var display = await Task.Run(() => ResponseDisplay.Of(response, format));
+        if (ReferenceEquals(response, _response) && format == _bodyFormat)
+        {
+            Response = display;
+        }
+    }
+
     public void Rename(string name) => Name = name;
 
     public void Unlink()
@@ -210,6 +249,7 @@ public sealed class RequestTabViewModel : ObservableObject
         // Sending makes a new call, so the history entry opens the old one again.
         HistoryName = null;
         Problem = null;
+        _response = null;
         Response = null;
         IsSending = true;
         using var sending = _sending = new CancellationTokenSource();
@@ -217,8 +257,7 @@ public sealed class RequestTabViewModel : ObservableObject
         {
             await SaveSecretsAsync(sending.Token);
             var response = await _services.Runner.RunAsync(ToRequest(), Name ?? SuggestedName, _services.Environments.Selected, HistorySource.App, sending.Token);
-            // Formatting a large body takes a while, so it is kept off the UI thread.
-            Response = await Task.Run(() => ResponseDisplay.Of(response));
+            await ShowAsync(response);
         }
         catch (OperationCanceledException) when (sending.IsCancellationRequested)
         {
