@@ -62,6 +62,14 @@ public partial class RequestTreeView : UserControl
         }
     }
 
+    async void RenameFolder_Click(object sender, RoutedEventArgs e)
+    {
+        if (NodeOf(sender) is { } node)
+        {
+            await ViewModel.RenameFolderAsync(node);
+        }
+    }
+
     async void DeleteFolder_Click(object sender, RoutedEventArgs e)
     {
         if (NodeOf(sender) is { } node)

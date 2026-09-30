@@ -191,6 +191,60 @@ public sealed class RequestLibraryTests : IDisposable
     }
 
     [Fact]
+    public async Task RenameFolderAsync_WhenCalled_ThenMovesEverythingInIt()
+    {
+        // Arrange
+        await Library().SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
+        await Library().SaveAsync("Users/Admin/List", ApiRequest.New(), Cancellation);
+
+        // Act
+        await Library().RenameFolderAsync("Users", "People", Cancellation);
+
+        // Assert
+        Assert.Equal(["People/Admin/List", "People/Get"], (await Library().NamesAsync(Cancellation)).Order());
+    }
+
+    [Fact]
+    public async Task RenameFolderAsync_WhenTheFolderHasSettings_ThenTheyMoveWithIt()
+    {
+        // Arrange
+        var settings = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
+        await Library().SaveFolderAsync("Users", settings, Cancellation);
+
+        // Act
+        await Library().RenameFolderAsync("Users", "People", Cancellation);
+
+        // Assert
+        Assert.Equal(settings.Id, (await Library().LoadFolderAsync("People", Cancellation))?.Id);
+    }
+
+    [Fact]
+    public async Task RenameFolderAsync_WhenOnlyTheCaseChanges_ThenRenamesTheFolder()
+    {
+        // Arrange
+        await Library().CreateFolderAsync("Users", Cancellation);
+
+        // Act
+        await Library().RenameFolderAsync("Users", "users", Cancellation);
+
+        // Assert
+        Assert.Equal(["users"], await Library().FoldersAsync(Cancellation));
+    }
+
+    [Fact]
+    public async Task RenameFolderAsync_WhenTheNewParentIsMissing_ThenMakesIt()
+    {
+        // Arrange
+        await Library().CreateFolderAsync("Users", Cancellation);
+
+        // Act
+        await Library().RenameFolderAsync("Users", "Old/Users", Cancellation);
+
+        // Assert
+        Assert.Equal(["Old", "Old/Users"], (await Library().FoldersAsync(Cancellation)).Order());
+    }
+
+    [Fact]
     public async Task DeleteFolderAsync_WhenCalled_ThenRemovesEverythingInIt()
     {
         // Arrange

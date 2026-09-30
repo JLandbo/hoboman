@@ -9,6 +9,7 @@
         </ContextMenu>
         <ContextMenu x:Key="FolderMenu" x:Shared="False" Style="{StaticResource PopupMenu}">
             <MenuItem Header="{DynamicResource Tree.FolderAuth}" Click="FolderAuth_Click" />
+            <MenuItem Header="{DynamicResource Tree.Rename}" Click="RenameFolder_Click" />
             <MenuItem Header="{DynamicResource Tree.Delete}" Click="DeleteFolder_Click" />
         </ContextMenu>
     </UserControl.Resources>

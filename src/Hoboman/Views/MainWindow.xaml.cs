@@ -39,7 +39,8 @@ public partial class MainWindow : Window
             SidebarColumn.Width = new GridLength(layout.SidebarWidth);
             WindowState = layout.IsMaximized ? WindowState.Maximized : WindowState.Normal;
         }
-        catch (Exception exception) when (FileProblem.Is(exception))
+        // WPF refuses sizes like a negative one, which a hand-edited file can hold.
+        catch (Exception exception) when (FileProblem.Is(exception) || exception is ArgumentException)
         {
             _logger.LogWarning(exception, "Could not read the saved layout");
         }

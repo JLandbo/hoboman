@@ -517,6 +517,92 @@ public sealed class MainViewModelTests
     static RequestNodeViewModel NodeOf(MainViewModel main, string path) => RequestTreeViewModel.Flatten(main.Tree.Nodes).Single(node => node.Path == path);
 
     [Fact]
+    public async Task RenameFolderAsync_WhenGivenAName_ThenMovesTheFolder()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(answer: "People"));
+        await harness.Library.SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+
+        // Act
+        await main.RenameFolderAsync(NodeOf(main, "Users"));
+
+        // Assert
+        Assert.Equal(["People/Get"], await harness.Library.NamesAsync(Cancellation));
+    }
+
+    [Fact]
+    public async Task RenameFolderAsync_WhenARequestInItIsOpen_ThenTheTabFollows()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(answer: "People"));
+        await harness.Library.SaveAsync("Users/Admin/List", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.OpenAsync(NodeOf(main, "Users/Admin/List"));
+
+        // Act
+        await main.RenameFolderAsync(NodeOf(main, "Users"));
+
+        // Assert
+        Assert.Equal("People/Admin/List", main.SelectedTab?.Name);
+    }
+
+    [Fact]
+    public async Task RenameFolderAsync_WhenItsFoldersAreOpen_ThenTheyStayOpen()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(answer: "People"));
+        await harness.Library.SaveAsync("Users/Admin/List", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        NodeOf(main, "Users").IsExpanded = NodeOf(main, "Users/Admin").IsExpanded = true;
+
+        // Act
+        await main.RenameFolderAsync(NodeOf(main, "Users"));
+
+        // Assert
+        Assert.Equal((true, true), (NodeOf(main, "People").IsExpanded, NodeOf(main, "People/Admin").IsExpanded));
+    }
+
+    [Fact]
+    public async Task RenameFolderAsync_WhenMovedIntoAClosedFolder_ThenOpensIt()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(answer: "Archive/Users"));
+        await harness.Library.SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
+        await harness.Library.CreateFolderAsync("Archive", Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+
+        // Act
+        await main.RenameFolderAsync(NodeOf(main, "Users"));
+
+        // Assert
+        Assert.True(NodeOf(main, "Archive").IsExpanded);
+    }
+
+    [Theory]
+    [InlineData("Taken")]
+    [InlineData("Users/Inside")]
+    public async Task RenameFolderAsync_WhenTheNameCannotBeUsed_ThenKeepsTheFolder(string answer)
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(answer: answer));
+        await harness.Library.SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
+        await harness.Library.CreateFolderAsync("Taken", Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+
+        // Act
+        await main.RenameFolderAsync(NodeOf(main, "Users"));
+
+        // Assert
+        Assert.Equal(["Users/Get"], await harness.Library.NamesAsync(Cancellation));
+    }
+
+    [Fact]
     public async Task DeleteFolderAsync_WhenConfirmed_ThenDeletesTheFolderWithItsRequests()
     {
         // Arrange

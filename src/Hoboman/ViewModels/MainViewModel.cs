@@ -233,6 +233,43 @@ public sealed class MainViewModel(
         }
     }
 
+    public async Task RenameFolderAsync(RequestNodeViewModel folder)
+    {
+        if (dialogs.AskName(translator.Of("RenameFolder.Title"), folder.Path, translator.Of("Common.Save"), candidate => SameName(candidate, folder.Path) ? null : ProblemOfRenamedFolder(candidate, folder.Path)) is not { } name
+            || name == folder.Path)
+        {
+            return;
+        }
+        var inside = RequestTreeViewModel.Flatten([folder]).ToList();
+        // The tree keeps folders open by their path, so the open ones are opened again under the new one,
+        // and the folders it now lies in are opened too, as it would otherwise seem to vanish.
+        var opened = inside.Where(node => node.IsFolder && node.IsExpanded).Select(node => Moved(node.Path)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        for (var parent = RequestLibrary.ParentOf(name); parent is not null; parent = RequestLibrary.ParentOf(parent))
+        {
+            opened.Add(parent);
+        }
+        try
+        {
+            await library.RenameFolderAsync(folder.Path, name, CancellationToken.None);
+            foreach (var request in inside.Where(node => !node.IsFolder))
+            {
+                TabOf(request.Path)?.Rename(Moved(request.Path));
+            }
+            await tree.LoadAsync(CancellationToken.None);
+            foreach (var node in RequestTreeViewModel.Flatten(tree.Nodes).Where(node => opened.Contains(node.Path)))
+            {
+                node.IsExpanded = true;
+            }
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            logger.LogError(exception, "Could not rename the folder {Name} to {NewName}", folder.Path, name);
+            dialogs.Tell(translator.Of("RenameFolder.Failed"), translator.DetailsOf(exception));
+        }
+
+        string Moved(string path) => $"{name}{path[folder.Path.Length..]}";
+    }
+
     public async Task DeleteAsync(RequestNodeViewModel node)
     {
         if (!dialogs.Confirm(translator.Of("Delete.Title"), translator.Format("Delete.Message", node.Name), translator.Of("Delete.Confirm"), []))
@@ -433,6 +470,13 @@ public sealed class MainViewModel(
     RequestTabViewModel? TabOf(string name) => Tabs.FirstOrDefault(tab => SameName(tab.Name, name));
 
     string? ProblemOfFolder(string name) => RequestLibrary.IsValidName(name) ? null : translator.Of("Save.Invalid");
+
+    // A folder cannot go inside itself.
+    string? ProblemOfRenamedFolder(string name, string path) =>
+        ProblemOfFolder(name)
+        ?? (name.StartsWith($"{path}/", StringComparison.OrdinalIgnoreCase) ? translator.Of("Save.Invalid")
+        : library.FolderExists(name) ? translator.Of("Folder.Exists")
+        : null);
 
     // Windows does not tell upper and lower case apart in file names.
     static bool SameName(string? name, string? other) => string.Equals(name, other, StringComparison.OrdinalIgnoreCase);

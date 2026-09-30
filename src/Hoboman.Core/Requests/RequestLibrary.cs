@@ -78,6 +78,15 @@ public sealed class RequestLibrary(AppFolder folder, ILogger<RequestLibrary> log
         logger.LogInformation("Deleted the request {Name}", name);
     }, cancellationToken);
 
+    // The folder's settings are inside it, so they move with it.
+    public Task RenameFolderAsync(string name, string newName, CancellationToken cancellationToken) => Task.Run(() =>
+    {
+        var target = FolderOf(newName);
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        Directory.Move(FolderOf(name), target);
+        logger.LogInformation("Renamed the folder {Name} to {NewName}", name, newName);
+    }, cancellationToken);
+
     public Task DeleteFolderAsync(string name, CancellationToken cancellationToken) => Task.Run(() =>
     {
         Directory.Delete(FolderOf(name), recursive: true);
