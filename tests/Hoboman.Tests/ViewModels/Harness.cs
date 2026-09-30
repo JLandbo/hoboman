@@ -1,3 +1,6 @@
+using Hoboman.Tests.Auth;
+using Microsoft.Extensions.Time.Testing;
+
 namespace Hoboman.Tests.ViewModels;
 
 public sealed class Harness : IDisposable
@@ -5,10 +8,11 @@ public sealed class Harness : IDisposable
     readonly TemporaryFolder _temporary = new();
     readonly Translator _translator = new(Translation.English);
 
-    public Harness(FakeDialogs? dialogs = null, Func<Task<ApiResponse>>? send = null)
+    public Harness(FakeDialogs? dialogs = null, Func<Task<ApiResponse>>? send = null, FakeOAuthClient? oauth = null)
     {
         Folder = new(_temporary.Path);
         Dialogs = dialogs ?? new FakeDialogs();
+        OAuth = oauth ?? new FakeOAuthClient();
         Library = new(Folder, NullLogger<RequestLibrary>.Instance);
         EnvironmentStore = new(Folder, NullLogger<EnvironmentStore>.Instance);
         SettingsStore = new(Folder, NullLogger<SettingsStore>.Instance);
@@ -16,12 +20,17 @@ public sealed class Harness : IDisposable
         Sender = new(send ?? (() => Task.FromResult(new ApiResponse(200, "OK", 0, 2, [], "{}"))));
         var runner = new RequestRunner(Sender, Library, History(), NullLogger<RequestRunner>.Instance);
         Secrets = new(Folder, NullLogger<SecretStore>.Instance);
-        Services = new(runner, Secrets, Library, Environments, Dialogs, _translator, NullLogger<RequestTabViewModel>.Instance);
+        Services = new(runner, Secrets, OAuth, Library, Environments, Dialogs, _translator, Clock, NullLogger<RequestTabViewModel>.Instance);
     }
 
     public AppFolder Folder { get; }
 
     public FakeDialogs Dialogs { get; }
+
+    public FakeOAuthClient OAuth { get; }
+
+    // For what the tabs show about time, such as whether a token has expired; the history keeps the real clock.
+    public FakeTimeProvider Clock { get; } = new(new DateTimeOffset(2026, 9, 30, 12, 0, 0, TimeSpan.Zero));
 
     public FakeSender Sender { get; }
 
@@ -53,9 +62,9 @@ public sealed class Harness : IDisposable
         _translator,
         NullLogger<MainViewModel>.Instance);
 
-    public FolderAuthViewModel FolderAuth() => new(Library, Secrets, _translator, NullLogger<FolderAuthViewModel>.Instance);
+    public FolderAuthViewModel FolderAuth() => new(Library, Secrets, OAuth, Environments, _translator, Clock, NullLogger<FolderAuthViewModel>.Instance);
 
-    public EnvironmentEditorViewModel EnvironmentEditor() => new(EnvironmentStore, Environments, _translator, NullLogger<EnvironmentEditorViewModel>.Instance);
+    public EnvironmentEditorViewModel EnvironmentEditor() => new(EnvironmentStore, Environments, Secrets, _translator, NullLogger<EnvironmentEditorViewModel>.Instance);
 
     // The environments as they are after the app is started again.
     public EnvironmentsViewModel Restarted() => new(EnvironmentStore, SettingsStore, NullLogger<EnvironmentsViewModel>.Instance);

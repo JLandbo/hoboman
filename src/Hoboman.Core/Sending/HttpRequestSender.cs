@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Hoboman.Core.Sending;
 
-public sealed class HttpRequestSender(SecretStore secrets, HttpClients clients, ILogger<HttpRequestSender> logger) : IRequestSender
+public sealed class HttpRequestSender(SecretStore secrets, HttpClients clients, TimeProvider clock, ILogger<HttpRequestSender> logger) : IRequestSender
 {
     const string _tokenSymbols = "!#$%&'*+-.^_`|~";
 
@@ -17,7 +17,7 @@ public sealed class HttpRequestSender(SecretStore secrets, HttpClients clients, 
         Uri? address = null;
         try
         {
-            using var message = await MessageOfAsync(request, auth, environment ?? new ApiEnvironment("", []), cancellationToken).ConfigureAwait(false);
+            using var message = await MessageOfAsync(request, auth, environment ?? ApiEnvironment.None, cancellationToken).ConfigureAwait(false);
             address = message.RequestUri;
             var client = await clients.CurrentAsync(cancellationToken).ConfigureAwait(false);
             logger.LogInformation("Sending {Method} {Url}", message.Method, LoggableOf(address));
@@ -110,8 +110,17 @@ public sealed class HttpRequestSender(SecretStore secrets, HttpClients clients, 
     {
         AuthKind.Basic => new("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{environment.Resolve(auth.Settings.UserName)}:{environment.Resolve(await SecretOfAsync(auth, SecretKind.Password, cancellationToken).ConfigureAwait(false))}"))),
         AuthKind.Bearer => new("Bearer", environment.Resolve(await SecretOfAsync(auth, SecretKind.Token, cancellationToken).ConfigureAwait(false))),
+        AuthKind.OAuth2 => new("Bearer", (await OAuthTokenOfAsync(auth, environment, cancellationToken).ConfigureAwait(false)).AccessToken),
         _ => null,
     };
+
+    // Each environment has its own token, and a missing or expired one stops the request, so it is never sent without the auth it was set up with.
+    async Task<OAuthToken> OAuthTokenOfAsync(AuthSource auth, ApiEnvironment environment, CancellationToken cancellationToken)
+    {
+        var saved = await secrets.OfAsync(auth.SecretsId, SecretKind.OAuthToken, environment.Name, cancellationToken).ConfigureAwait(false);
+        var token = (saved is null ? null : OAuthToken.FromJson(saved)) ?? throw new MissingSecretException(SecretKind.OAuthToken);
+        return token.HasExpired(clock.GetUtcNow()) ? throw new ExpiredTokenException(token.ExpiresAt!.Value) : token;
+    }
 
     async Task<string> SecretOfAsync(AuthSource auth, SecretKind kind, CancellationToken cancellationToken) =>
         await secrets.OfAsync(auth.SecretsId, kind, cancellationToken).ConfigureAwait(false) ?? throw new MissingSecretException(kind);

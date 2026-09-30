@@ -1,4 +1,5 @@
 using System.Net.Http;
+using Hoboman.Tests.Auth;
 
 namespace Hoboman.Tests.ViewModels;
 
@@ -32,6 +33,91 @@ public sealed class RequestTabViewModelTests
 
         // Assert
         Assert.Equal(new ProblemMessage("The request could not be sent", "No token is saved for the request or its folder."), tab.Problem);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheOAuthTokenIsMissing_ThenSaysHowToGetOne()
+    {
+        // Arrange
+        using var harness = new Harness(send: () => throw new MissingSecretException(SecretKind.OAuthToken));
+        var tab = harness.Tab();
+
+        // Act
+        await tab.SendAsync();
+
+        // Assert
+        Assert.Equal("No OAuth token has been fetched for the request or its folder in the chosen environment. Get one under Auth.", tab.Problem?.Details);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheOAuthTokenHasExpired_ThenSaysWhen()
+    {
+        // Arrange
+        var expired = new DateTimeOffset(2026, 9, 30, 11, 0, 0, TimeSpan.Zero);
+        using var harness = new Harness(send: () => throw new ExpiredTokenException(expired));
+        var tab = harness.Tab();
+
+        // Act
+        await tab.SendAsync();
+
+        // Assert
+        Assert.Equal($"The OAuth token expired {expired.ToLocalTime().ToString("g", Translation.English.Culture)}. Get a new one under Auth.", tab.Problem?.Details);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenAnOAuthTokenWasFetched_ThenSavesItFirst()
+    {
+        // Arrange
+        Func<Task<string?>> savedToken = () => Task.FromResult<string?>(null);
+        string? seenWhenSending = null;
+        using var harness = new Harness(send: async () =>
+        {
+            seenWhenSending = await savedToken();
+            return new ApiResponse(200, "OK", 0, 2, [], "{}");
+        });
+        var tab = harness.Tab(ApiRequest.New() with { Auth = new(AuthKind.OAuth2) });
+        savedToken = () => harness.Secrets.OfAsync(tab.Id, SecretKind.OAuthToken, CancellationToken.None);
+        await tab.Auth.FetchTokenAsync();
+
+        // Act
+        await tab.SendAsync();
+
+        // Assert
+        Assert.NotNull(seenWhenSending);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenOnlyAFetchedTokenWasUnsaved_ThenTheRequestIsNoLongerMarkedUnsaved()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("Ping", ApiRequest.New() with { Url = "https://dev.local", Auth = new(AuthKind.OAuth2) }, Cancellation);
+        var tab = harness.Tab(await harness.Library.LoadAsync("Ping", Cancellation), "Ping");
+        await tab.Auth.FetchTokenAsync();
+
+        // Act
+        await tab.SendAsync();
+
+        // Assert
+        Assert.False(tab.IsDirty);
+    }
+
+    [Fact]
+    public async Task Cancel_WhenATokenIsBeingFetched_ThenOnlyStopsTheSend()
+    {
+        // Arrange
+        var login = new TaskCompletionSource<OAuthToken>();
+        using var harness = new Harness(oauth: new FakeOAuthClient(cancellationToken => login.Task.WaitAsync(cancellationToken)));
+        var tab = harness.Tab();
+        var fetching = tab.Auth.FetchTokenAsync();
+
+        // Act
+        tab.Cancel();
+        login.SetResult(FakeOAuthClient.Token);
+        await fetching;
+
+        // Assert
+        Assert.Equal(FakeOAuthClient.Token, tab.Auth.AccessToken);
     }
 
     [Fact]

@@ -1,15 +1,22 @@
 using System.Runtime.CompilerServices;
 using Hoboman.Core.Auth;
+using Hoboman.Core.Environments;
+using Hoboman.Core.Languages;
 using Hoboman.Mvvm;
+using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
 
 // The auth of a request or a folder. Both use the same editor, and the secrets are saved under the id of whichever it belongs to.
-public sealed class AuthViewModel(SecretStore secrets) : ObservableObject
+public sealed class AuthViewModel(SecretStore secrets, IOAuthClient oauth, EnvironmentsViewModel environments, Translator translator, TimeProvider clock, ILogger logger) : ObservableObject
 {
     OAuthSettings? _oauth;
     string _savedPassword = "";
     string _savedToken = "";
+    string _savedClientSecret = "";
+    Dictionary<string, OAuthToken> _tokens = [];
+    Dictionary<string, OAuthToken> _savedTokens = [];
+    CancellationTokenSource? _fetching;
     bool _loading;
 
     public event Action? Changed;
@@ -22,30 +29,83 @@ public sealed class AuthViewModel(SecretStore secrets) : ObservableObject
 
     public string Token { get; set => Change(ref field, value); } = "";
 
-    public bool HasUnsavedSecrets => Password != _savedPassword || Token != _savedToken;
+    public OAuthGrant Grant { get; set => Change(ref field, value); }
+
+    public string AuthorizeUrl { get; set => Change(ref field, value); } = "";
+
+    public string TokenUrl { get; set => Change(ref field, value); } = "";
+
+    public string ClientId { get; set => Change(ref field, value); } = "";
+
+    public string ClientSecret { get; set => Change(ref field, value); } = "";
+
+    public string Scope { get; set => Change(ref field, value); } = "";
+
+    public OAuthClientAuthentication ClientAuthentication { get; set => Change(ref field, value); }
+
+    public int? RedirectPort { get; set => Change(ref field, value); }
+
+    // Each environment has its own token, because one fetched with another environment's addresses and client would be the wrong one.
+    public OAuthToken? AccessToken => _tokens.GetValueOrDefault(ChosenEnvironment);
+
+    public string TokenStatus => AccessToken switch
+    {
+        null => translator.Of("OAuth.NoToken"),
+        { ExpiresAt: { } expiresAt } token when token.HasExpired(clock.GetUtcNow()) => translator.Format("OAuth.Expired", expiresAt.ToLocalTime()),
+        { ExpiresAt: { } expiresAt } => translator.Format("OAuth.ValidUntil", expiresAt.ToLocalTime()),
+        _ => translator.Of("OAuth.NoExpiry"),
+    };
+
+    public bool IsFetching { get; private set => Set(ref field, value); }
+
+    public string? TokenProblem { get; private set => Set(ref field, value); }
+
+    public AsyncCommand FetchToken => field ??= new(FetchTokenAsync);
+
+    public bool HasUnsavedSecrets =>
+        Password != _savedPassword || Token != _savedToken || ClientSecret != _savedClientSecret || _tokens.Any(token => _savedTokens.GetValueOrDefault(token.Key) != token.Value);
 
     public void Load(AuthSettings settings)
     {
         _loading = true;
+        // An error from fetching belongs to what was shown before.
+        TokenProblem = null;
         Kind = settings.Kind;
         UserName = settings.UserName;
         _oauth = settings.OAuth;
+        var loaded = settings.OAuth ?? new();
+        Grant = loaded.Grant;
+        AuthorizeUrl = loaded.AuthorizeUrl;
+        TokenUrl = loaded.TokenUrl;
+        ClientId = loaded.ClientId;
+        Scope = loaded.Scope;
+        ClientAuthentication = loaded.ClientAuthentication;
+        RedirectPort = loaded.RedirectPort;
         _loading = false;
     }
 
-    public AuthSettings ToSettings() => new(Kind, UserName, _oauth);
+    // Settings nobody changed are given back as they were loaded, so a file without OAuth does not look changed.
+    public AuthSettings ToSettings()
+    {
+        var edited = EditedOAuth();
+        return new(Kind, UserName, edited == (_oauth ?? new()) ? _oauth : edited);
+    }
 
     // Secrets that cannot be read are shown as empty, and the caller tells why.
     public async Task LoadSecretsAsync(Guid id, CancellationToken cancellationToken)
     {
         string? password = null;
         string? token = null;
+        string? clientSecret = null;
+        IReadOnlyDictionary<string, string> tokens = new Dictionary<string, string>();
         try
         {
             if (id != Guid.Empty)
             {
                 password = await secrets.OfAsync(id, SecretKind.Password, cancellationToken);
                 token = await secrets.OfAsync(id, SecretKind.Token, cancellationToken);
+                clientSecret = await secrets.OfAsync(id, SecretKind.ClientSecret, cancellationToken);
+                tokens = await secrets.OfEachEnvironmentAsync(id, SecretKind.OAuthToken, cancellationToken);
             }
         }
         finally
@@ -53,14 +113,18 @@ public sealed class AuthViewModel(SecretStore secrets) : ObservableObject
             _loading = true;
             Password = _savedPassword = password ?? "";
             Token = _savedToken = token ?? "";
+            ClientSecret = _savedClientSecret = clientSecret ?? "";
+            _tokens = tokens.Select(saved => (saved.Key, Value: OAuthToken.FromJson(saved.Value))).Where(saved => saved.Value is not null).ToDictionary(saved => saved.Key, saved => saved.Value!);
+            _savedTokens = new(_tokens);
             _loading = false;
+            Relabel();
         }
     }
 
     // Each secret is saved on its own and only marked as saved afterwards, so a value typed while saving is saved next time.
     public async Task SaveSecretsAsync(Guid id, CancellationToken cancellationToken)
     {
-        var (password, token) = (Password, Token);
+        var (password, token, clientSecret) = (Password, Token, ClientSecret);
         if (password != _savedPassword)
         {
             await secrets.SaveAsync(id, SecretKind.Password, password, cancellationToken);
@@ -71,10 +135,123 @@ public sealed class AuthViewModel(SecretStore secrets) : ObservableObject
             await secrets.SaveAsync(id, SecretKind.Token, token, cancellationToken);
             _savedToken = token;
         }
+        if (clientSecret != _savedClientSecret)
+        {
+            await secrets.SaveAsync(id, SecretKind.ClientSecret, clientSecret, cancellationToken);
+            _savedClientSecret = clientSecret;
+        }
+        // A copy, because a token fetched while saving would change the tokens underneath.
+        foreach (var (environment, fetched) in _tokens.ToList())
+        {
+            if (_savedTokens.GetValueOrDefault(environment) != fetched)
+            {
+                await secrets.SaveAsync(id, SecretKind.OAuthToken, environment, fetched.ToJson(), cancellationToken);
+                _savedTokens[environment] = fetched;
+            }
+        }
     }
 
     // Once the secrets are deleted or the id is new, a later save writes the ones shown again.
-    public void ForgetSavedSecrets() => _savedPassword = _savedToken = "";
+    public void ForgetSavedSecrets()
+    {
+        _savedPassword = _savedToken = _savedClientSecret = "";
+        _savedTokens.Clear();
+    }
+
+    // The token is kept with the other secrets, so it is saved the same way and under the same id, when the request is sent or saved.
+    // It belongs to the environment chosen when the fetch started, even if another is chosen while the login is open.
+    public async Task FetchTokenAsync()
+    {
+        TokenProblem = null;
+        IsFetching = true;
+        var environment = environments.Selected ?? ApiEnvironment.None;
+        using var fetching = _fetching = new CancellationTokenSource();
+        try
+        {
+            // Stored after the login, because the tokens can be loaded again while it is open.
+            var token = await oauth.GetTokenAsync(EditedOAuth(), ClientSecret, environment, fetching.Token);
+            _tokens[environment.Name] = token;
+            Relabel();
+            Changed?.Invoke();
+        }
+        catch (OperationCanceledException) when (fetching.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Could not get an OAuth token");
+            TokenProblem = translator.Format("OAuth.Failed", ReasonOf(exception));
+        }
+        finally
+        {
+            _fetching = null;
+            IsFetching = false;
+        }
+    }
+
+    public void CancelFetch() => _fetching?.Cancel();
+
+    // A renamed environment keeps its tokens and a removed one loses them.
+    // Only the shown tokens move, so a renamed one is saved again under the new name, whether or not the saved ones could be moved.
+    public void FollowEnvironments(IReadOnlyDictionary<string, string?> changes)
+    {
+        if (changes.Count == 0)
+        {
+            return;
+        }
+        _tokens = Followed(_tokens, changes);
+        Relabel();
+    }
+
+    // The texts follow the language, and the token follows the chosen environment.
+    public void Relabel()
+    {
+        OnPropertyChanged(nameof(AccessToken));
+        OnPropertyChanged(nameof(TokenStatus));
+    }
+
+    static Dictionary<string, OAuthToken> Followed(Dictionary<string, OAuthToken> tokens, IReadOnlyDictionary<string, string?> changes)
+    {
+        var followed = new Dictionary<string, OAuthToken>();
+        foreach (var (environment, token) in tokens)
+        {
+            if (changes.NameAfter(environment) is { } name)
+            {
+                followed[name] = token;
+            }
+        }
+        return followed;
+    }
+
+    string ChosenEnvironment => (environments.Selected ?? ApiEnvironment.None).Name;
+
+    OAuthSettings EditedOAuth() => new()
+    {
+        Grant = Grant,
+        AuthorizeUrl = AuthorizeUrl,
+        TokenUrl = TokenUrl,
+        ClientId = ClientId,
+        Scope = Scope,
+        ClientAuthentication = ClientAuthentication,
+        RedirectPort = RedirectPort,
+    };
+
+    string ReasonOf(Exception exception) => exception switch
+    {
+        OAuthException { Problem: OAuthProblem.MissingTokenUrl } => translator.Of("OAuth.MissingTokenUrl"),
+        OAuthException { Problem: OAuthProblem.MissingAuthorizeUrl } => translator.Of("OAuth.MissingAuthorizeUrl"),
+        OAuthException { Problem: OAuthProblem.MissingClientId } => translator.Of("OAuth.MissingClientId"),
+        OAuthException { Problem: OAuthProblem.MissingClientSecret } => translator.Of("OAuth.MissingClientSecret"),
+        OAuthException { Problem: OAuthProblem.InvalidAddress } failure => translator.Format("OAuth.InvalidAddress", failure.Detail),
+        OAuthException { Problem: OAuthProblem.InsecureAddress } failure => translator.Format("OAuth.InsecureAddress", failure.Detail),
+        OAuthException { Problem: OAuthProblem.PortUnavailable } failure => translator.Format("OAuth.PortUnavailable", failure.Detail),
+        OAuthException { Problem: OAuthProblem.Denied } failure => translator.Format("OAuth.Denied", failure.Detail),
+        OAuthException { Problem: OAuthProblem.TimedOut } failure => translator.Format("OAuth.TimedOut", failure.Detail),
+        OAuthException { Problem: OAuthProblem.Rejected } failure => translator.Format("OAuth.Rejected", failure.Detail),
+        OAuthException { Problem: OAuthProblem.InvalidResponse } => translator.Of("OAuth.InvalidResponse"),
+        OAuthException { Problem: OAuthProblem.UnsupportedTokenType } failure => translator.Format("OAuth.UnsupportedTokenType", failure.Detail),
+        _ => NetworkProblem.Of(exception, translator) ?? exception.GetBaseException().Message,
+    };
 
     void Change<T>(ref T storage, T value, [CallerMemberName] string? name = null)
     {

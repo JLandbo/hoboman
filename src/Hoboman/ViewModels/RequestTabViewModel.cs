@@ -29,8 +29,16 @@ public sealed class RequestTabViewModel : ObservableObject
         SuggestedName = suggestedName;
         HistoryName = historyName;
         OwnsId = historyName is null;
-        Auth = new(services.Secrets);
+        Auth = new(services.Secrets, services.OAuth, services.Environments, services.Translator, services.Clock, services.Logger);
         Auth.Changed += MarkDirty;
+        // A login open in the browser belongs to this tab, so the next call from the history must not take its place.
+        Auth.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(AuthViewModel.IsFetching) && Auth.IsFetching)
+            {
+                Pin();
+            }
+        };
         Query.Changed += MarkDirty;
         Headers.Changed += MarkDirty;
         Send = new AsyncCommand(SendAsync);
@@ -239,7 +247,11 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public void Rename(string name) => Name = name;
 
-    public void Relabel() => OnPropertyChanged(nameof(Title));
+    public void Relabel()
+    {
+        OnPropertyChanged(nameof(Title));
+        Auth.Relabel();
+    }
 
     public void Unlink()
     {
@@ -272,6 +284,8 @@ public sealed class RequestTabViewModel : ObservableObject
         try
         {
             await SaveSecretsAsync(sending.Token);
+            // Secrets were all that was unsaved if the request itself is unchanged, such as after fetching a token.
+            IsDirty = HasUnsavedChanges();
             var response = await _services.Runner.RunAsync(ToRequest(), Name ?? SuggestedName, _services.Environments.Selected, HistorySource.App, sending.Token);
             await ShowAsync(response);
         }
@@ -299,17 +313,12 @@ public sealed class RequestTabViewModel : ObservableObject
         {
             MissingSecretException { Kind: SecretKind.Password } => translator.Of("Response.MissingPassword"),
             MissingSecretException { Kind: SecretKind.Token } => translator.Of("Response.MissingToken"),
+            MissingSecretException { Kind: SecretKind.OAuthToken } => translator.Of("Response.MissingOAuthToken"),
+            ExpiredTokenException expired => translator.Format("Response.ExpiredToken", expired.ExpiresAt.ToLocalTime()),
             InvalidHeaderException header => translator.Format("Response.InvalidHeader", header.Name),
             InvalidMethodException method => translator.Format("Response.InvalidMethod", method.Method),
-            UriFormatException => WithCause(translator.Of("Response.InvalidUrl")),
-            HttpRequestException { HttpRequestError: HttpRequestError.NameResolutionError } => WithCause(translator.Of("Response.UnknownHost")),
-            HttpRequestException { HttpRequestError: HttpRequestError.ConnectionError } => WithCause(translator.Of("Response.NoConnection")),
-            HttpRequestException { HttpRequestError: HttpRequestError.SecureConnectionError } => WithCause(translator.Of("Response.SecureConnection")),
-            TaskCanceledException { InnerException: TimeoutException } => WithCause(translator.Of("Response.Timeout")),
-            _ => cause,
+            _ => NetworkProblem.Of(exception, translator) ?? cause,
         };
-
-        string WithCause(string reason) => $"{reason}{Environment.NewLine}{cause}";
     }
 
     async Task SaveSecretsAsync(CancellationToken cancellationToken)

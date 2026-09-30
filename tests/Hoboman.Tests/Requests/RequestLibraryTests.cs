@@ -41,6 +41,22 @@ public sealed class RequestLibraryTests : IDisposable
     }
 
     [Fact]
+    public async Task LoadAsync_WhenOAuthOnlyHasTheFieldsItsGrantUses_ThenLoadsThem()
+    {
+        // Arrange
+        Directory.CreateDirectory(RequestsFolder);
+        File.WriteAllText(Path.Combine(RequestsFolder, "Ping.json"), """
+            {"url": "https://dev.local", "auth": {"kind": "OAuth2", "oauth": {"grant": "ClientCredentials", "tokenUrl": "https://login.local/token", "clientId": "hoboman"}}}
+            """);
+
+        // Act
+        var loaded = await Library().LoadAsync("Ping", Cancellation);
+
+        // Assert
+        Assert.Equal("https://login.local/token", loaded?.Auth.OAuth?.TokenUrl);
+    }
+
+    [Fact]
     public async Task LoadAsync_WhenAHeaderHasNoValue_ThenUsesAnEmptyValue()
     {
         // Arrange

@@ -35,17 +35,30 @@ public partial class AuthEditor : UserControl
         {
             auth.PropertyChanged += Auth_PropertyChanged;
             PasswordBox.Password = auth.Password;
+            ClientSecretBox.Password = auth.ClientSecret;
         }
     }
 
     // A password box cannot be bound, so it is kept in step with the view model by hand.
     void Auth_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(AuthViewModel.Password) && _auth is { } auth && PasswordBox.Password != auth.Password)
+        if (_auth is not { } auth)
+        {
+            return;
+        }
+        if (e.PropertyName == nameof(AuthViewModel.Password) && PasswordBox.Password != auth.Password)
         {
             PasswordBox.Password = auth.Password;
+        }
+        if (e.PropertyName == nameof(AuthViewModel.ClientSecret) && ClientSecretBox.Password != auth.ClientSecret)
+        {
+            ClientSecretBox.Password = auth.ClientSecret;
         }
     }
 
     void PasswordBox_PasswordChanged(object sender, RoutedEventArgs e) => _auth?.Password = PasswordBox.Password;
+
+    void ClientSecretBox_PasswordChanged(object sender, RoutedEventArgs e) => _auth?.ClientSecret = ClientSecretBox.Password;
+
+    void CancelFetch_Click(object sender, RoutedEventArgs e) => _auth?.CancelFetch();
 }

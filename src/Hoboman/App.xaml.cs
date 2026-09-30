@@ -56,6 +56,13 @@ public partial class App : Application
         watcher.HistoryChanged += () => OnUi(main.HistoryChangedAsync);
         watcher.EnvironmentsChanged += () => OnUi(main.EnvironmentsChangedAsync);
         main.History.DayChanged += () => OnUi(main.HistoryChangedAsync);
+        main.Environments.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(EnvironmentsViewModel.Selected))
+            {
+                main.EnvironmentChosen();
+            }
+        };
         watcher.Start();
         await main.LoadAsync();
         _services.GetRequiredService<MainWindow>().Show();
@@ -99,6 +106,7 @@ public partial class App : Application
         services.AddSingleton<HistoryStore>();
         services.AddSingleton<RequestRunner>();
         services.AddSingleton<IBrowser, ShellBrowser>();
+        services.AddSingleton<IOAuthClient, OAuthClient>();
         services.AddSingleton<IDialogs, Dialogs>();
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<EnvironmentsViewModel>();

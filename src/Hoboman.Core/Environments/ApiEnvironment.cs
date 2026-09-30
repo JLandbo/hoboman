@@ -5,6 +5,9 @@ namespace Hoboman.Core.Environments;
 
 public sealed partial record ApiEnvironment(string Name, IReadOnlyList<KeyValue> Variables)
 {
+    // Without a chosen environment nothing is resolved, and secrets kept per environment go under the empty name.
+    public static ApiEnvironment None { get; } = new("", []);
+
     public static MatchCollection VariablesIn(string text) => Variable().Matches(text);
 
     public string Resolve(string text) =>

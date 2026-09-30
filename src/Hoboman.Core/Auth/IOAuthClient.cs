@@ -1,6 +1,8 @@
+using Hoboman.Core.Environments;
+
 namespace Hoboman.Core.Auth;
 
 public interface IOAuthClient
 {
-    Task<string> GetTokenAsync(OAuthSettings settings, string clientSecret, CancellationToken cancellationToken);
+    Task<OAuthToken> GetTokenAsync(OAuthSettings settings, string clientSecret, ApiEnvironment? environment, CancellationToken cancellationToken);
 }

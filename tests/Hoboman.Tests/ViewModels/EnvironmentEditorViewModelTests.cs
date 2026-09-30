@@ -5,6 +5,44 @@ public sealed class EnvironmentEditorViewModelTests
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
     [Fact]
+    public async Task SaveAsync_WhenAnEnvironmentIsRenamed_ThenItsTokensFollow()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.EnvironmentStore.SaveAsync([new("Dev", [])], Cancellation);
+        var id = Guid.NewGuid();
+        await harness.Secrets.SaveAsync(id, SecretKind.OAuthToken, "Dev", "token", Cancellation);
+        var editor = harness.EnvironmentEditor();
+        await editor.LoadAsync(Cancellation);
+        editor.Selected!.Name = "Development";
+
+        // Act
+        await editor.SaveAsync();
+
+        // Assert
+        Assert.Equal("token", await harness.Secrets.OfAsync(id, SecretKind.OAuthToken, "Development", Cancellation));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenAnEnvironmentIsRemoved_ThenItsTokensAreDeleted()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.EnvironmentStore.SaveAsync([new("Dev", [])], Cancellation);
+        var id = Guid.NewGuid();
+        await harness.Secrets.SaveAsync(id, SecretKind.OAuthToken, "Dev", "token", Cancellation);
+        var editor = harness.EnvironmentEditor();
+        await editor.LoadAsync(Cancellation);
+        editor.Remove();
+
+        // Act
+        await editor.SaveAsync();
+
+        // Assert
+        Assert.Null(await harness.Secrets.OfAsync(id, SecretKind.OAuthToken, "Dev", Cancellation));
+    }
+
+    [Fact]
     public async Task SaveAsync_WhenAnEnvironmentWasAdded_ThenSavesItWithItsVariables()
     {
         // Arrange

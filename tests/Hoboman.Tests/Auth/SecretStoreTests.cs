@@ -41,6 +41,93 @@ public sealed class SecretStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task OfAsync_WhenTheSecretIsForAnotherEnvironment_ThenGivesNull()
+    {
+        // Arrange
+        var id = Guid.NewGuid();
+        await Store().SaveAsync(id, SecretKind.OAuthToken, "Dev", "dev token", Cancellation);
+
+        // Act
+        var secret = await Store().OfAsync(id, SecretKind.OAuthToken, "Prod", Cancellation);
+
+        // Assert
+        Assert.Null(secret);
+    }
+
+    [Fact]
+    public async Task OfEachEnvironmentAsync_WhenSavedForTwoEnvironmentsAndNone_ThenGivesAllThree()
+    {
+        // Arrange
+        var id = Guid.NewGuid();
+        await Store().SaveAsync(id, SecretKind.OAuthToken, "Dev", "dev token", Cancellation);
+        await Store().SaveAsync(id, SecretKind.OAuthToken, "Prod", "prod token", Cancellation);
+        await Store().SaveAsync(id, SecretKind.OAuthToken, "token", Cancellation);
+
+        // Act
+        var secrets = await Store().OfEachEnvironmentAsync(id, SecretKind.OAuthToken, Cancellation);
+
+        // Assert
+        Assert.Equal(new Dictionary<string, string> { [""] = "token", ["Dev"] = "dev token", ["Prod"] = "prod token" }, secrets);
+    }
+
+    [Fact]
+    public async Task FollowEnvironmentsAsync_WhenAnEnvironmentIsRenamed_ThenItsSecretsMove()
+    {
+        // Arrange
+        var id = Guid.NewGuid();
+        await Store().SaveAsync(id, SecretKind.OAuthToken, "Dev", "dev token", Cancellation);
+
+        // Act
+        await Store().FollowEnvironmentsAsync(new Dictionary<string, string?> { ["Dev"] = "Development" }, Cancellation);
+
+        // Assert
+        Assert.Equal(new Dictionary<string, string> { ["Development"] = "dev token" }, await Store().OfEachEnvironmentAsync(id, SecretKind.OAuthToken, Cancellation));
+    }
+
+    [Fact]
+    public async Task FollowEnvironmentsAsync_WhenAnEnvironmentIsRemoved_ThenItsSecretsAreDeleted()
+    {
+        // Arrange
+        var id = Guid.NewGuid();
+        await Store().SaveAsync(id, SecretKind.OAuthToken, "Dev", "dev token", Cancellation);
+
+        // Act
+        await Store().FollowEnvironmentsAsync(new Dictionary<string, string?> { ["Dev"] = null }, Cancellation);
+
+        // Assert
+        Assert.Null(await Store().OfAsync(id, SecretKind.OAuthToken, "Dev", Cancellation));
+    }
+
+    [Fact]
+    public async Task FollowEnvironmentsAsync_WhenAnEnvironmentIsRemoved_ThenKeepsTheSecretsWithoutOne()
+    {
+        // Arrange
+        var id = Guid.NewGuid();
+        await Store().SaveAsync(id, SecretKind.Password, "hemmelig", Cancellation);
+
+        // Act
+        await Store().FollowEnvironmentsAsync(new Dictionary<string, string?> { ["Dev"] = null }, Cancellation);
+
+        // Assert
+        Assert.Equal("hemmelig", await Store().OfAsync(id, SecretKind.Password, Cancellation));
+    }
+
+    [Fact]
+    public async Task FollowEnvironmentsAsync_WhenTwoEnvironmentsSwapNames_ThenEachKeepsItsOwnToken()
+    {
+        // Arrange
+        var id = Guid.NewGuid();
+        await Store().SaveAsync(id, SecretKind.OAuthToken, "Dev", "dev token", Cancellation);
+        await Store().SaveAsync(id, SecretKind.OAuthToken, "Prod", "prod token", Cancellation);
+
+        // Act
+        await Store().FollowEnvironmentsAsync(new Dictionary<string, string?> { ["Dev"] = "Prod", ["Prod"] = "Dev" }, Cancellation);
+
+        // Assert
+        Assert.Equal(new Dictionary<string, string> { ["Prod"] = "dev token", ["Dev"] = "prod token" }, await Store().OfEachEnvironmentAsync(id, SecretKind.OAuthToken, Cancellation));
+    }
+
+    [Fact]
     public async Task OfAsync_WhenNothingWasSaved_ThenGivesNull()
     {
         // Act

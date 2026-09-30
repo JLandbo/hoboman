@@ -5,6 +5,24 @@ public sealed class FolderAuthViewModelTests
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
     [Fact]
+    public async Task SaveAsync_WhenAnOAuthTokenWasFetched_ThenSavesItForTheFolder()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.CreateFolderAsync("Users", Cancellation);
+        var folderAuth = harness.FolderAuth();
+        await folderAuth.LoadAsync("Users", Cancellation);
+        folderAuth.Auth.Kind = AuthKind.OAuth2;
+        await folderAuth.Auth.FetchTokenAsync();
+
+        // Act
+        await folderAuth.SaveAsync();
+
+        // Assert
+        Assert.NotNull(await harness.Secrets.OfAsync((await harness.Library.LoadFolderAsync("Users", Cancellation))!.Id, SecretKind.OAuthToken, Cancellation));
+    }
+
+    [Fact]
     public async Task SaveAsync_WhenBearerIsChosen_ThenRequestsInTheFolderUseIt()
     {
         // Arrange
@@ -302,7 +320,7 @@ public sealed class FolderAuthViewModelTests
         using var harness = new Harness();
         await harness.Library.CreateFolderAsync("Users", Cancellation);
         File.WriteAllText(Path.Combine(harness.Folder.Requests, "Users", ".folder.json"), "{");
-        var folderAuth = new FolderAuthViewModel(harness.Library, harness.Secrets, new Translator(Translation.Danish), NullLogger<FolderAuthViewModel>.Instance);
+        var folderAuth = new FolderAuthViewModel(harness.Library, harness.Secrets, harness.OAuth, harness.Environments, new Translator(Translation.Danish), harness.Clock, NullLogger<FolderAuthViewModel>.Instance);
 
         // Act
         await folderAuth.LoadAsync("Users", Cancellation);

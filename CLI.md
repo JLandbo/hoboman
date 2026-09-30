@@ -43,11 +43,11 @@ Fejl skrives som `{ "error": "..." }` på stderr.
 |---|---|
 | 0 | Svar med status 2xx |
 | 1 | Svar med anden status |
-| 2 | Fejl: forkerte argumenter, ukendt request, netværksfejl eller manglende token |
+| 2 | Fejl: forkerte argumenter, ukendt request, netværksfejl eller manglende eller udløbet token |
 
 ## Regler
 
 - CLI'et skriver kun i historikken (`history\`). Ellers ændrer det ingen filer.
 - Hvert kald gemmes i historikken ligesom kald fra GUI'en, også direkte kald og kald, der fejler. Derfor kan de ses i GUI'ens historik.
 - `IgnoreCertificateErrors` fra `settings.json` gælder også her.
-- OAuth bruger det token, der er gemt i `secrets.json`. Mangler det, fejler kaldet med besked om at hente et token i Hoboman. CLI'et åbner aldrig en browser.
+- OAuth bruger det token, der er gemt i `secrets.json` for requesten eller dens mappe i det valgte environment (`--env`); hvert environment har sit eget token. Mangler det, eller er det udløbet, fejler kaldet med besked om at hente et token i Hoboman. CLI'et åbner aldrig en browser.

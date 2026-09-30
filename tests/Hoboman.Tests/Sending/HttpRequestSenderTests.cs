@@ -2,6 +2,7 @@ using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Hoboman.Tests.Sending;
 
@@ -24,10 +25,10 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
 
     SettingsStore Settings() => new(Folder, NullLogger<SettingsStore>.Instance);
 
-    async Task<HttpRequestSender> SenderAsync(bool ignoreCertificateErrors = false, ILogger<HttpRequestSender>? logger = null)
+    async Task<HttpRequestSender> SenderAsync(bool ignoreCertificateErrors = false, ILogger<HttpRequestSender>? logger = null, TimeProvider? clock = null)
     {
         await Settings().UpdateAsync(_ => new(IgnoreCertificateErrors: ignoreCertificateErrors), Cancellation);
-        return new(Secrets(), _clients ??= new(Settings()), logger ?? NullLogger<HttpRequestSender>.Instance);
+        return new(Secrets(), _clients ??= new(Settings()), clock ?? TimeProvider.System, logger ?? NullLogger<HttpRequestSender>.Instance);
     }
 
     ApiRequest Request() => ApiRequest.New() with { Url = server.Http.ToString() };
@@ -240,6 +241,93 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
 
         // Assert
         Assert.Equal(SecretKind.Token, (await Assert.ThrowsAsync<MissingSecretException>(() => sending)).Kind);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheAuthIsOAuthWithoutAToken_ThenThrows()
+    {
+        // Arrange
+        var sender = await SenderAsync();
+
+        // Act
+        var sending = SendAsync(sender, Request() with { Auth = new(AuthKind.OAuth2) }, Cancellation);
+
+        // Assert
+        Assert.Equal(SecretKind.OAuthToken, (await Assert.ThrowsAsync<MissingSecretException>(() => sending)).Kind);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheAuthIsOAuth_ThenSendsTheSavedTokenAsBearer()
+    {
+        // Arrange
+        var request = Request() with { Auth = new(AuthKind.OAuth2) };
+        await Secrets().SaveAsync(request.Id, SecretKind.OAuthToken, new OAuthToken("access", "bearer", null, null).ToJson(), Cancellation);
+
+        // Act
+        var echo = await SendAndEchoAsync(request);
+
+        // Assert
+        Assert.Equal("Bearer access", echo.Headers["Authorization"]);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheOAuthTokenIsForTheChosenEnvironment_ThenSendsIt()
+    {
+        // Arrange
+        var request = Request() with { Auth = new(AuthKind.OAuth2) };
+        await Secrets().SaveAsync(request.Id, SecretKind.OAuthToken, "Dev", new OAuthToken("dev access", "Bearer", null, null).ToJson(), Cancellation);
+
+        // Act
+        var echo = await SendAndEchoAsync(request, new ApiEnvironment("Dev", []));
+
+        // Assert
+        Assert.Equal("Bearer dev access", echo.Headers["Authorization"]);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheOAuthTokenIsForAnotherEnvironment_ThenThrows()
+    {
+        // Arrange
+        var request = Request() with { Auth = new(AuthKind.OAuth2) };
+        await Secrets().SaveAsync(request.Id, SecretKind.OAuthToken, "Dev", new OAuthToken("dev access", "Bearer", null, null).ToJson(), Cancellation);
+        var sender = await SenderAsync();
+
+        // Act
+        var sending = sender.SendAsync(request, OwnAuth(request), new ApiEnvironment("Prod", []), Cancellation);
+
+        // Assert
+        Assert.Equal(SecretKind.OAuthToken, (await Assert.ThrowsAsync<MissingSecretException>(() => sending)).Kind);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheOAuthTokenComesFromAFolder_ThenSendsTheFoldersToken()
+    {
+        // Arrange
+        var folder = Guid.NewGuid();
+        await Secrets().SaveAsync(folder, SecretKind.OAuthToken, new OAuthToken("folder access", "Bearer", null, null).ToJson(), Cancellation);
+        var sender = await SenderAsync();
+
+        // Act
+        var response = await sender.SendAsync(Request(), new(folder, new(AuthKind.OAuth2)), null, Cancellation);
+
+        // Assert
+        Assert.Equal("Bearer folder access", EchoOf(response).Headers["Authorization"]);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheOAuthTokenHasExpired_ThenThrows()
+    {
+        // Arrange
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var request = Request() with { Auth = new(AuthKind.OAuth2) };
+        await Secrets().SaveAsync(request.Id, SecretKind.OAuthToken, new OAuthToken("access", "Bearer", clock.GetUtcNow(), null).ToJson(), Cancellation);
+        var sender = await SenderAsync(clock: clock);
+
+        // Act
+        var sending = SendAsync(sender, request, Cancellation);
+
+        // Assert
+        await Assert.ThrowsAsync<ExpiredTokenException>(() => sending);
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
+using Hoboman.Core.Auth;
 using Hoboman.Core.Environments;
 using Hoboman.Core.Languages;
 using Hoboman.Core.Storage;
@@ -8,11 +9,15 @@ using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
 
-public sealed class EnvironmentEditorViewModel(EnvironmentStore store, EnvironmentsViewModel environments, Translator translator, ILogger<EnvironmentEditorViewModel> logger) : ObservableObject
+public sealed class EnvironmentEditorViewModel(EnvironmentStore store, EnvironmentsViewModel environments, SecretStore secrets, Translator translator, ILogger<EnvironmentEditorViewModel> logger) : ObservableObject
 {
     string _loadedJson = "";
+    IReadOnlyList<string> _loadedNames = [];
 
     public ObservableCollection<EnvironmentDraftViewModel> Environments { get; } = [];
+
+    // The renames and removals of the last save, so the open tabs can move their tokens too.
+    public IReadOnlyDictionary<string, string?> Changes { get; private set; } = new Dictionary<string, string?>();
 
     public EnvironmentDraftViewModel? Selected { get; set => Set(ref field, value); }
 
@@ -26,10 +31,12 @@ public sealed class EnvironmentEditorViewModel(EnvironmentStore store, Environme
         Environments.Clear();
         Problem = null;
         CanSave = false;
+        Changes = new Dictionary<string, string?>();
         try
         {
             var loaded = await store.AllAsync(cancellationToken);
             _loadedJson = JsonSerializer.Serialize(loaded);
+            _loadedNames = [.. loaded.Select(environment => environment.Name).Distinct()];
             foreach (var environment in loaded)
             {
                 Environments.Add(new(environment));
@@ -84,6 +91,16 @@ public sealed class EnvironmentEditorViewModel(EnvironmentStore store, Environme
             }
             await store.SaveAsync([.. Environments.Select(environment => environment.ToEnvironment())], CancellationToken.None);
             logger.LogInformation("Saved {Count} environments", names.Count);
+            Changes = ChangesOf();
+            try
+            {
+                await secrets.FollowEnvironmentsAsync(Changes, CancellationToken.None);
+            }
+            catch (Exception exception) when (FileProblem.Is(exception))
+            {
+                // The environments are saved, and a token left behind can be fetched again.
+                logger.LogError(exception, "Could not move the tokens of renamed or removed environments");
+            }
             foreach (var draft in Environments.Where(draft => draft.OriginalName is not null && draft.OriginalName != draft.Name.Trim()))
             {
                 await environments.RenamedAsync(draft.OriginalName!, draft.Name.Trim());
@@ -97,5 +114,15 @@ public sealed class EnvironmentEditorViewModel(EnvironmentStore store, Environme
             Problem = translator.Format("Environments.SaveFailed", translator.DetailsOf(exception));
             return false;
         }
+    }
+
+    IReadOnlyDictionary<string, string?> ChangesOf()
+    {
+        var now = new Dictionary<string, string>();
+        foreach (var draft in Environments.Where(draft => draft.OriginalName is not null))
+        {
+            now[draft.OriginalName!] = draft.Name.Trim();
+        }
+        return _loadedNames.Where(name => now.GetValueOrDefault(name) != name).ToDictionary(name => name, name => now.GetValueOrDefault(name));
     }
 }

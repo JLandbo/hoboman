@@ -61,12 +61,12 @@ public sealed class MainViewModel(
     public Task LanguageChangedAsync()
     {
         history.Relabel();
-        foreach (var tab in Tabs)
-        {
-            tab.Relabel();
-        }
+        RelabelTabs();
         return HistoryChangedAsync();
     }
+
+    // Each environment has its own OAuth tokens, so the tabs show the chosen environment's.
+    public void EnvironmentChosen() => RelabelTabs();
 
     public void NewTab()
     {
@@ -141,11 +141,14 @@ public sealed class MainViewModel(
             logger.LogInformation("Closed {Title} without saving it", tab.Title);
         }
         tab.Cancel();
+        tab.Auth.CancelFetch();
         var index = Tabs.IndexOf(tab);
         var wasSelected = SelectedTab == tab;
         Tabs.Remove(tab);
         if (Tabs.Count == 0)
         {
+            // With nothing open the numbers start over, so closing the last request gives a fresh one instead of the next number.
+            _lastNumber = 0;
             NewTab();
         }
         else if (wasSelected)
@@ -243,6 +246,11 @@ public sealed class MainViewModel(
     {
         await environmentEditor.LoadAsync(CancellationToken.None);
         dialogs.EditEnvironments(environmentEditor);
+        // The saved tokens already followed a rename or removal, and the open tabs hold theirs in memory too.
+        foreach (var tab in Tabs)
+        {
+            tab.Auth.FollowEnvironments(environmentEditor.Changes);
+        }
     }
 
     public async Task EditFolderAuthAsync(RequestNodeViewModel folder)
@@ -297,6 +305,14 @@ public sealed class MainViewModel(
         {
             logger.LogInformation("{Name} changed on disk and was reloaded", name);
             await tab.LoadSecretsAsync(CancellationToken.None);
+        }
+    }
+
+    void RelabelTabs()
+    {
+        foreach (var tab in Tabs)
+        {
+            tab.Relabel();
         }
     }
 

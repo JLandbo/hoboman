@@ -1,8 +1,76 @@
+using Hoboman.Tests.Auth;
+
 namespace Hoboman.Tests.ViewModels;
 
 public sealed class MainViewModelTests
 {
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
+
+    [Fact]
+    public async Task OpenAsync_WhenTheHistoryTabIsFetchingAToken_ThenKeepsIt()
+    {
+        // Arrange
+        var login = new TaskCompletionSource<OAuthToken>();
+        using var harness = new Harness(oauth: new FakeOAuthClient(cancellationToken => login.Task.WaitAsync(cancellationToken)));
+        var main = harness.Main();
+        await main.OpenAsync(HistoryItem("a.json"));
+        _ = main.SelectedTab!.Auth.FetchTokenAsync();
+
+        // Act
+        await main.OpenAsync(HistoryItem("b.json"));
+
+        // Assert
+        Assert.Equal(2, main.Tabs.Count);
+    }
+
+    [Fact]
+    public async Task Close_WhenATokenIsBeingFetched_ThenStopsTheLogin()
+    {
+        // Arrange
+        var login = new TaskCompletionSource<OAuthToken>();
+        using var harness = new Harness(oauth: new FakeOAuthClient(cancellationToken => login.Task.WaitAsync(cancellationToken)));
+        var main = harness.Main();
+        main.NewTab();
+        var fetching = main.SelectedTab!.Auth.FetchTokenAsync();
+
+        // Act
+        main.Close(main.SelectedTab!);
+
+        // Assert
+        Assert.Null(await Record.ExceptionAsync(() => fetching.WaitAsync(TimeSpan.FromSeconds(5), Cancellation)));
+    }
+
+    [Fact]
+    public void Close_WhenTheLastNewTabIsClosed_ThenTheFreshOneStartsAtOneAgain()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var main = harness.Main();
+        main.NewTab();
+
+        // Act
+        main.Close(main.SelectedTab!);
+
+        // Assert
+        Assert.Equal("New request (1)", Assert.Single(main.Tabs).Title);
+    }
+
+    [Fact]
+    public void EnvironmentChosen_WhenATabIsOpen_ThenTellsItsTokenChanged()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var main = harness.Main();
+        main.NewTab();
+        var changed = false;
+        main.SelectedTab!.Auth.PropertyChanged += (_, e) => changed |= e.PropertyName == nameof(AuthViewModel.TokenStatus);
+
+        // Act
+        main.EnvironmentChosen();
+
+        // Assert
+        Assert.True(changed);
+    }
 
     [Fact]
     public async Task OpenAsync_WhenTheRequestIsAlreadyOpen_ThenSelectsItsTab()
