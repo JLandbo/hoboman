@@ -280,13 +280,15 @@ public sealed class RequestTabViewModel : ObservableObject
         _response = null;
         Response = null;
         IsSending = true;
+        // The environment chosen when Send is pressed is the one used, even if another is chosen while the secrets are saved.
+        var environment = _services.Environments.Selected;
         using var sending = _sending = new CancellationTokenSource();
         try
         {
             await SaveSecretsAsync(sending.Token);
             // Secrets were all that was unsaved if the request itself is unchanged, such as after fetching a token.
             IsDirty = HasUnsavedChanges();
-            var response = await _services.Runner.RunAsync(ToRequest(), Name ?? SuggestedName, _services.Environments.Selected, HistorySource.App, sending.Token);
+            var response = await _services.Runner.RunAsync(ToRequest(), Name ?? SuggestedName, environment, HistorySource.App, sending.Token);
             await ShowAsync(response);
         }
         catch (OperationCanceledException) when (sending.IsCancellationRequested)

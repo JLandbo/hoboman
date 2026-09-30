@@ -140,6 +140,47 @@ public sealed class AuthViewModelTests
     }
 
     [Fact]
+    public async Task FetchTokenAsync_WhenTheEnvironmentIsRenamedDuringTheLogin_ThenTheTokenFollows()
+    {
+        // Arrange
+        var login = new TaskCompletionSource<OAuthToken>();
+        using var harness = new Harness(oauth: new FakeOAuthClient(cancellationToken => login.Task.WaitAsync(cancellationToken)));
+        var auth = harness.Tab().Auth;
+        await harness.Environments.ChooseAsync(new("Dev", []));
+        var fetching = auth.FetchTokenAsync();
+        auth.FollowEnvironments(new Dictionary<string, string?> { ["Dev"] = "Development" });
+        await harness.Environments.ChooseAsync(new("Development", []));
+
+        // Act
+        login.SetResult(FakeOAuthClient.Token);
+        await fetching;
+
+        // Assert
+        Assert.Equal(FakeOAuthClient.Token, auth.AccessToken);
+    }
+
+    [Fact]
+    public async Task FetchTokenAsync_WhenTheEnvironmentIsRemovedDuringTheLogin_ThenKeepsNoToken()
+    {
+        // Arrange
+        var login = new TaskCompletionSource<OAuthToken>();
+        using var harness = new Harness(oauth: new FakeOAuthClient(cancellationToken => login.Task.WaitAsync(cancellationToken)));
+        var auth = harness.Tab().Auth;
+        await harness.Environments.ChooseAsync(new("Dev", []));
+        var fetching = auth.FetchTokenAsync();
+        auth.FollowEnvironments(new Dictionary<string, string?> { ["Dev"] = null });
+        var id = Guid.NewGuid();
+
+        // Act
+        login.SetResult(FakeOAuthClient.Token);
+        await fetching;
+        await auth.SaveSecretsAsync(id, Cancellation);
+
+        // Assert
+        Assert.Empty(await harness.Secrets.OfEachEnvironmentAsync(id, SecretKind.OAuthToken, Cancellation));
+    }
+
+    [Fact]
     public async Task FetchTokenAsync_WhenTheTokenServerCannotBeFound_ThenSaysSoLikeSending()
     {
         // Arrange

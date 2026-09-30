@@ -42,6 +42,15 @@ public sealed class HistoryViewModel(HistoryStore store, Translator translator, 
             {
                 Items.Clear();
             }
+            else
+            {
+                // Only newer calls are read, so a call whose file was deleted is taken out by name.
+                var names = await store.NamesAsync(cancellationToken);
+                foreach (var gone in Items.Where(item => !names.Contains(item.File.Name)).ToList())
+                {
+                    Items.Remove(gone);
+                }
+            }
             foreach (var file in files.Reverse())
             {
                 Items.Insert(0, new(file, DayOf(file.Entry.At.LocalDateTime.Date, today)));

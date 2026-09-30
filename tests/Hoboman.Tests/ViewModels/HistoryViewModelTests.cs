@@ -36,6 +36,24 @@ public sealed class HistoryViewModelTests
     }
 
     [Fact]
+    public async Task RefreshAsync_WhenACallsFileIsDeleted_ThenLeavesTheCallOut()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var history = new HistoryViewModel(harness.History(), new Translator(Translation.English), ClockAt(_noon), NullLogger<HistoryViewModel>.Instance);
+        await harness.History().AddAsync(Entry("first.local", _noon.AddHours(-1)), Cancellation);
+        await harness.History().AddAsync(Entry("second.local", _noon), Cancellation);
+        await history.RefreshAsync(Cancellation);
+        File.Delete(Path.Combine(harness.Folder.History, history.Items.Single(item => item.Address == "first.local").File.Name));
+
+        // Act
+        await history.RefreshAsync(Cancellation);
+
+        // Assert
+        Assert.Equal(["second.local"], history.Items.Select(item => item.Address));
+    }
+
+    [Fact]
     public async Task RefreshAsync_WhenTheCallIsFromToday_ThenSaysToday()
     {
         // Arrange

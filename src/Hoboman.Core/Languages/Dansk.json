@@ -117,6 +117,7 @@
     "Response.MissingOAuthToken": "Der er ikke hentet et OAuth-token til requesten eller dens mappe i det valgte environment. Hent et under Auth.",
     "Response.ExpiredToken": "OAuth-tokenet udløb {0:g}. Hent et nyt under Auth.",
     "Response.Empty": "Send en request for at se svaret",
+    "Response.Loading": "Indlæser…",
     "Response.Sending": "Sender…",
     "Response.InvalidUrl": "URL'en er ikke gyldig.",
     "Response.UnknownHost": "Serveren kunne ikke findes.",

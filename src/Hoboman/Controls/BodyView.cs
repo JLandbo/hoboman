@@ -3,6 +3,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using Hoboman.ViewModels;
 using ICSharpCode.AvalonEdit;
+using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Rendering;
 
@@ -18,8 +19,17 @@ public sealed class BodyView : TextEditor
         [("XmlTag", "XmlTag"), ("XmlDeclaration", "XmlTag"), ("DocType", "XmlTag"), ("AttributeName", "XmlAttribute"), ("AttributeValue", "XmlValue"),
          ("CData", "XmlValue"), ("Entity", "XmlValue"), ("BrokenEntity", "Error"), ("Comment", "XmlComment")]);
 
+    // Below this, building the text is quicker than showing that it loads.
+    const int _loadsInTheBackgroundFrom = 1_000_000;
+
     public static readonly DependencyProperty BodyProperty = DependencyProperty.Register(nameof(Body), typeof(string), typeof(BodyView),
-        new(null, (view, e) => ((BodyView)view).Text = e.NewValue as string ?? ""));
+        new(null, (view, e) => ((BodyView)view).Show(e.NewValue as string ?? "")));
+
+    static readonly DependencyPropertyKey _isLoadingKey = DependencyProperty.RegisterReadOnly(nameof(IsLoading), typeof(bool), typeof(BodyView), new(false));
+
+    public static readonly DependencyProperty IsLoadingProperty = _isLoadingKey.DependencyProperty;
+
+    int _shown;
 
     public static readonly DependencyProperty ColoringProperty = DependencyProperty.Register(nameof(Coloring), typeof(BodyFormat), typeof(BodyView),
         new(BodyFormat.Raw, (view, e) => ((BodyView)view).SyntaxHighlighting = DefinitionOf((BodyFormat)e.NewValue)));
@@ -54,6 +64,47 @@ public sealed class BodyView : TextEditor
     {
         get => (BodyFormat)GetValue(ColoringProperty);
         set => SetValue(ColoringProperty, value);
+    }
+
+    public bool IsLoading
+    {
+        get => (bool)GetValue(IsLoadingProperty);
+        private set => SetValue(_isLoadingKey, value);
+    }
+
+    // A document of many megabytes takes a while to build, so it is built off the UI thread, and only taking it into use happens here.
+    // Each body gets a new document, so the old one is dropped instead of being taken apart line by line.
+    async void Show(string text)
+    {
+        var shown = ++_shown;
+        if (text.Length < _loadsInTheBackgroundFrom)
+        {
+            Use(new TextDocument(text));
+            return;
+        }
+        // The last body is not left under the loading text, as if it were this one.
+        Use(new TextDocument());
+        IsLoading = true;
+        var document = await Task.Run(() =>
+        {
+            var built = new TextDocument(text);
+            built.SetOwnerThread(null);
+            return built;
+        });
+        // A newer body came while this one was built.
+        if (shown != _shown)
+        {
+            return;
+        }
+        document.SetOwnerThread(Thread.CurrentThread);
+        Use(document);
+    }
+
+    void Use(TextDocument document)
+    {
+        Document = document;
+        ScrollToHome();
+        IsLoading = false;
     }
 
     static IHighlightingDefinition? DefinitionOf(BodyFormat coloring) => coloring switch

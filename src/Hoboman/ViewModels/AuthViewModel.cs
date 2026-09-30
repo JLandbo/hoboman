@@ -17,6 +17,8 @@ public sealed class AuthViewModel(SecretStore secrets, IOAuthClient oauth, Envir
     Dictionary<string, OAuthToken> _tokens = [];
     Dictionary<string, OAuthToken> _savedTokens = [];
     CancellationTokenSource? _fetching;
+    // The environment the open login's token belongs to, followed through renames, and null once it is removed.
+    string? _fetchingFor;
     bool _loading;
 
     public event Action? Changed;
@@ -165,14 +167,18 @@ public sealed class AuthViewModel(SecretStore secrets, IOAuthClient oauth, Envir
         TokenProblem = null;
         IsFetching = true;
         var environment = environments.Selected ?? ApiEnvironment.None;
+        _fetchingFor = environment.Name;
         using var fetching = _fetching = new CancellationTokenSource();
         try
         {
             // Stored after the login, because the tokens can be loaded again while it is open.
             var token = await oauth.GetTokenAsync(EditedOAuth(), ClientSecret, environment, fetching.Token);
-            _tokens[environment.Name] = token;
-            Relabel();
-            Changed?.Invoke();
+            if (_fetchingFor is { } name)
+            {
+                _tokens[name] = token;
+                Relabel();
+                Changed?.Invoke();
+            }
         }
         catch (OperationCanceledException) when (fetching.IsCancellationRequested)
         {
@@ -199,6 +205,7 @@ public sealed class AuthViewModel(SecretStore secrets, IOAuthClient oauth, Envir
         {
             return;
         }
+        _fetchingFor = _fetchingFor is { } fetching ? changes.NameAfter(fetching) : null;
         _tokens = Followed(_tokens, changes);
         Relabel();
     }

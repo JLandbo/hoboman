@@ -13,15 +13,18 @@ public sealed partial class HistoryStore(AppFolder folder, ILogger<HistoryStore>
 
     public async Task<IReadOnlyList<HistoryFile>> LatestAsync(int count, string? newerThan, CancellationToken cancellationToken)
     {
-        var names = await Task.Run<string[]>(() => Directory.Exists(folder.History)
-            ? [.. Directory.EnumerateFiles(folder.History, "*.json").Select(Path.GetFileName).OfType<string>()
-                .Where(name => IsCall(name) && (newerThan is null || string.CompareOrdinal(name, newerThan) > 0)).OrderDescending(StringComparer.Ordinal).Take(count)]
-            : [], cancellationToken).ConfigureAwait(false);
+        var names = (await NamesAsync(cancellationToken).ConfigureAwait(false))
+            .Where(name => newerThan is null || string.CompareOrdinal(name, newerThan) > 0).OrderDescending(StringComparer.Ordinal).Take(count).ToArray();
         var files = new HistoryFile?[names.Length];
         await Parallel.ForEachAsync(Enumerable.Range(0, names.Length), cancellationToken, async (index, token) => files[index] = await LoadAsync(names[index], token).ConfigureAwait(false))
             .ConfigureAwait(false);
         return [.. files.OfType<HistoryFile>()];
     }
+
+    // Only the names, which is cheap next to reading the calls.
+    public Task<IReadOnlySet<string>> NamesAsync(CancellationToken cancellationToken) => Task.Run<IReadOnlySet<string>>(() => Directory.Exists(folder.History)
+        ? Directory.EnumerateFiles(folder.History, "*.json").Select(Path.GetFileName).OfType<string>().Where(IsCall).ToHashSet(StringComparer.Ordinal)
+        : new HashSet<string>(), cancellationToken);
 
     async Task<HistoryFile?> LoadAsync(string name, CancellationToken cancellationToken)
     {

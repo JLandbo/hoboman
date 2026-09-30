@@ -117,6 +117,7 @@
     "Response.MissingOAuthToken": "No OAuth token has been fetched for the request or its folder in the chosen environment. Get one under Auth.",
     "Response.ExpiredToken": "The OAuth token expired {0:g}. Get a new one under Auth.",
     "Response.Empty": "Send a request to see the response",
+    "Response.Loading": "Loading…",
     "Response.Sending": "Sending…",
     "Response.InvalidUrl": "The URL is not valid.",
     "Response.UnknownHost": "The server could not be found.",

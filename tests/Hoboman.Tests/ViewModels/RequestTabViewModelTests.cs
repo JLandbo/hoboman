@@ -103,6 +103,24 @@ public sealed class RequestTabViewModelTests
     }
 
     [Fact]
+    public async Task SendAsync_WhenAnotherEnvironmentIsChosenWhileSaving_ThenSendsWithTheOneChosenAtSend()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Environments.ChooseAsync(new("Dev", []));
+        var tab = harness.Tab();
+        tab.Auth.Password = "hemmelig";
+        var sending = tab.SendAsync();
+
+        // Act
+        await harness.Environments.ChooseAsync(new("Prod", []));
+        await sending;
+
+        // Assert
+        Assert.Equal("Dev", harness.Sender.Environment?.Name);
+    }
+
+    [Fact]
     public async Task Cancel_WhenATokenIsBeingFetched_ThenOnlyStopsTheSend()
     {
         // Arrange

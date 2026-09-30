@@ -98,7 +98,11 @@
 
             <Grid>
                 <Border CornerRadius="8" Background="{DynamicResource Input}" Visibility="{Binding IsChecked, ElementName=BodySection, Converter={StaticResource VisibleWhenTrue}}">
-                    <controls:BodyView Body="{Binding Response.Body}" Coloring="{Binding Response.Coloring, FallbackValue={x:Static viewModels:BodyFormat.Raw}}" />
+                    <Grid>
+                        <controls:BodyView x:Name="BodyText" Body="{Binding Response.Body}" Coloring="{Binding Response.Coloring, FallbackValue={x:Static viewModels:BodyFormat.Raw}}" />
+                        <TextBlock Text="{DynamicResource Response.Loading}" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Visibility="{Binding IsLoading, ElementName=BodyText, Converter={StaticResource VisibleWhenTrue}}" />
+                    </Grid>
                 </Border>
                 <TextBox Text="{Binding Response.Headers, Mode=OneWay}" IsReadOnly="True" Style="{StaticResource Code}"
                          Visibility="{Binding IsChecked, ElementName=HeadersSection, Converter={StaticResource VisibleWhenTrue}}" />
