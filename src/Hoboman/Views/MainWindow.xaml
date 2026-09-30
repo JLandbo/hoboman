@@ -155,9 +155,21 @@
                             <DataTemplate DataType="{x:Type viewModels:RequestTabViewModel}">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="{Binding Method}" Foreground="{Binding Method, Converter={StaticResource MethodBrush}}" FontSize="11" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                    <TextBlock Style="{StaticResource TabTitle}" MaxWidth="180" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                    <TextBlock MaxWidth="180" TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource TabTitle}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsPreview}" Value="True">
+                                                        <Setter Property="FontStyle" Value="Italic" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
                                     <Ellipse Width="7" Height="7" Fill="{DynamicResource Attention}" Margin="6,0,0,0" VerticalAlignment="Center"
                                              Visibility="{Binding IsDirty, Converter={StaticResource VisibleWhenTrue}}" />
+                                    <Button Content="&#xE718;" ToolTip="{DynamicResource Tab.Pin}" Click="PinTab_Click" Style="{StaticResource SmallIconButton}" Margin="4,0,0,0" VerticalAlignment="Center"
+                                            Visibility="{Binding IsPreview, Converter={StaticResource VisibleWhenTrue}}" />
                                     <Button Content="&#xE711;" ToolTip="{DynamicResource Common.Close}" Click="CloseTab_Click" Style="{StaticResource SmallIconButton}" Margin="4,0,0,0" VerticalAlignment="Center" />
                                 </StackPanel>
                             </DataTemplate>

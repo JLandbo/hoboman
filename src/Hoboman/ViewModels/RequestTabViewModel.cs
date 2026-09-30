@@ -19,6 +19,7 @@ public sealed class RequestTabViewModel : ObservableObject
     ApiResponse? _response;
     BodyFormat _bodyFormat;
     bool _loading;
+    bool _pinned;
     CancellationTokenSource? _sending;
 
     public RequestTabViewModel(RequestTabServices services, ApiRequest request, string? name = null, string? suggestedName = null, string? historyName = null)
@@ -79,13 +80,20 @@ public sealed class RequestTabViewModel : ObservableObject
             if (Set(ref field, value))
             {
                 OnPropertyChanged(nameof(FromHistory));
+                OnPropertyChanged(nameof(IsPreview));
             }
         }
     }
 
     public bool FromHistory => HistoryName is not null;
 
-    public string? Title => (Name ?? SuggestedName) is { } name ? RequestLibrary.LastPartOf(name) : null;
+    // A history tab that is only looked at gives its place to the next call opened from the history, unless it is pinned.
+    public bool IsPreview => FromHistory && !_pinned;
+
+    // Tabs without a name are numbered, so they can be told apart.
+    public int Number { get; init; }
+
+    public string Title => (Name ?? SuggestedName) is { } name ? RequestLibrary.LastPartOf(name) : _services.Translator.Format("Tab.New", Number);
 
     public string? Folder => RequestLibrary.ParentOf(Name) is { } parent ? $"{parent.Replace("/", " / ")} /" : null;
 
@@ -201,6 +209,12 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public void Cancel() => _sending?.Cancel();
 
+    public void Pin()
+    {
+        _pinned = true;
+        OnPropertyChanged(nameof(IsPreview));
+    }
+
     async Task ShowAsync(ApiResponse? response)
     {
         _response = response;
@@ -224,6 +238,8 @@ public sealed class RequestTabViewModel : ObservableObject
     }
 
     public void Rename(string name) => Name = name;
+
+    public void Relabel() => OnPropertyChanged(nameof(Title));
 
     public void Unlink()
     {

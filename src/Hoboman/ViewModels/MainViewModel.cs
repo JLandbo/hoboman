@@ -23,6 +23,7 @@ public sealed class MainViewModel(
     ILogger<MainViewModel> logger) : ObservableObject
 {
     readonly HashSet<string> _opening = new(StringComparer.OrdinalIgnoreCase);
+    int _lastNumber;
 
     Coalescer RequestsReload => field ??= new(ReloadRequestsAsync);
 
@@ -60,13 +61,17 @@ public sealed class MainViewModel(
     public Task LanguageChangedAsync()
     {
         history.Relabel();
+        foreach (var tab in Tabs)
+        {
+            tab.Relabel();
+        }
         return HistoryChangedAsync();
     }
 
     public void NewTab()
     {
         logger.LogDebug("Opened a new tab");
-        Add(new(tabServices, ApiRequest.New()));
+        Add(new(tabServices, ApiRequest.New()) { Number = ++_lastNumber });
     }
 
     public async Task OpenAsync(RequestNodeViewModel node)
@@ -111,8 +116,16 @@ public sealed class MainViewModel(
         }
         logger.LogInformation("Opened the call to {Address} from the history", item.Address);
         var entry = item.File.Entry;
-        var tab = new RequestTabViewModel(tabServices, entry.Request, suggestedName: entry.Name, historyName: item.File.Name);
-        Add(tab);
+        var tab = new RequestTabViewModel(tabServices, entry.Request, suggestedName: entry.Name, historyName: item.File.Name) { Number = entry.Name is null ? ++_lastNumber : 0 };
+        if (Tabs.FirstOrDefault(open => open.IsPreview) is { } preview)
+        {
+            Tabs[Tabs.IndexOf(preview)] = tab;
+        }
+        else
+        {
+            Tabs.Add(tab);
+        }
+        SelectedTab = tab;
         await tab.ShowAsync(entry);
         await tab.LoadSecretsAsync(CancellationToken.None);
     }
@@ -121,11 +134,11 @@ public sealed class MainViewModel(
     {
         if (tab.IsDirty)
         {
-            if (!dialogs.Confirm(translator.Of("Close.TabTitle"), translator.Format("Close.TabMessage", TitleOf(tab)), translator.Of("Close.Confirm"), []))
+            if (!dialogs.Confirm(translator.Of("Close.TabTitle"), translator.Format("Close.TabMessage", tab.Title), translator.Of("Close.Confirm"), []))
             {
                 return;
             }
-            logger.LogInformation("Closed {Title} without saving it", TitleOf(tab));
+            logger.LogInformation("Closed {Title} without saving it", tab.Title);
         }
         tab.Cancel();
         var index = Tabs.IndexOf(tab);
@@ -143,7 +156,7 @@ public sealed class MainViewModel(
 
     public bool CanClose()
     {
-        var unsaved = Tabs.Where(tab => tab.IsDirty).Select(TitleOf).ToList();
+        var unsaved = Tabs.Where(tab => tab.IsDirty).Select(tab => tab.Title).ToList();
         if (unsaved.Count == 0)
         {
             return true;
@@ -294,8 +307,6 @@ public sealed class MainViewModel(
     }
 
     RequestTabViewModel? TabOf(string name) => Tabs.FirstOrDefault(tab => SameName(tab.Name, name));
-
-    string TitleOf(RequestTabViewModel tab) => tab.Title ?? translator.Of("Tab.New");
 
     string? ProblemOfFolder(string name) => RequestLibrary.IsValidName(name) ? null : translator.Of("Save.Invalid");
 

@@ -7,11 +7,8 @@ using Hoboman.Core.Sending;
 
 namespace Hoboman.ViewModels;
 
-public sealed record ResponseDisplay(string Status, bool IsSuccess, string Elapsed, string Size, string Body, string Headers, int HeaderCount, bool IsCut, BodyFormat Coloring)
+public sealed record ResponseDisplay(string Status, bool IsSuccess, string Elapsed, string Size, string Body, string Headers, int HeaderCount, BodyFormat Coloring)
 {
-    // WPF lays out the whole text on the UI thread, which freezes the window for bodies of many megabytes.
-    public const int ShownLength = 1_000_000;
-
     static readonly JsonSerializerOptions _pretty = new() { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     public static ResponseDisplay Of(ApiResponse response) => Of(response, FormatOf(response));
@@ -19,16 +16,14 @@ public sealed record ResponseDisplay(string Status, bool IsSuccess, string Elaps
     public static ResponseDisplay Of(ApiResponse response, BodyFormat format)
     {
         var (body, coloring) = Format(response.Body, format);
-        var isCut = body.Length > ShownLength;
         return new(
             $"{response.StatusCode} {response.Reason}".Trim(),
             response.IsSuccess,
             $"{response.ElapsedMs} ms",
             SizeOf(response.Size),
-            isCut ? body[..ShownLength] : body,
+            body,
             string.Join(Environment.NewLine, response.Headers.Select(header => $"{header.Name}: {header.Value}")),
             response.Headers.Count,
-            isCut,
             coloring);
     }
 

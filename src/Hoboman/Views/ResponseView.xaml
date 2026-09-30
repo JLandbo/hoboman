@@ -96,11 +96,10 @@
                 </DockPanel>
             </Border>
 
-            <TextBlock DockPanel.Dock="Top" Text="{DynamicResource Response.Cut}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="4,0,0,8"
-                       Visibility="{Binding Response.IsCut, Converter={StaticResource VisibleWhenTrue}, FallbackValue=Collapsed}" />
-
             <Grid>
-                <controls:BodyView Text="{Binding Response.Body}" Coloring="{Binding Response.Coloring, FallbackValue={x:Static viewModels:BodyFormat.Raw}}" Visibility="{Binding IsChecked, ElementName=BodySection, Converter={StaticResource VisibleWhenTrue}}" />
+                <Border CornerRadius="8" Background="{DynamicResource Input}" Visibility="{Binding IsChecked, ElementName=BodySection, Converter={StaticResource VisibleWhenTrue}}">
+                    <controls:BodyView Body="{Binding Response.Body}" Coloring="{Binding Response.Coloring, FallbackValue={x:Static viewModels:BodyFormat.Raw}}" />
+                </Border>
                 <TextBox Text="{Binding Response.Headers, Mode=OneWay}" IsReadOnly="True" Style="{StaticResource Code}"
                          Visibility="{Binding IsChecked, ElementName=HeadersSection, Converter={StaticResource VisibleWhenTrue}}" />
                 <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource Muted}">

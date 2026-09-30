@@ -762,6 +762,102 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public async Task OpenAsync_WhenAnUntouchedHistoryTabIsOpen_ThenReplacesIt()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var main = harness.Main();
+        await main.OpenAsync(HistoryItem("a.json"));
+
+        // Act
+        await main.OpenAsync(HistoryItem("b.json"));
+
+        // Assert
+        Assert.Equal(["b.json"], main.Tabs.Select(tab => tab.HistoryName));
+    }
+
+    [Fact]
+    public async Task OpenAsync_WhenAnUntouchedHistoryTabIsReplaced_ThenTheNewOneTakesItsPlace()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var main = harness.Main();
+        main.NewTab();
+        await main.OpenAsync(HistoryItem("a.json"));
+        main.NewTab();
+
+        // Act
+        await main.OpenAsync(HistoryItem("b.json"));
+
+        // Assert
+        Assert.Equal([null, "b.json", null], main.Tabs.Select(tab => tab.HistoryName));
+    }
+
+    [Fact]
+    public async Task OpenAsync_WhenTheHistoryTabIsPinned_ThenKeepsIt()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var main = harness.Main();
+        await main.OpenAsync(HistoryItem("a.json"));
+        main.SelectedTab!.Pin();
+
+        // Act
+        await main.OpenAsync(HistoryItem("b.json"));
+
+        // Assert
+        Assert.Equal(["a.json", "b.json"], main.Tabs.Select(tab => tab.HistoryName));
+    }
+
+    [Fact]
+    public async Task OpenAsync_WhenTheHistoryTabWasChanged_ThenKeepsIt()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var main = harness.Main();
+        await main.OpenAsync(HistoryItem("a.json"));
+        main.SelectedTab!.Url = "https://changed.local";
+
+        // Act
+        await main.OpenAsync(HistoryItem("b.json"));
+
+        // Assert
+        Assert.Equal(["https://changed.local", "https://b.local"], main.Tabs.Select(tab => tab.Url));
+    }
+
+    [Fact]
+    public async Task OpenAsync_WhenTheHistoryTabWasSaved_ThenKeepsIt()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(answer: "Saved"));
+        var main = harness.Main();
+        await main.OpenAsync(HistoryItem("a.json"));
+        await main.SelectedTab!.SaveAsync();
+
+        // Act
+        await main.OpenAsync(HistoryItem("b.json"));
+
+        // Assert
+        Assert.Equal(["Saved", null], main.Tabs.Select(tab => tab.Name));
+    }
+
+    [Fact]
+    public async Task OpenAsync_WhenTheHistoryTabWasSent_ThenKeepsIt()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var main = harness.Main();
+        await main.OpenAsync(HistoryItem("a.json"));
+        await main.SelectedTab!.SendAsync();
+
+        // Act
+        await main.OpenAsync(HistoryItem("b.json"));
+
+        // Assert
+        Assert.Equal(2, main.Tabs.Count);
+    }
+
+    [Fact]
     public async Task DeleteAsync_WhenTheTabIsSavedAgain_ThenSavesItsPasswordAgain()
     {
         // Arrange
@@ -780,5 +876,59 @@ public sealed class MainViewModelTests
 
         // Assert
         Assert.Equal("hemmelig", await harness.Secrets.OfAsync(request.Id, SecretKind.Password, Cancellation));
+    }
+
+    [Fact]
+    public void NewTab_WhenTwoTabsAreOpened_ThenNumbersThem()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var main = harness.Main();
+
+        // Act
+        main.NewTab();
+        main.NewTab();
+
+        // Assert
+        Assert.Equal(["New request (1)", "New request (2)"], main.Tabs.Select(tab => tab.Title));
+    }
+
+    [Fact]
+    public async Task OpenAsync_WhenTheHistoryCallHasNoName_ThenNumbersItsTab()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var main = harness.Main();
+        main.NewTab();
+
+        // Act
+        await main.OpenAsync(HistoryItem("a.json"));
+
+        // Assert
+        Assert.Equal("New request (2)", main.SelectedTab?.Title);
+    }
+
+    [Fact]
+    public async Task LanguageChangedAsync_WhenATabIsOpen_ThenTellsItsTitleChanged()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var main = harness.Main();
+        main.NewTab();
+        var changed = false;
+        main.SelectedTab!.PropertyChanged += (_, e) => changed |= e.PropertyName == nameof(RequestTabViewModel.Title);
+
+        // Act
+        await main.LanguageChangedAsync();
+
+        // Assert
+        Assert.True(changed);
+    }
+
+    // "a.json" is a call to https://a.local.
+    static HistoryItemViewModel HistoryItem(string file)
+    {
+        var address = $"{Path.GetFileNameWithoutExtension(file)}.local";
+        return new(new(file, new(DateTimeOffset.Now, HistorySource.App, address, ApiRequest.New() with { Url = $"https://{address}" })), "Today");
     }
 }

@@ -1,24 +1,53 @@
-using System.Text.RegularExpressions;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Media;
 using Hoboman.ViewModels;
+using ICSharpCode.AvalonEdit;
+using ICSharpCode.AvalonEdit.Highlighting;
+using ICSharpCode.AvalonEdit.Rendering;
 
 namespace Hoboman.Controls;
 
-public sealed partial class BodyView : RichTextBox
+// AvalonEdit lays out and colors only the lines on screen, so large bodies show at once, and changing the colors leaves the selection alone.
+public sealed class BodyView : TextEditor
 {
-    // Coloring very large bodies would make the view slow, so they are shown as plain text.
-    const int _coloredLength = 20_000;
+    static readonly IHighlightingDefinition _json = Themed("Json",
+        [("FieldName", "JsonKey"), ("String", "JsonString"), ("Number", "JsonNumber"), ("Bool", "JsonLiteral"), ("Null", "JsonLiteral"), ("Punctuation", "Text")]);
 
-    public static readonly DependencyProperty TextProperty = DependencyProperty.Register(nameof(Text), typeof(string), typeof(BodyView), new(null, (view, _) => ((BodyView)view).Show()));
+    static readonly IHighlightingDefinition _xml = Themed("XML",
+        [("XmlTag", "XmlTag"), ("XmlDeclaration", "XmlTag"), ("DocType", "XmlTag"), ("AttributeName", "XmlAttribute"), ("AttributeValue", "XmlValue"),
+         ("CData", "XmlValue"), ("Entity", "XmlValue"), ("BrokenEntity", "Error"), ("Comment", "XmlComment")]);
 
-    public static readonly DependencyProperty ColoringProperty = DependencyProperty.Register(nameof(Coloring), typeof(BodyFormat), typeof(BodyView), new(BodyFormat.Raw, (view, _) => ((BodyView)view).Show()));
+    public static readonly DependencyProperty BodyProperty = DependencyProperty.Register(nameof(Body), typeof(string), typeof(BodyView),
+        new(null, (view, e) => ((BodyView)view).Text = e.NewValue as string ?? ""));
 
-    public string? Text
+    public static readonly DependencyProperty ColoringProperty = DependencyProperty.Register(nameof(Coloring), typeof(BodyFormat), typeof(BodyView),
+        new(BodyFormat.Raw, (view, e) => ((BodyView)view).SyntaxHighlighting = DefinitionOf((BodyFormat)e.NewValue)));
+
+    public BodyView()
     {
-        get => (string?)GetValue(TextProperty);
-        set => SetValue(TextProperty, value);
+        IsReadOnly = true;
+        WordWrap = true;
+        // Links would be drawn in AvalonEdit's own blue instead of the theme's colors.
+        Options.EnableHyperlinks = false;
+        Options.EnableEmailHyperlinks = false;
+        TextArea.TextView.ElementGenerators.Add(new LongLineCut());
+        // AvalonEdit keeps Tab for indenting even when read only, which would trap the focus in the body.
+        var keys = TextArea.DefaultInputHandler.Editing.InputBindings;
+        foreach (var tab in keys.Where(key => key is KeyBinding { Key: Key.Tab }).ToList())
+        {
+            keys.Remove(tab);
+        }
+        var attention = ((SolidColorBrush)FindResource("Attention")).Color;
+        TextArea.SelectionBrush = new SolidColorBrush(Color.FromArgb(0x66, attention.R, attention.G, attention.B));
+        TextArea.SelectionBorder = null;
+        TextArea.SelectionForeground = null;
+    }
+
+    public string? Body
+    {
+        get => (string?)GetValue(BodyProperty);
+        set => SetValue(BodyProperty, value);
     }
 
     public BodyFormat Coloring
@@ -27,34 +56,38 @@ public sealed partial class BodyView : RichTextBox
         set => SetValue(ColoringProperty, value);
     }
 
-    void Show()
+    static IHighlightingDefinition? DefinitionOf(BodyFormat coloring) => coloring switch
     {
-        var text = Text ?? "";
-        var paragraph = new Paragraph();
-        switch (text.Length > _coloredLength ? BodyFormat.Raw : Coloring)
+        BodyFormat.Json => _json,
+        BodyFormat.Xml => _xml,
+        _ => null,
+    };
+
+    // The built-in definitions are colored for a light background, so they get the theme's colors.
+    static IHighlightingDefinition Themed(string name, ReadOnlySpan<(string Color, string Brush)> colors)
+    {
+        var definition = HighlightingManager.Instance.GetDefinition(name);
+        foreach (var (color, brush) in colors)
         {
-            case BodyFormat.Json:
-                paragraph.Inlines.AddRange(Runs.Of(text, Json().Matches(text), JsonBrushOf));
-                break;
-            case BodyFormat.Xml:
-                paragraph.Inlines.AddRange(Runs.Of(text, Xml().Matches(text), XmlBrushOf));
-                break;
-            default:
-                paragraph.Inlines.Add(new Run(text));
-                break;
+            definition.GetNamedColor(color).Foreground = new SimpleHighlightingBrush(((SolidColorBrush)Application.Current.FindResource(brush)).Color);
         }
-        Document = new FlowDocument(paragraph) { PagePadding = new Thickness(0), FontFamily = FontFamily, FontSize = FontSize };
+        return definition;
     }
 
-    static string JsonBrushOf(Match token) =>
-        token.Groups["key"].Success ? "JsonKey" : token.Groups["string"].Success ? "JsonString" : token.Groups["literal"].Success ? "JsonLiteral" : "JsonNumber";
+    // AvalonEdit lays out a whole line at once, which freezes the window for a line of a few megabytes, so only its start is drawn.
+    // The rest stays in the text, so selecting and copying still gives all of it.
+    sealed class LongLineCut : VisualLineElementGenerator
+    {
+        const int _shown = 50_000;
 
-    static string XmlBrushOf(Match token) =>
-        token.Groups["comment"].Success ? "XmlComment" : token.Groups["tag"].Success ? "XmlTag" : token.Groups["attribute"].Success ? "XmlAttribute" : "XmlValue";
+        public override int GetFirstInterestedOffset(int startOffset)
+        {
+            var line = CurrentContext.VisualLine.FirstDocumentLine;
+            var cut = line.Offset + _shown;
+            return line.Length > _shown && startOffset <= cut ? cut : -1;
+        }
 
-    [GeneratedRegex("""(?<key>"(?:\\.|[^"\\])*")(?=\s*:)|(?<string>"(?:\\.|[^"\\])*")|(?<literal>\b(?:true|false|null)\b)|(?<number>-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)""")]
-    private static partial Regex Json();
-
-    [GeneratedRegex("""(?<comment><!--[\s\S]*?-->)|(?<tag><[/?!]?[\w:.-]+|/?>|\?>)|(?<attribute>[\w:.-]+(?=\s*=))|(?<value>"[^"]*"|'[^']*')""")]
-    private static partial Regex Xml();
+        public override VisualLineElement ConstructElement(int offset) =>
+            new FormattedTextElement("…", CurrentContext.VisualLine.FirstDocumentLine.EndOffset - offset);
+    }
 }

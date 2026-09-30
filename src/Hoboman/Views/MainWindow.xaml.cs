@@ -34,6 +34,8 @@ public partial class MainWindow : Window
 
     void CloseTab_Click(object sender, RoutedEventArgs e) => _viewModel.Close((RequestTabViewModel)((FrameworkElement)sender).DataContext);
 
+    void PinTab_Click(object sender, RoutedEventArgs e) => ((RequestTabViewModel)((FrameworkElement)sender).DataContext).Pin();
+
     async void NoEnvironment_Click(object sender, RoutedEventArgs e) => await ChooseAsync(null);
 
     async void Environment_Click(object sender, RoutedEventArgs e) => await ChooseAsync((ApiEnvironment)((FrameworkElement)sender).DataContext);

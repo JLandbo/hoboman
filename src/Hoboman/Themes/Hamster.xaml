@@ -283,6 +283,11 @@
         <MenuItem Header="{DynamicResource Edit.Paste}" Command="ApplicationCommands.Paste" />
     </ContextMenu>
 
+    <!-- The body is read only, and AvalonEdit would still enable Cut there, where it only copies. -->
+    <ContextMenu x:Key="BodyMenu" x:Shared="False" Style="{StaticResource PopupMenu}">
+        <MenuItem Header="{DynamicResource Edit.Copy}" Command="ApplicationCommands.Copy" />
+    </ContextMenu>
+
     <Style TargetType="TextBox">
         <Setter Property="SelectionBrush" Value="{DynamicResource Attention}" />
         <Setter Property="ContextMenu" Value="{DynamicResource TextMenu}" />
@@ -300,11 +305,6 @@
 
     <Style x:Key="TabTitle" TargetType="TextBlock">
         <Setter Property="Text" Value="{Binding Title}" />
-        <Style.Triggers>
-            <DataTrigger Binding="{Binding Title}" Value="{x:Null}">
-                <Setter Property="Text" Value="{DynamicResource Tab.New}" />
-            </DataTrigger>
-        </Style.Triggers>
     </Style>
 
     <Style x:Key="Label" TargetType="TextBlock">
@@ -456,25 +456,14 @@
     </Style>
 
     <Style TargetType="controls:BodyView">
-        <Setter Property="Background" Value="{DynamicResource Input}" />
+        <Setter Property="Background" Value="Transparent" />
         <Setter Property="Foreground" Value="{DynamicResource Text}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="10,8" />
-        <Setter Property="IsReadOnly" Value="True" />
-        <Setter Property="IsReadOnlyCaretVisible" Value="False" />
         <Setter Property="FontFamily" Value="{StaticResource CodeFont}" />
-        <Setter Property="SelectionBrush" Value="{DynamicResource Attention}" />
+        <Setter Property="FontSize" Value="13" />
         <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
-        <Setter Property="ContextMenu" Value="{DynamicResource TextMenu}" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="controls:BodyView">
-                    <Border Background="{TemplateBinding Background}" CornerRadius="8">
-                        <ScrollViewer x:Name="PART_ContentHost" Focusable="False" />
-                    </Border>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
+        <Setter Property="ContextMenu" Value="{DynamicResource BodyMenu}" />
     </Style>
 
     <Style x:Key="Tabs" TargetType="ListBox">
