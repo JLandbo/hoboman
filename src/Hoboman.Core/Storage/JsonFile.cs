@@ -8,8 +8,6 @@ namespace Hoboman.Core.Storage;
 
 public sealed class JsonFile<T>(string path, T empty, ILogger logger)
 {
-    const int _attempts = 5;
-    static readonly TimeSpan _retryDelay = TimeSpan.FromMilliseconds(50);
     static readonly JsonSerializerOptions _options = new()
     {
         WriteIndented = true,
@@ -120,11 +118,11 @@ public sealed class JsonFile<T>(string path, T empty, ILogger logger)
     static ConfiguredTaskAwaitable LeaveCallersThread() => Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
 
     // Invalid JSON is retried too, because another program may be halfway through writing the file.
-    static bool CanRetry(Exception exception, int attempt) => exception is IOException or UnauthorizedAccessException or JsonException && attempt < _attempts;
+    static bool CanRetry(Exception exception, int attempt) => exception is IOException or UnauthorizedAccessException or JsonException && attempt < Retrying.Attempts;
 
     Task PauseAsync(Exception exception, CancellationToken cancellationToken)
     {
         logger.LogDebug(exception, "{Path} could not be used, trying again", path);
-        return Task.Delay(_retryDelay, cancellationToken);
+        return Task.Delay(Retrying.Pause, cancellationToken);
     }
 }

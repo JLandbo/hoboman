@@ -64,34 +64,34 @@ public sealed class RequestLibrary(AppFolder folder, ILogger<RequestLibrary> log
         return new(request.Id, AuthSettings.None);
     }
 
-    public Task RenameAsync(string name, string newName, CancellationToken cancellationToken) => Task.Run(() =>
+    public Task RenameAsync(string name, string newName, CancellationToken cancellationToken) => Retrying.RunAsync(() =>
     {
         var target = PathOf(newName);
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         File.Move(PathOf(name), target);
         logger.LogInformation("Renamed the request {Name} to {NewName}", name, newName);
-    }, cancellationToken);
+    }, logger, name, cancellationToken);
 
-    public Task DeleteAsync(string name, CancellationToken cancellationToken) => Task.Run(() =>
+    public Task DeleteAsync(string name, CancellationToken cancellationToken) => Retrying.RunAsync(() =>
     {
         File.Delete(PathOf(name));
         logger.LogInformation("Deleted the request {Name}", name);
-    }, cancellationToken);
+    }, logger, name, cancellationToken);
 
     // The folder's settings are inside it, so they move with it.
-    public Task RenameFolderAsync(string name, string newName, CancellationToken cancellationToken) => Task.Run(() =>
+    public Task RenameFolderAsync(string name, string newName, CancellationToken cancellationToken) => Retrying.RunAsync(() =>
     {
         var target = FolderOf(newName);
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         Directory.Move(FolderOf(name), target);
         logger.LogInformation("Renamed the folder {Name} to {NewName}", name, newName);
-    }, cancellationToken);
+    }, logger, name, cancellationToken);
 
-    public Task DeleteFolderAsync(string name, CancellationToken cancellationToken) => Task.Run(() =>
+    public Task DeleteFolderAsync(string name, CancellationToken cancellationToken) => Retrying.RunAsync(() =>
     {
         Directory.Delete(FolderOf(name), recursive: true);
         logger.LogInformation("Deleted the folder {Name} with everything in it", name);
-    }, cancellationToken);
+    }, logger, name, cancellationToken);
 
     public Task CreateFolderAsync(string name, CancellationToken cancellationToken) => Task.Run(() =>
     {

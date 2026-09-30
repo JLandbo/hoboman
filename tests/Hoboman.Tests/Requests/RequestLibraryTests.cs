@@ -205,6 +205,23 @@ public sealed class RequestLibraryTests : IDisposable
     }
 
     [Fact]
+    public async Task RenameFolderAsync_WhenAFileInItIsHeldForAMoment_ThenMovesItOnceItIsLetGo()
+    {
+        // Arrange
+        await Library().SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
+        var held = new FileStream(Path.Combine(RequestsFolder, "Users", "Get.json"), FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        // Act
+        var renaming = Library().RenameFolderAsync("Users", "People", Cancellation);
+        await Task.Delay(100, Cancellation);
+        held.Dispose();
+        await renaming;
+
+        // Assert
+        Assert.Equal(["People/Get"], await Library().NamesAsync(Cancellation));
+    }
+
+    [Fact]
     public async Task RenameFolderAsync_WhenTheFolderHasSettings_ThenTheyMoveWithIt()
     {
         // Arrange
