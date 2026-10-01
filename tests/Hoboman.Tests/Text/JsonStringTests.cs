@@ -33,6 +33,52 @@ public sealed class JsonStringTests
     }
 
     [Fact]
+    public void Of_WhenTheTextIsAlreadyAJsonString_ThenLeavesItAlone()
+    {
+        // Act
+        var json = JsonString.Of("\"already a JSON string\"");
+
+        // Assert
+        Assert.Equal("\"already a JSON string\"", json);
+    }
+
+    [Theory]
+    [InlineData("{\"data\":\"name\"}")]
+    [InlineData("plain text")]
+    [InlineData("\"already a JSON string\"")]
+    [InlineData("")]
+    [InlineData(" \r\n\t")]
+    [InlineData("42")]
+    [InlineData("true")]
+    [InlineData("null")]
+    [InlineData("quotes \" and slash \\ and Ærø\n")]
+    public void Of_WhenUsedAgain_ThenLeavesTheFirstResultAlone(string text)
+    {
+        // Arrange
+        var stringified = JsonString.Of(text);
+
+        // Act
+        var stringifiedAgain = JsonString.Of(stringified);
+
+        // Assert
+        Assert.Equal(stringified, stringifiedAgain);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("plain text")]
+    [InlineData("{\\\"data\\\":\\\"name\\\"}")]
+    [InlineData("quotes \" and slash \\ and Ærø\n")]
+    public void From_WhenGivenTextMadeByOf_ThenGivesTheOriginalText(string text)
+    {
+        // Act
+        var parsed = JsonString.From(JsonString.Of(text));
+
+        // Assert
+        Assert.Equal(text, parsed);
+    }
+
+    [Fact]
     public void From_WhenGivenAJsonString_ThenGivesItsText()
     {
         // Act
@@ -40,6 +86,16 @@ public sealed class JsonStringTests
 
         // Assert
         Assert.Equal("{\"data\":\"name\"}", text);
+    }
+
+    [Fact]
+    public void From_WhenGivenAStringHoldingAJsonString_ThenRemovesOneLayer()
+    {
+        // Act
+        var text = JsonString.From("\"\\\"hello\\\"\"");
+
+        // Assert
+        Assert.Equal("\"hello\"", text);
     }
 
     [Fact]
@@ -56,6 +112,10 @@ public sealed class JsonStringTests
     [InlineData("{\"a\": 1}")]
     [InlineData("plain text")]
     [InlineData("123")]
+    [InlineData("null")]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("\"unterminated")]
     public void From_WhenTheTextIsNotAJsonString_ThenGivesNull(string clipboard)
     {
         // Act

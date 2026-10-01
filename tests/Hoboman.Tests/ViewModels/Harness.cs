@@ -61,7 +61,7 @@ public sealed class Harness : IDisposable
         Library,
         Secrets,
         Dialogs,
-        new(new FakeClipboard(), _translator, Clock, NullLogger<ClipboardViewModel>.Instance),
+        new(new FakeClipboard(), NullLogger<ClipboardViewModel>.Instance),
         _translator,
         NullLogger<MainViewModel>.Instance);
 
