@@ -48,6 +48,10 @@ public partial class MainWindow : Window
 
     async void Settings_Click(object sender, RoutedEventArgs e) => await _viewModel.EditSettingsAsync();
 
+    async void Stringify_Click(object sender, RoutedEventArgs e) => await _viewModel.Clipboard.StringifyAsync();
+
+    async void Parse_Click(object sender, RoutedEventArgs e) => await _viewModel.Clipboard.ParseAsync();
+
     void NewRequest_Click(object sender, RoutedEventArgs e) => _viewModel.NewTab();
 
     async void NewFolder_Click(object sender, RoutedEventArgs e) => await _viewModel.NewFolderAsync();

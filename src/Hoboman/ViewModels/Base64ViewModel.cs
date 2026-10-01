@@ -12,8 +12,7 @@ public sealed class Base64ViewModel(Translator translator, TimeProvider clock) :
     // Long enough that the checkboxes do not change with every key, short enough to follow a pause.
     static readonly TimeSpan _standStill = TimeSpan.FromMilliseconds(400);
 
-    // The timer fires off the UI thread, and what it changes is shown.
-    readonly SynchronizationContext? _ui = SynchronizationContext.Current;
+    readonly UiThread _ui = new();
     IReadOnlyList<JsonProperty> _outline = [];
     ITimer? _waiting;
     // Counts the readings of the body, so one that is done after a newer body came is left out.
@@ -90,7 +89,7 @@ public sealed class Base64ViewModel(Translator translator, TimeProvider clock) :
         _waiting = clock.CreateTimer(_ =>
         {
             var outline = OutlineOf(body);
-            OnUi(() =>
+            _ui.Post(() =>
             {
                 if (reading == _reading)
                 {
@@ -164,14 +163,4 @@ public sealed class Base64ViewModel(Translator translator, TimeProvider clock) :
     static bool IsIn(IReadOnlyList<JsonProperty> outline, string path) => path == JsonPath.Root || outline.Any(property => property.Path == path);
 
     void MarkBody() => BodyMarks = Base64Marks.ForRequest(_outline, Encode, translator);
-
-    void OnUi(Action work)
-    {
-        if (_ui is null)
-        {
-            work();
-            return;
-        }
-        _ui.Post(_ => work(), null);
-    }
 }

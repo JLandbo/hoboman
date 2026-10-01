@@ -110,6 +110,8 @@ public partial class App : Application
         services.AddSingleton<IBrowser, ShellBrowser>();
         services.AddSingleton<IOAuthClient, OAuthClient>();
         services.AddSingleton<IDialogs, Dialogs>();
+        services.AddSingleton<IClipboard, SystemClipboard>();
+        services.AddSingleton<ClipboardViewModel>();
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<EnvironmentsViewModel>();
         services.AddSingleton<EnvironmentEditorViewModel>();

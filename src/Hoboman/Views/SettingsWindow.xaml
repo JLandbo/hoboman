@@ -20,5 +20,62 @@
                 </Style>
             </TextBlock.Style>
         </TextBlock>
+        <Border Background="{DynamicResource Box}" BorderBrush="{DynamicResource BoxEdge}" BorderThickness="1" CornerRadius="8" Padding="12,10,12,4" Margin="0,16,0,0">
+            <StackPanel>
+                <TextBlock Text="{DynamicResource Shortcuts.Title}" Foreground="{DynamicResource Muted}" Margin="0,0,0,8" />
+                <Grid>
+                    <Grid.Resources>
+                        <Style x:Key="Keys" TargetType="Border">
+                            <Setter Property="Background" Value="{DynamicResource Button}" />
+                            <Setter Property="CornerRadius" Value="4" />
+                            <Setter Property="Padding" Value="6,1" />
+                            <Setter Property="Margin" Value="0,0,12,6" />
+                            <Setter Property="HorizontalAlignment" Value="Left" />
+                            <Setter Property="VerticalAlignment" Value="Top" />
+                        </Style>
+                        <Style x:Key="What" TargetType="TextBlock">
+                            <Setter Property="TextWrapping" Value="Wrap" />
+                            <Setter Property="Margin" Value="0,1,0,6" />
+                        </Style>
+                    </Grid.Resources>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0" Style="{StaticResource Keys}">
+                        <TextBlock Text="{DynamicResource Shortcuts.SendKeys}" FontFamily="{StaticResource CodeFont}" FontSize="12" />
+                    </Border>
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{DynamicResource Shortcuts.Send}" Style="{StaticResource What}" />
+                    <Border Grid.Row="1" Style="{StaticResource Keys}">
+                        <TextBlock Text="{DynamicResource Shortcuts.SaveKeys}" FontFamily="{StaticResource CodeFont}" FontSize="12" />
+                    </Border>
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{DynamicResource Shortcuts.Save}" Style="{StaticResource What}" />
+                    <Border Grid.Row="2" Style="{StaticResource Keys}">
+                        <TextBlock Text="{DynamicResource Shortcuts.FormatKeys}" FontFamily="{StaticResource CodeFont}" FontSize="12" />
+                    </Border>
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{DynamicResource Shortcuts.Format}" Style="{StaticResource What}" />
+                    <Border Grid.Row="3" Style="{StaticResource Keys}">
+                        <TextBlock Text="{DynamicResource Shortcuts.UndoKeys}" FontFamily="{StaticResource CodeFont}" FontSize="12" />
+                    </Border>
+                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{DynamicResource Shortcuts.Undo}" Style="{StaticResource What}" />
+                    <Border Grid.Row="4" Style="{StaticResource Keys}">
+                        <TextBlock Text="{DynamicResource Shortcuts.OpenKeys}" FontFamily="{StaticResource CodeFont}" FontSize="12" />
+                    </Border>
+                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{DynamicResource Shortcuts.Open}" Style="{StaticResource What}" />
+                    <Border Grid.Row="5" Style="{StaticResource Keys}">
+                        <TextBlock Text="{DynamicResource Shortcuts.CloseKeys}" FontFamily="{StaticResource CodeFont}" FontSize="12" />
+                    </Border>
+                    <TextBlock Grid.Row="5" Grid.Column="1" Text="{DynamicResource Shortcuts.Close}" Style="{StaticResource What}" />
+                </Grid>
+            </StackPanel>
+        </Border>
     </StackPanel>
 </local:DialogWindow>

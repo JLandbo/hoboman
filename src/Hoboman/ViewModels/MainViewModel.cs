@@ -19,6 +19,7 @@ public sealed class MainViewModel(
     RequestLibrary library,
     SecretStore secrets,
     IDialogs dialogs,
+    ClipboardViewModel clipboard,
     Translator translator,
     ILogger<MainViewModel> logger) : ObservableObject
 {
@@ -36,6 +37,8 @@ public sealed class MainViewModel(
     public HistoryViewModel History => history;
 
     public EnvironmentsViewModel Environments => environments;
+
+    public ClipboardViewModel Clipboard => clipboard;
 
     public ObservableCollection<RequestTabViewModel> Tabs { get; } = [];
 
@@ -61,6 +64,7 @@ public sealed class MainViewModel(
     public Task LanguageChangedAsync()
     {
         history.Relabel();
+        clipboard.Relabel();
         RelabelTabs();
         return HistoryChangedAsync();
     }

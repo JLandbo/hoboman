@@ -43,8 +43,20 @@
         </Grid.ColumnDefinitions>
 
         <DockPanel>
-            <Button DockPanel.Dock="Bottom" Content="&#xE713;" ToolTip="{DynamicResource Settings.Title}" Click="Settings_Click"
-                    Style="{StaticResource IconButton}" Foreground="{DynamicResource Muted}" HorizontalAlignment="Left" Margin="0,8,0,0" />
+            <WrapPanel x:Name="Tools" DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                <Button Content="&#xE713;" ToolTip="{DynamicResource Settings.Title}" Click="Settings_Click"
+                        Style="{StaticResource IconButton}" Foreground="{DynamicResource Muted}" />
+                <Button Content="{DynamicResource Clipboard.Stringify}" ToolTip="{DynamicResource Clipboard.StringifyTip}" Click="Stringify_Click"
+                        Style="{StaticResource PillButton}" FontSize="11" Padding="8,3" Margin="8,0,0,0" VerticalAlignment="Center" />
+                <Button Content="{DynamicResource Clipboard.Parse}" ToolTip="{DynamicResource Clipboard.ParseTip}" Click="Parse_Click"
+                        Style="{StaticResource PillButton}" FontSize="11" Padding="8,3" Margin="6,0,0,0" VerticalAlignment="Center" />
+                <!-- Above the buttons, so the sidebar does not move while it is shown. -->
+                <Popup IsOpen="{Binding Clipboard.HasMessage, Mode=OneWay}" PlacementTarget="{Binding ElementName=Tools}" Placement="Top" VerticalOffset="-6" AllowsTransparency="True">
+                    <Border Background="{DynamicResource Button}" BorderBrush="{DynamicResource Edge}" BorderThickness="1" CornerRadius="6" Padding="8,4">
+                        <TextBlock Text="{Binding Clipboard.Message}" Foreground="{DynamicResource Text}" FontSize="12" />
+                    </Border>
+                </Popup>
+            </WrapPanel>
             <Border Style="{StaticResource Panel}">
                 <DockPanel>
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">

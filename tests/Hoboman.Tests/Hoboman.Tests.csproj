@@ -24,6 +24,7 @@
     <Using Include="Hoboman.Core.Sending" />
     <Using Include="Hoboman.Core.Settings" />
     <Using Include="Hoboman.Core.Storage" />
+    <Using Include="Hoboman.Core.Text" />
     <Using Include="Hoboman.Mvvm" />
     <Using Include="Hoboman.ViewModels" />
     <Using Include="Hoboman.Views" />
