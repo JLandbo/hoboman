@@ -257,4 +257,25 @@ public sealed class JsonFileTests : IDisposable
         // Assert
         Assert.Equal("Last", (await store.LoadAsync(Cancellation)).EnvironmentName);
     }
+
+    [Fact]
+    public async Task SaveAsync_WhenDirectoryCreationIsDisabled_ThenDoesNotRecreateAMissingFolder()
+    {
+        var path = Path.Combine(_temporary.Path, "Missing", "settings.json");
+
+        await Assert.ThrowsAsync<DirectoryNotFoundException>(() => Store(path).SaveAsync(AppSettings.Default, Cancellation, createDirectory: false));
+
+        Assert.False(Directory.Exists(Path.GetDirectoryName(path)));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenDirectoryCreationIsDisabledAndTheFolderExists_ThenSavesNormally()
+    {
+        Directory.CreateDirectory(_temporary.Path);
+        var store = Store();
+
+        await store.SaveAsync(new AppSettings("Dev"), Cancellation, createDirectory: false);
+
+        Assert.Equal("Dev", (await store.LoadAsync(Cancellation)).EnvironmentName);
+    }
 }

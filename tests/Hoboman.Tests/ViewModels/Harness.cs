@@ -1,4 +1,5 @@
 using Hoboman.Tests.Auth;
+using Hoboman.Services;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Hoboman.Tests.ViewModels;
@@ -20,7 +21,8 @@ public sealed class Harness : IDisposable
         Sender = new(send ?? (() => Task.FromResult(new ApiResponse(200, "OK", 0, 2, [], "{}"))));
         var runner = new RequestRunner(Sender, Library, History(), NullLogger<RequestRunner>.Instance);
         Secrets = new(Folder, NullLogger<SecretStore>.Instance);
-        Services = new(runner, Secrets, OAuth, Library, Environments, Dialogs, _translator, Clock, NullLogger<RequestTabViewModel>.Instance);
+        AuthRefresh = new(OAuth, Library, Secrets);
+        Services = new(runner, Secrets, AuthRefresh, Library, Environments, Dialogs, _translator, Clock, NullLogger<RequestTabViewModel>.Instance);
     }
 
     public AppFolder Folder { get; }
@@ -30,6 +32,8 @@ public sealed class Harness : IDisposable
     public FakeDialogs Dialogs { get; }
 
     public FakeOAuthClient OAuth { get; }
+
+    public AuthRefreshService AuthRefresh { get; }
 
     // For what the tabs show about time, such as whether a token has expired; the history keeps the real clock.
     public FakeTimeProvider Clock { get; } = new(new DateTimeOffset(2026, 9, 30, 12, 0, 0, TimeSpan.Zero));
@@ -65,9 +69,9 @@ public sealed class Harness : IDisposable
         _translator,
         NullLogger<MainViewModel>.Instance);
 
-    public FolderAuthViewModel FolderAuth() => new(Library, Secrets, OAuth, Environments, _translator, Clock, NullLogger<FolderAuthViewModel>.Instance);
+    public FolderAuthViewModel FolderAuth() => new(Library, Secrets, AuthRefresh, Environments, _translator, Clock, NullLogger<FolderAuthViewModel>.Instance);
 
-    public EnvironmentEditorViewModel EnvironmentEditor() => new(EnvironmentStore, Environments, Secrets, _translator, NullLogger<EnvironmentEditorViewModel>.Instance);
+    public EnvironmentEditorViewModel EnvironmentEditor() => new(EnvironmentStore, Environments, AuthRefresh, _translator, NullLogger<EnvironmentEditorViewModel>.Instance);
 
     // The environments as they are after the app is started again.
     public EnvironmentsViewModel Restarted() => new(EnvironmentStore, SettingsStore, NullLogger<EnvironmentsViewModel>.Instance);

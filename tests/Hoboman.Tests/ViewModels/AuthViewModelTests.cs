@@ -106,9 +106,10 @@ public sealed class AuthViewModelTests
         // Arrange
         var login = new TaskCompletionSource<OAuthToken>();
         using var harness = new Harness(oauth: new FakeOAuthClient(cancellationToken => login.Task.WaitAsync(cancellationToken)));
-        var auth = harness.Tab().Auth;
+        var tab = harness.Tab();
+        var auth = tab.Auth;
         var fetching = auth.FetchTokenAsync();
-        await auth.LoadSecretsAsync(Guid.NewGuid(), Cancellation);
+        await auth.LoadSecretsAsync(tab.Id, Cancellation);
 
         // Act
         login.SetResult(FakeOAuthClient.Token);
@@ -148,7 +149,7 @@ public sealed class AuthViewModelTests
         var auth = harness.Tab().Auth;
         await harness.Environments.ChooseAsync(new("Dev", []));
         var fetching = auth.FetchTokenAsync();
-        auth.FollowEnvironments(new Dictionary<string, string?> { ["Dev"] = "Development" });
+        await harness.AuthRefresh.FollowEnvironmentsAsync(new Dictionary<string, string?> { ["Dev"] = "Development" }, Cancellation);
         await harness.Environments.ChooseAsync(new("Development", []));
 
         // Act
@@ -168,7 +169,7 @@ public sealed class AuthViewModelTests
         var auth = harness.Tab().Auth;
         await harness.Environments.ChooseAsync(new("Dev", []));
         var fetching = auth.FetchTokenAsync();
-        auth.FollowEnvironments(new Dictionary<string, string?> { ["Dev"] = null });
+        await harness.AuthRefresh.FollowEnvironmentsAsync(new Dictionary<string, string?> { ["Dev"] = null }, Cancellation);
         var id = Guid.NewGuid();
 
         // Act

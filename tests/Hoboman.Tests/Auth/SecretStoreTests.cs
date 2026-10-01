@@ -229,4 +229,47 @@ public sealed class SecretStoreTests : IDisposable
         // Assert
         Assert.Null(await Store().OfAsync(id, SecretKind.Password, Cancellation));
     }
+
+    [Fact]
+    public async Task CopyAsync_WhenSecretsHaveKindsAndEnvironments_ThenCopiesThemWithoutChangingTheSource()
+    {
+        var store = Store();
+        var sourceId = Guid.NewGuid();
+        var targetId = Guid.NewGuid();
+        await store.SaveAsync(sourceId, SecretKind.ClientSecret, "client secret", Cancellation);
+        await store.SaveAsync(sourceId, SecretKind.Password, "password", Cancellation);
+        await store.SaveAsync(sourceId, SecretKind.Token, "bearer", Cancellation);
+        await store.SaveAsync(sourceId, SecretKind.OAuthToken, "Dev", "dev token", Cancellation);
+        await store.SaveAsync(sourceId, SecretKind.OAuthToken, "Prod", "prod token", Cancellation);
+        await store.SaveAsync(targetId, SecretKind.OAuthToken, "Other", "other token", Cancellation);
+
+        await store.CopyAsync(sourceId, targetId, Cancellation);
+
+        Assert.Equal("client secret", await store.OfAsync(targetId, SecretKind.ClientSecret, Cancellation));
+        Assert.Equal("password", await store.OfAsync(targetId, SecretKind.Password, Cancellation));
+        Assert.Equal("bearer", await store.OfAsync(targetId, SecretKind.Token, Cancellation));
+        Assert.Equal("dev token", await store.OfAsync(targetId, SecretKind.OAuthToken, "Dev", Cancellation));
+        Assert.Equal("prod token", await store.OfAsync(targetId, SecretKind.OAuthToken, "Prod", Cancellation));
+        Assert.Equal("other token", await store.OfAsync(targetId, SecretKind.OAuthToken, "Other", Cancellation));
+        Assert.Equal("client secret", await store.OfAsync(sourceId, SecretKind.ClientSecret, Cancellation));
+        Assert.Equal("dev token", await store.OfAsync(sourceId, SecretKind.OAuthToken, "Dev", Cancellation));
+    }
+
+    [Fact]
+    public async Task CopyAsync_WhenTheSourceIdIsEmpty_ThenKeepsTheTargetUntouched()
+    {
+        var store = Store();
+        var targetId = Guid.NewGuid();
+        await store.SaveAsync(targetId, SecretKind.ClientSecret, "secret", Cancellation);
+
+        await store.CopyAsync(Guid.Empty, targetId, Cancellation);
+
+        Assert.Equal("secret", await store.OfAsync(targetId, SecretKind.ClientSecret, Cancellation));
+    }
+
+    [Fact]
+    public async Task CopyAsync_WhenTheTargetIdIsEmpty_ThenThrows()
+    {
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => Store().CopyAsync(Guid.NewGuid(), Guid.Empty, Cancellation));
+    }
 }

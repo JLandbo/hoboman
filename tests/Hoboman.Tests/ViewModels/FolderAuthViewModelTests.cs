@@ -320,7 +320,7 @@ public sealed class FolderAuthViewModelTests
         using var harness = new Harness();
         await harness.Library.CreateFolderAsync("Users", Cancellation);
         File.WriteAllText(Path.Combine(harness.Folder.Requests, "Users", ".folder.json"), "{");
-        var folderAuth = new FolderAuthViewModel(harness.Library, harness.Secrets, harness.OAuth, harness.Environments, new Translator(Translation.Danish), harness.Clock, NullLogger<FolderAuthViewModel>.Instance);
+        var folderAuth = new FolderAuthViewModel(harness.Library, harness.Secrets, harness.AuthRefresh, harness.Environments, new Translator(Translation.Danish), harness.Clock, NullLogger<FolderAuthViewModel>.Instance);
 
         // Act
         await folderAuth.LoadAsync("Users", Cancellation);

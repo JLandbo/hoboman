@@ -330,7 +330,7 @@ public sealed class RequestLibraryTests : IDisposable
         var auth = await Library().AuthOfAsync("Users/Admin/Get user", ApiRequest.New(), Cancellation);
 
         // Assert
-        Assert.Equal(new AuthSource(users.Id, users.Auth), auth);
+        Assert.Equal(new AuthSource(users.Id, users.Auth, "Users"), auth);
     }
 
     [Fact]
