@@ -3,18 +3,19 @@ using Hoboman.Core.Languages;
 using Hoboman.Core.Requests;
 using Hoboman.Core.Storage;
 using Hoboman.Mvvm;
+using Hoboman.Services;
 using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
 
-public sealed class FolderAuthViewModel(RequestLibrary library, SecretStore secrets, IOAuthClient oauth, EnvironmentsViewModel environments, Translator translator, TimeProvider clock, ILogger<FolderAuthViewModel> logger) : ObservableObject
+public sealed class FolderAuthViewModel(RequestLibrary library, SecretStore secrets, AuthRefreshService refreshes, EnvironmentsViewModel environments, Translator translator, TimeProvider clock, ILogger<FolderAuthViewModel> logger) : ObservableObject
 {
     string _folder = "";
     FolderSettings _settings = new();
 
     public string Title { get; private set => Set(ref field, value); } = "";
 
-    public AuthViewModel Auth { get; } = new(secrets, oauth, environments, translator, clock, logger);
+    public AuthViewModel Auth { get; } = new(secrets, refreshes, environments, translator, clock, logger);
 
     public string? Problem { get; private set => Set(ref field, value); }
 
@@ -30,6 +31,7 @@ public sealed class FolderAuthViewModel(RequestLibrary library, SecretStore secr
         try
         {
             _settings = await library.LoadFolderAsync(folder, cancellationToken) ?? new();
+            Auth.UseOwner(_settings.Id, folder);
             Auth.Load(_settings.Auth);
             await Auth.LoadSecretsAsync(_settings.Id, cancellationToken);
             CanSave = true;
@@ -49,29 +51,7 @@ public sealed class FolderAuthViewModel(RequestLibrary library, SecretStore secr
         }
         try
         {
-            // The disk wins: a change made while the window was open is not overwritten, and a moved folder is not made again.
-            if (!library.FolderExists(_folder) || (await library.LoadFolderAsync(_folder, CancellationToken.None) ?? new()) != _settings)
-            {
-                Problem = translator.Of("FolderAuth.ChangedOnDisk");
-                return false;
-            }
-            var shared = _settings.Id != Guid.Empty && await library.SharesFolderIdAsync(_folder, _settings.Id, CancellationToken.None);
-            if (shared)
-            {
-                logger.LogWarning("{Folder} shares its id with another folder, so it gets its own", _folder);
-            }
-            var settings = _settings with { Id = _settings.Id == Guid.Empty || shared ? Guid.NewGuid() : _settings.Id, Auth = Auth.ToSettings() };
-            if (settings.Id != _settings.Id)
-            {
-                // A new id has no secrets yet, so the ones shown are saved under it.
-                Auth.ForgetSavedSecrets();
-            }
-            // The secrets go first, so a failure leaves no folder file behind that points at secrets that were never saved.
-            await Auth.SaveSecretsAsync(settings.Id, CancellationToken.None);
-            await library.SaveFolderAsync(_folder, settings, CancellationToken.None);
-            _settings = settings;
-            logger.LogInformation("Saved the auth of the folder {Folder}", _folder);
-            return true;
+            return await refreshes.SaveAsync(SaveUnderLockAsync, CancellationToken.None);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
@@ -79,5 +59,36 @@ public sealed class FolderAuthViewModel(RequestLibrary library, SecretStore secr
             Problem = translator.Format("FolderAuth.SaveFailed", translator.DetailsOf(exception));
             return false;
         }
+    }
+
+    async Task<bool> SaveUnderLockAsync()
+    {
+        // The disk wins: a change made while the window was open is not overwritten, and a moved folder is not made again.
+        if (!library.FolderExists(_folder) || (await library.LoadFolderAsync(_folder, CancellationToken.None) ?? new()) != _settings)
+        {
+            Problem = translator.Of("FolderAuth.ChangedOnDisk");
+            return false;
+        }
+        var shared = _settings.Id != Guid.Empty && await library.SharesFolderIdAsync(_folder, _settings.Id, CancellationToken.None);
+        if (shared)
+        {
+            logger.LogWarning("{Folder} shares its id with another folder, so it gets its own", _folder);
+        }
+        var settings = _settings with { Id = _settings.Id == Guid.Empty || shared ? Guid.NewGuid() : _settings.Id, Auth = Auth.ToSettings() };
+        if (settings.Id != _settings.Id)
+        {
+            // A new id has no secrets yet, so the ones shown are saved under it.
+            Auth.ForgetSavedSecrets();
+        }
+        // The secrets go first, so a failure leaves no folder file behind that points at secrets that were never saved.
+        await Auth.SaveSecretsUnderLockAsync(settings.Id, CancellationToken.None);
+        if (settings != _settings)
+        {
+            await library.SaveFolderAsync(_folder, settings, CancellationToken.None, createDirectory: false);
+        }
+        _settings = settings;
+        Auth.UseOwner(settings.Id, _folder);
+        logger.LogInformation("Saved the auth of the folder {Folder}", _folder);
+        return true;
     }
 }

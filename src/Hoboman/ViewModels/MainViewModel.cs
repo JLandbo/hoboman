@@ -122,6 +122,7 @@ public sealed class MainViewModel(
         var tab = new RequestTabViewModel(tabServices, entry.Request, suggestedName: entry.Name, historyName: item.File.Name) { Number = entry.Name is null ? ++_lastNumber : 0 };
         if (Tabs.FirstOrDefault(open => open.IsPreview) is { } preview)
         {
+            preview.Close();
             Tabs[Tabs.IndexOf(preview)] = tab;
         }
         else
@@ -143,8 +144,7 @@ public sealed class MainViewModel(
             }
             logger.LogInformation("Closed {Title} without saving it", tab.Title);
         }
-        tab.Cancel();
-        tab.Auth.CancelFetch();
+        tab.Close();
         var index = Tabs.IndexOf(tab);
         var wasSelected = SelectedTab == tab;
         Tabs.Remove(tab);
@@ -253,7 +253,7 @@ public sealed class MainViewModel(
         }
         try
         {
-            await library.RenameFolderAsync(folder.Path, name, CancellationToken.None);
+            await tabServices.AuthRefresh.SaveAsync(() => library.RenameFolderAsync(folder.Path, name, CancellationToken.None), CancellationToken.None);
             foreach (var request in inside.Where(node => !node.IsFolder))
             {
                 TabOf(request.Path)?.Rename(Moved(request.Path));
@@ -313,7 +313,7 @@ public sealed class MainViewModel(
             }
             try
             {
-                await library.DeleteFolderAsync(folder.Path, CancellationToken.None);
+                await tabServices.AuthRefresh.SaveAsync(() => library.DeleteFolderAsync(folder.Path, CancellationToken.None), CancellationToken.None);
             }
             // A file that cannot be deleted stops only itself, so what is gone is let go of either way, and what is left is kept.
             finally
@@ -394,11 +394,6 @@ public sealed class MainViewModel(
     {
         await environmentEditor.LoadAsync(CancellationToken.None);
         dialogs.EditEnvironments(environmentEditor);
-        // The saved tokens already followed a rename or removal, and the open tabs hold theirs in memory too.
-        foreach (var tab in Tabs)
-        {
-            tab.Auth.FollowEnvironments(environmentEditor.Changes);
-        }
     }
 
     public async Task EditFolderAuthAsync(RequestNodeViewModel folder)
@@ -410,11 +405,14 @@ public sealed class MainViewModel(
     async Task ReloadRequestsAsync()
     {
         await tree.LoadAsync(CancellationToken.None);
-        foreach (var tab in Tabs.Where(tab => tab.Name is not null || tab.OwnsId).ToList())
+        foreach (var tab in Tabs.ToList())
         {
             try
             {
-                await FollowAsync(tab);
+                if ((tab.Name is null && !tab.OwnsId) || !await FollowAsync(tab))
+                {
+                    await tab.UpdateAuthSourceAsync();
+                }
             }
             catch (Exception exception) when (FileProblem.Is(exception))
             {
@@ -425,7 +423,7 @@ public sealed class MainViewModel(
     }
 
     // The file wins over the tab, and a tab whose file was moved or renamed finds it again by its id.
-    async Task FollowAsync(RequestTabViewModel tab)
+    async Task<bool> FollowAsync(RequestTabViewModel tab)
     {
         var name = tab.Name;
         var request = name is null ? null : await library.LoadAsync(name, CancellationToken.None);
@@ -442,7 +440,7 @@ public sealed class MainViewModel(
                 logger.LogInformation("{Name} was removed on disk", tab.Name);
                 tab.Unlink();
             }
-            return;
+            return false;
         }
         if (!SameName(name, tab.Name))
         {
@@ -453,7 +451,9 @@ public sealed class MainViewModel(
         {
             logger.LogInformation("{Name} changed on disk and was reloaded", name);
             await tab.LoadSecretsAsync(CancellationToken.None);
+            return true;
         }
+        return false;
     }
 
     void RelabelTabs()

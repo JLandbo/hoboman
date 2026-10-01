@@ -9,6 +9,7 @@ using Hoboman.Core.Requests;
 using Hoboman.Core.Sending;
 using Hoboman.Core.Storage;
 using Hoboman.Mvvm;
+using Hoboman.Services;
 using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
@@ -26,6 +27,10 @@ public sealed class RequestTabViewModel : ObservableObject
     CancellationTokenSource? _formatting;
     LayoutProblem? _layoutProblem;
     bool _layingOut;
+    AuthSource? _inheritedAuth;
+    CancellationTokenSource? _refreshingAuth;
+    bool _closed;
+    int _authResolution;
 
     public RequestTabViewModel(RequestTabServices services, ApiRequest request, string? name = null, string? suggestedName = null, string? historyName = null)
     {
@@ -34,23 +39,33 @@ public sealed class RequestTabViewModel : ObservableObject
         SuggestedName = suggestedName;
         HistoryName = historyName;
         OwnsId = historyName is null;
-        Auth = new(services.Secrets, services.OAuth, services.Environments, services.Translator, services.Clock, services.Logger);
+        Auth = new(services.Secrets, services.AuthRefresh, services.Environments, services.Translator, services.Clock, services.Logger);
         Auth.Changed += MarkDirty;
         // A login open in the browser belongs to this tab, so the next call from the history must not take its place.
         Auth.PropertyChanged += (_, e) =>
         {
+            if (e.PropertyName == nameof(AuthViewModel.Kind) && !_loading)
+            {
+                _ = UpdateAuthSourceAsync();
+            }
+            if (e.PropertyName is nameof(AuthViewModel.Kind) or nameof(AuthViewModel.IsFetching))
+            {
+                RefreshAuthHeader();
+            }
             if (e.PropertyName == nameof(AuthViewModel.IsFetching) && Auth.IsFetching)
             {
                 Pin();
             }
         };
+        services.AuthRefresh.Changed += RefreshAuthHeader;
+        services.AuthRefresh.EnvironmentsChanged += Auth.FollowEnvironments;
         Query.Changed += MarkDirty;
         Headers.Changed += MarkDirty;
         Base64 = new(services.Translator, services.Clock);
         Base64.Changed += MarkDirty;
         Base64.DecodeChanged += ShowResponseAgain;
         // Without an address there is nothing to send, and trying would only leave a failed call in the history.
-        Send = new AsyncCommand(SendAsync, () => !string.IsNullOrWhiteSpace(Url));
+        Send = new AsyncCommand(SendAsync, () => !string.IsNullOrWhiteSpace(Url) && !IsAuthRefreshing);
         Save = new AsyncCommand(SaveAsync);
         Load(request);
     }
@@ -167,6 +182,130 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public AuthViewModel Auth { get; }
 
+    AuthKind? EffectiveAuthKind => Auth.Kind == AuthKind.Inherit ? _inheritedAuth?.Settings.Kind : Auth.Kind;
+
+    public string? InheritedAuthFolder => Auth.Kind == AuthKind.Inherit ? _inheritedAuth?.Folder : null;
+
+    public bool HasInheritedAuth => InheritedAuthFolder is not null;
+
+    public string AuthHeader => $"{_services.Translator.Of("Editor.Auth")} ({AuthTypeLabel})";
+
+    string AuthTypeLabel => EffectiveAuthKind switch
+    {
+        AuthKind.None => _services.Translator.Of("Auth.None"),
+        AuthKind.Basic => _services.Translator.Of("Auth.Basic"),
+        AuthKind.Bearer => _services.Translator.Of("Auth.BearerShort"),
+        AuthKind.OAuth2 => "OAuth",
+        _ => "…",
+    };
+
+    public string? AuthSourceTip => InheritedAuthFolder is { } folder ? _services.Translator.Format("Auth.InheritedFrom", folder.Replace("/", " / ")) : null;
+
+    public string RefreshAuthTip => _services.Translator.Format("OAuth.Reauthenticate", InheritedAuthFolder ?? Title, _services.Environments.Selected?.Name ?? _services.Translator.Of("Environment.None"));
+
+    public bool HasOAuth => EffectiveAuthKind == AuthKind.OAuth2;
+
+    string AuthOwner => AuthRefreshService.OwnerOf(Auth.Kind == AuthKind.Inherit && _inheritedAuth is { } inherited ? inherited : new(Id, Auth.ToSettings()));
+
+    public bool IsAuthRefreshing => _refreshingAuth is not null || Auth.IsFetching || _services.AuthRefresh.IsRefreshing(AuthOwner, EnvironmentOrNone().Name);
+
+    public bool CanRefreshAuth => !_closed && HasOAuth && !IsAuthRefreshing;
+
+    public async Task UpdateAuthSourceAsync()
+    {
+        var resolution = ++_authResolution;
+        var name = Name ?? SuggestedName;
+        var request = ToRequest();
+        try
+        {
+            var source = await _services.Library.AuthOfAsync(name, request, CancellationToken.None);
+            if (resolution == _authResolution)
+            {
+                _inheritedAuth = source;
+                RefreshAuthHeader();
+            }
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            if (resolution == _authResolution)
+            {
+                _inheritedAuth = null;
+                RefreshAuthHeader();
+            }
+            _services.Logger.LogWarning(exception, "Could not resolve the auth of {Name}", name);
+        }
+    }
+
+    public async Task<bool> RefreshAuthAsync()
+    {
+        if (_closed || IsAuthRefreshing)
+        {
+            return false;
+        }
+        var environment = EnvironmentOrNone();
+        using var refreshing = _refreshingAuth = new CancellationTokenSource();
+        _services.AuthRefresh.EnvironmentsChanged += FollowEnvironment;
+        Auth.SetTokenProblem(null);
+        RefreshAuthHeader();
+        try
+        {
+            await UpdateAuthSourceAsync();
+            if (refreshing.IsCancellationRequested || !HasOAuth)
+            {
+                return false;
+            }
+            Pin();
+            if (InheritedAuthFolder is not null)
+            {
+                return await _services.AuthRefresh.RefreshFolderAsync(_inheritedAuth!, environment, refreshing.Token);
+            }
+            await EnsureOwnIdAsync(refreshing.Token);
+            refreshing.Token.ThrowIfCancellationRequested();
+            var succeeded = await Auth.FetchTokenAsync(environment, saveSecrets: true, refreshing.Token);
+            IsDirty = HasUnsavedChanges();
+            return succeeded;
+        }
+        catch (OperationCanceledException) when (refreshing.IsCancellationRequested)
+        {
+            return false;
+        }
+        catch (Exception exception)
+        {
+            _services.Logger.LogWarning(exception, "Could not refresh the auth of {Name}", Name ?? SuggestedName);
+            Auth.SetTokenProblem(exception);
+            return false;
+        }
+        finally
+        {
+            _services.AuthRefresh.EnvironmentsChanged -= FollowEnvironment;
+            _refreshingAuth = null;
+            RefreshAuthHeader();
+        }
+
+        void FollowEnvironment(IReadOnlyDictionary<string, string?> changes)
+        {
+            if (changes.NameAfter(environment.Name) is not { } name)
+            {
+                refreshing.Cancel();
+                return;
+            }
+            environment = environment with { Name = name };
+        }
+    }
+
+    void RefreshAuthHeader()
+    {
+        OnPropertyChanged(nameof(AuthHeader));
+        OnPropertyChanged(nameof(InheritedAuthFolder));
+        OnPropertyChanged(nameof(HasInheritedAuth));
+        OnPropertyChanged(nameof(AuthSourceTip));
+        OnPropertyChanged(nameof(RefreshAuthTip));
+        OnPropertyChanged(nameof(HasOAuth));
+        OnPropertyChanged(nameof(IsAuthRefreshing));
+        OnPropertyChanged(nameof(CanRefreshAuth));
+        Send.RaiseCanExecuteChanged();
+    }
+
     public bool IsDirty { get; private set => Set(ref field, value); }
 
     public bool IsSending { get; private set => Set(ref field, value); }
@@ -243,6 +382,8 @@ public sealed class RequestTabViewModel : ObservableObject
             _services.Logger.LogError(exception, "Could not load the secrets for {Name}", Name);
             Problem = new(_services.Translator.Of("Response.SecretsFailed"), _services.Translator.DetailsOf(exception));
         }
+        cancellationToken.ThrowIfCancellationRequested();
+        await UpdateAuthSourceAsync();
     }
 
     public async Task SaveAsync()
@@ -273,6 +414,16 @@ public sealed class RequestTabViewModel : ObservableObject
     }
 
     public void Cancel() => _sending?.Cancel();
+
+    public void Close()
+    {
+        _closed = true;
+        Cancel();
+        _refreshingAuth?.Cancel();
+        Auth.CancelFetch();
+        _services.AuthRefresh.Changed -= RefreshAuthHeader;
+        _services.AuthRefresh.EnvironmentsChanged -= Auth.FollowEnvironments;
+    }
 
     public void Pin()
     {
@@ -331,7 +482,11 @@ public sealed class RequestTabViewModel : ObservableObject
         }
     }
 
-    public void Rename(string name) => Name = name;
+    public void Rename(string name)
+    {
+        Name = name;
+        _ = UpdateAuthSourceAsync();
+    }
 
     // Laid out off the UI thread, as a large body takes a while, and given to the view rather than set here, so the editor can take it in the way typing is, and it can be undone.
     // A click while one is at work would only do the same work again, so it is left out.
@@ -382,6 +537,7 @@ public sealed class RequestTabViewModel : ObservableObject
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(BodyLayoutProblem));
         Auth.Relabel();
+        RefreshAuthHeader();
         Base64.Relabel();
         // What is written beside the response's properties is in the language too.
         ShowResponseAgain();
@@ -409,6 +565,10 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public async Task SendAsync()
     {
+        if (IsAuthRefreshing)
+        {
+            return;
+        }
         // Sending makes a new call, so the history entry opens the old one again.
         HistoryName = null;
         Problem = null;
@@ -468,13 +628,18 @@ public sealed class RequestTabViewModel : ObservableObject
         {
             return;
         }
+        await EnsureOwnIdAsync(cancellationToken);
+        await Auth.SaveSecretsAsync(Id, cancellationToken);
+    }
+
+    async Task EnsureOwnIdAsync(CancellationToken cancellationToken)
+    {
         if (Name is { } name && OwnsId && await _services.Library.SharesRequestIdAsync(name, Id, cancellationToken))
         {
             _services.Logger.LogWarning("{Name} shares its id with another request, so it gets its own", name);
             TakeNewId();
         }
         EnsureOwnId();
-        await Auth.SaveSecretsAsync(Id, cancellationToken);
     }
 
     void EnsureOwnId()
@@ -489,6 +654,7 @@ public sealed class RequestTabViewModel : ObservableObject
     {
         Id = Guid.NewGuid();
         OwnsId = true;
+        Auth.UseOwner(Id);
         // A new id has no secrets yet, so the ones shown are saved under it.
         Auth.ForgetSavedSecrets();
         MarkDirty();
@@ -506,9 +672,15 @@ public sealed class RequestTabViewModel : ObservableObject
 
     void Load(ApiRequest request)
     {
+        if (Id != request.Id || Auth.ToSettings() != request.Auth)
+        {
+            _refreshingAuth?.Cancel();
+        }
+        _authResolution++;
         _loading = true;
         _savedJson = SavedJsonOf(request);
         Id = request.Id;
+        Auth.UseOwner(Id);
         Method = request.Method;
         Url = request.Url;
         Query.Load(request.Query);
@@ -519,6 +691,8 @@ public sealed class RequestTabViewModel : ObservableObject
         Auth.Load(request.Auth);
         _loading = false;
         IsDirty = false;
+        _inheritedAuth = Name is null && SuggestedName is null ? new(Id, AuthSettings.None) : null;
+        RefreshAuthHeader();
     }
 
     enum LayoutProblem { NotJson, NotXml, NeedsVariables }

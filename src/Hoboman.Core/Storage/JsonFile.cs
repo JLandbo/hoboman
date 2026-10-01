@@ -48,13 +48,13 @@ public sealed class JsonFile<T>(string path, T empty, ILogger logger)
     }
 
     // The write lock is taken before leaving the caller's thread, so saves are written in the order they were asked for.
-    public async Task SaveAsync(T value, CancellationToken cancellationToken)
+    public async Task SaveAsync(T value, CancellationToken cancellationToken, bool createDirectory = true)
     {
         await _writing.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             await LeaveCallersThread();
-            await WriteAsync(value, cancellationToken).ConfigureAwait(false);
+            await WriteAsync(value, cancellationToken, createDirectory).ConfigureAwait(false);
         }
         finally
         {
@@ -69,7 +69,7 @@ public sealed class JsonFile<T>(string path, T empty, ILogger logger)
         {
             await LeaveCallersThread();
             var value = change(await LoadAsync(cancellationToken).ConfigureAwait(false));
-            await WriteAsync(value, cancellationToken).ConfigureAwait(false);
+            await WriteAsync(value, cancellationToken, createDirectory: true).ConfigureAwait(false);
             return value;
         }
         finally
@@ -90,13 +90,16 @@ public sealed class JsonFile<T>(string path, T empty, ILogger logger)
         return value;
     }
 
-    async Task WriteAsync(T value, CancellationToken cancellationToken)
+    async Task WriteAsync(T value, CancellationToken cancellationToken, bool createDirectory)
     {
         for (var attempt = 1; ; attempt++)
         {
             try
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                if (createDirectory)
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                }
                 var temporary = path + ".tmp";
                 await using (var file = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.Asynchronous))
                 {

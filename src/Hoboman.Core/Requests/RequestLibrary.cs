@@ -37,7 +37,7 @@ public sealed class RequestLibrary(AppFolder folder, ILogger<RequestLibrary> log
 
     public async Task<FolderSettings?> LoadFolderAsync(string name, CancellationToken cancellationToken) => await FolderFileOf(name).LoadAsync(cancellationToken).ConfigureAwait(false);
 
-    public async Task SaveFolderAsync(string name, FolderSettings settings, CancellationToken cancellationToken) => await FolderFileOf(name).SaveAsync(settings, cancellationToken).ConfigureAwait(false);
+    public async Task SaveFolderAsync(string name, FolderSettings settings, CancellationToken cancellationToken, bool createDirectory = true) => await FolderFileOf(name).SaveAsync(settings, cancellationToken, createDirectory).ConfigureAwait(false);
 
     public Task<bool> SharesFolderIdAsync(string name, Guid id, CancellationToken cancellationToken) =>
         SharesIdAsync(FoldersAsync, async (other, token) => (await LoadFolderAsync(other, token).ConfigureAwait(false))?.Id, name, id, cancellationToken);
@@ -57,7 +57,7 @@ public sealed class RequestLibrary(AppFolder folder, ILogger<RequestLibrary> log
             if (await LoadFolderAsync(parent, cancellationToken).ConfigureAwait(false) is { Auth.Kind: not AuthKind.Inherit } settings)
             {
                 logger.LogDebug("{Name} uses the auth of the folder {Folder}", name, parent);
-                return new(settings.Id, settings.Auth);
+                return new(settings.Id, settings.Auth, parent);
             }
         }
         logger.LogDebug("{Name} inherits, but no folder above it has auth", name);

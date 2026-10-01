@@ -3,13 +3,16 @@ using Hoboman.Core.Auth;
 using Hoboman.Core.Environments;
 using Hoboman.Core.Languages;
 using Hoboman.Mvvm;
+using Hoboman.Services;
 using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
 
 // The auth of a request or a folder. Both use the same editor, and the secrets are saved under the id of whichever it belongs to.
-public sealed class AuthViewModel(SecretStore secrets, IOAuthClient oauth, EnvironmentsViewModel environments, Translator translator, TimeProvider clock, ILogger logger) : ObservableObject
+public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refreshes, EnvironmentsViewModel environments, Translator translator, TimeProvider clock, ILogger logger) : ObservableObject
 {
+    Guid _secretsId;
+    string? _folder;
     OAuthSettings? _oauth;
     string _savedPassword = "";
     string _savedToken = "";
@@ -17,8 +20,6 @@ public sealed class AuthViewModel(SecretStore secrets, IOAuthClient oauth, Envir
     Dictionary<string, OAuthToken> _tokens = [];
     Dictionary<string, OAuthToken> _savedTokens = [];
     CancellationTokenSource? _fetching;
-    // The environment the open login's token belongs to, followed through renames, and null once it is removed.
-    string? _fetchingFor;
     bool _loading;
 
     public event Action? Changed;
@@ -96,6 +97,7 @@ public sealed class AuthViewModel(SecretStore secrets, IOAuthClient oauth, Envir
     // Secrets that cannot be read are shown as empty, and the caller tells why.
     public async Task LoadSecretsAsync(Guid id, CancellationToken cancellationToken)
     {
+        UseOwner(id, _folder);
         string? password = null;
         string? token = null;
         string? clientSecret = null;
@@ -123,8 +125,10 @@ public sealed class AuthViewModel(SecretStore secrets, IOAuthClient oauth, Envir
         }
     }
 
+    public Task SaveSecretsAsync(Guid id, CancellationToken cancellationToken) => refreshes.SaveAsync(() => SaveSecretsUnderLockAsync(id, cancellationToken), cancellationToken);
+
     // Each secret is saved on its own and only marked as saved afterwards, so a value typed while saving is saved next time.
-    public async Task SaveSecretsAsync(Guid id, CancellationToken cancellationToken)
+    internal async Task SaveSecretsUnderLockAsync(Guid id, CancellationToken cancellationToken)
     {
         var (password, token, clientSecret) = (Password, Token, ClientSecret);
         if (password != _savedPassword)
@@ -142,8 +146,7 @@ public sealed class AuthViewModel(SecretStore secrets, IOAuthClient oauth, Envir
             await secrets.SaveAsync(id, SecretKind.ClientSecret, clientSecret, cancellationToken);
             _savedClientSecret = clientSecret;
         }
-        // A copy, because a token fetched while saving would change the tokens underneath.
-        foreach (var (environment, fetched) in _tokens.ToList())
+        foreach (var (environment, fetched) in _tokens)
         {
             if (_savedTokens.GetValueOrDefault(environment) != fetched)
             {
@@ -162,23 +165,37 @@ public sealed class AuthViewModel(SecretStore secrets, IOAuthClient oauth, Envir
 
     // The token is kept with the other secrets, so it is saved the same way and under the same id, when the request is sent or saved.
     // It belongs to the environment chosen when the fetch started, even if another is chosen while the login is open.
-    public async Task FetchTokenAsync()
+    public Task<bool> FetchTokenAsync() => FetchTokenAsync(environments.Selected ?? ApiEnvironment.None, saveSecrets: false, CancellationToken.None);
+
+    public async Task<bool> FetchTokenAsync(ApiEnvironment environment, bool saveSecrets, CancellationToken cancellationToken)
     {
+        if (IsFetching)
+        {
+            return false;
+        }
         TokenProblem = null;
         IsFetching = true;
-        var environment = environments.Selected ?? ApiEnvironment.None;
-        _fetchingFor = environment.Name;
-        using var fetching = _fetching = new CancellationTokenSource();
+        using var fetching = _fetching = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var settings = ToSettings();
+        var clientSecret = ClientSecret;
+        var source = new AuthSource(_secretsId, settings with { OAuth = EditedOAuth() }, _folder);
         try
         {
-            // Stored after the login, because the tokens can be loaded again while it is open.
-            var token = await oauth.GetTokenAsync(EditedOAuth(), ClientSecret, environment, fetching.Token);
-            if (_fetchingFor is { } name)
+            return await refreshes.FetchAsync(source, clientSecret, environment, async (token, environmentName, _) =>
             {
-                _tokens[name] = token;
+                if (_secretsId != source.SecretsId || _folder != source.Folder || ToSettings() != settings || ClientSecret != clientSecret || fetching.IsCancellationRequested)
+                {
+                    return false;
+                }
+                _tokens[environmentName] = token;
                 Relabel();
                 Changed?.Invoke();
-            }
+                if (saveSecrets)
+                {
+                    await SaveSecretsUnderLockAsync(source.SecretsId, fetching.Token);
+                }
+                return true;
+            }, fetching.Token);
         }
         catch (OperationCanceledException) when (fetching.IsCancellationRequested)
         {
@@ -186,16 +203,29 @@ public sealed class AuthViewModel(SecretStore secrets, IOAuthClient oauth, Envir
         catch (Exception exception)
         {
             logger.LogWarning(exception, "Could not get an OAuth token");
-            TokenProblem = translator.Format("OAuth.Failed", ReasonOf(exception));
+            SetTokenProblem(exception);
         }
         finally
         {
             _fetching = null;
             IsFetching = false;
         }
+        return false;
     }
 
     public void CancelFetch() => _fetching?.Cancel();
+
+    internal void SetTokenProblem(Exception? exception) => TokenProblem = exception is null || Kind is not (AuthKind.Inherit or AuthKind.OAuth2) ? null : translator.Format("OAuth.Failed", ReasonOf(exception));
+
+    internal void UseOwner(Guid id, string? folder = null)
+    {
+        if (_secretsId != id || _folder != folder)
+        {
+            CancelFetch();
+        }
+        _secretsId = id;
+        _folder = folder;
+    }
 
     // A renamed environment keeps its tokens and a removed one loses them.
     // Only the shown tokens move, so a renamed one is saved again under the new name, whether or not the saved ones could be moved.
@@ -205,7 +235,6 @@ public sealed class AuthViewModel(SecretStore secrets, IOAuthClient oauth, Envir
         {
             return;
         }
-        _fetchingFor = _fetchingFor is { } fetching ? changes.NameAfter(fetching) : null;
         _tokens = Followed(_tokens, changes);
         Relabel();
     }
@@ -262,7 +291,13 @@ public sealed class AuthViewModel(SecretStore secrets, IOAuthClient oauth, Envir
 
     void Change<T>(ref T storage, T value, [CallerMemberName] string? name = null)
     {
-        if (Set(ref storage, value, name) && !_loading)
+        if (!Set(ref storage, value, name))
+        {
+            return;
+        }
+        TokenProblem = null;
+        CancelFetch();
+        if (!_loading)
         {
             Changed?.Invoke();
         }

@@ -13,6 +13,7 @@ using Hoboman.Core.Sending;
 using Hoboman.Core.Settings;
 using Hoboman.Core.Storage;
 using Hoboman.Desktop;
+using Hoboman.Services;
 using Hoboman.ViewModels;
 using Hoboman.Views;
 
@@ -44,6 +45,7 @@ public partial class App : Application
         };
         logger.LogInformation("Hoboman started in {Folder}", AppContext.BaseDirectory);
         var main = _services.GetRequiredService<MainViewModel>();
+        _services.GetRequiredService<AuthRefreshService>().EnvironmentsChanged += _services.GetRequiredService<FolderAuthViewModel>().Auth.FollowEnvironments;
         Use(translator.Current);
         translator.Changed += () =>
         {
@@ -109,6 +111,7 @@ public partial class App : Application
         services.AddSingleton<RequestRunner>();
         services.AddSingleton<IBrowser, ShellBrowser>();
         services.AddSingleton<IOAuthClient, OAuthClient>();
+        services.AddSingleton<AuthRefreshService>();
         services.AddSingleton<IDialogs, Dialogs>();
         services.AddSingleton<IClipboard, SystemClipboard>();
         services.AddSingleton<ClipboardViewModel>();

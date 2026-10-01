@@ -79,6 +79,24 @@ public sealed class SecretStore(AppFolder folder, ILogger<SecretStore> logger)
         logger.LogInformation("Deleted the secrets for {Id}", id);
     }
 
+    public async Task CopyAsync(Guid sourceId, Guid targetId, CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfEqual(targetId, Guid.Empty);
+        if (sourceId == Guid.Empty || sourceId == targetId)
+        {
+            return;
+        }
+        await _file.UpdateAsync(saved =>
+        {
+            var copied = new Dictionary<string, string>(saved);
+            foreach (var (key, secret) in saved.Where(secret => secret.Key.StartsWith($"{sourceId}/", StringComparison.Ordinal)))
+            {
+                copied[$"{targetId}{key[key.IndexOf('/')..]}"] = secret;
+            }
+            return copied;
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
     string? Decrypted(string secret, Guid id, SecretKind kind)
     {
         try

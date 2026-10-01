@@ -41,6 +41,17 @@
                         </Style>
                     </TextBlock.Style>
                 </TextBlock>
+                <TextBlock Text="{Binding TokenProblem}" Foreground="{DynamicResource Error}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding TokenProblem}" Value="{x:Null}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
                 <StackPanel>
                     <StackPanel.Style>
                         <Style TargetType="StackPanel">
@@ -121,17 +132,6 @@
                             </TextBlock.Style>
                         </TextBlock>
                     </DockPanel>
-                    <TextBlock Text="{Binding TokenProblem}" Foreground="{DynamicResource Error}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock">
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding TokenProblem}" Value="{x:Null}">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
                     <StackPanel Style="{StaticResource OnlyForAuthorizationCode}">
                         <TextBlock Text="{DynamicResource OAuth.AuthorizeUrl}" Style="{StaticResource Label}" />
                         <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">

@@ -1,23 +1,20 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
-using Hoboman.Core.Auth;
 using Hoboman.Core.Environments;
 using Hoboman.Core.Languages;
 using Hoboman.Core.Storage;
 using Hoboman.Mvvm;
+using Hoboman.Services;
 using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
 
-public sealed class EnvironmentEditorViewModel(EnvironmentStore store, EnvironmentsViewModel environments, SecretStore secrets, Translator translator, ILogger<EnvironmentEditorViewModel> logger) : ObservableObject
+public sealed class EnvironmentEditorViewModel(EnvironmentStore store, EnvironmentsViewModel environments, AuthRefreshService refreshes, Translator translator, ILogger<EnvironmentEditorViewModel> logger) : ObservableObject
 {
     string _loadedJson = "";
     IReadOnlyList<string> _loadedNames = [];
 
     public ObservableCollection<EnvironmentDraftViewModel> Environments { get; } = [];
-
-    // The renames and removals of the last save, so the open tabs can move their tokens too.
-    public IReadOnlyDictionary<string, string?> Changes { get; private set; } = new Dictionary<string, string?>();
 
     public EnvironmentDraftViewModel? Selected { get; set => Set(ref field, value); }
 
@@ -31,7 +28,6 @@ public sealed class EnvironmentEditorViewModel(EnvironmentStore store, Environme
         Environments.Clear();
         Problem = null;
         CanSave = false;
-        Changes = new Dictionary<string, string?>();
         try
         {
             var loaded = await store.AllAsync(cancellationToken);
@@ -91,10 +87,9 @@ public sealed class EnvironmentEditorViewModel(EnvironmentStore store, Environme
             }
             await store.SaveAsync([.. Environments.Select(environment => environment.ToEnvironment())], CancellationToken.None);
             logger.LogInformation("Saved {Count} environments", names.Count);
-            Changes = ChangesOf();
             try
             {
-                await secrets.FollowEnvironmentsAsync(Changes, CancellationToken.None);
+                await refreshes.FollowEnvironmentsAsync(ChangesOf(), CancellationToken.None);
             }
             catch (Exception exception) when (FileProblem.Is(exception))
             {
