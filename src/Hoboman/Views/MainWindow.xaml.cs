@@ -2,6 +2,8 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Hoboman.Core.Environments;
 using Hoboman.Core.Settings;
@@ -13,9 +15,14 @@ namespace Hoboman.Views;
 
 public partial class MainWindow : Window
 {
+    static readonly TimeSpan _clipboardFeedbackShown = TimeSpan.FromMilliseconds(200);
+    static readonly TimeSpan _clipboardFeedbackFade = TimeSpan.FromMilliseconds(300);
+
     readonly MainViewModel _viewModel;
     readonly SettingsStore _settings;
     readonly ILogger<MainWindow> _logger;
+    readonly Dictionary<Button, int> _clipboardFeedback = [];
+    int _clipboardFeedbackVersion;
 
     public MainWindow(MainViewModel viewModel, SettingsStore settings, ILogger<MainWindow> logger)
     {
@@ -48,9 +55,37 @@ public partial class MainWindow : Window
 
     async void Settings_Click(object sender, RoutedEventArgs e) => await _viewModel.EditSettingsAsync();
 
-    async void Stringify_Click(object sender, RoutedEventArgs e) => await _viewModel.Clipboard.StringifyAsync();
+    async void Stringify_Click(object sender, RoutedEventArgs e) => await ChangeClipboardAsync((Button)sender, _viewModel.Clipboard.StringifyAsync);
 
-    async void Parse_Click(object sender, RoutedEventArgs e) => await _viewModel.Clipboard.ParseAsync();
+    async void Parse_Click(object sender, RoutedEventArgs e) => await ChangeClipboardAsync((Button)sender, _viewModel.Clipboard.ParseAsync);
+
+    async void EncodeBase64_Click(object sender, RoutedEventArgs e) => await ChangeClipboardAsync((Button)sender, _viewModel.Clipboard.EncodeBase64Async);
+
+    async void DecodeBase64_Click(object sender, RoutedEventArgs e) => await ChangeClipboardAsync((Button)sender, _viewModel.Clipboard.DecodeBase64Async);
+
+    async Task ChangeClipboardAsync(Button button, Func<Task<bool>> change)
+    {
+        var succeeded = await change();
+        var feedbackVersion = ++_clipboardFeedbackVersion;
+        _clipboardFeedback[button] = feedbackVersion;
+        var feedbackColor = ((SolidColorBrush)FindResource(succeeded ? "ClipboardSuccess" : "ClipboardError")).Color;
+        var normalColor = ((SolidColorBrush)FindResource("Button")).Color;
+        var background = new SolidColorBrush(feedbackColor);
+        button.Background = background;
+        await Task.Delay(_clipboardFeedbackShown);
+        if (_clipboardFeedback.GetValueOrDefault(button) != feedbackVersion)
+        {
+            return;
+        }
+        background.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(normalColor, _clipboardFeedbackFade));
+        await Task.Delay(_clipboardFeedbackFade);
+        if (_clipboardFeedback.GetValueOrDefault(button) != feedbackVersion)
+        {
+            return;
+        }
+        _clipboardFeedback.Remove(button);
+        button.ClearValue(Control.BackgroundProperty);
+    }
 
     void NewRequest_Click(object sender, RoutedEventArgs e) => _viewModel.NewTab();
 

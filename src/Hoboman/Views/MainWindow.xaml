@@ -22,6 +22,35 @@
             <Setter Property="Foreground" Value="{DynamicResource Attention}" />
             <Setter Property="Visibility" Value="Hidden" />
         </Style>
+        <Style x:Key="ToolGroup" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource Box}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BoxEdge}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="1" />
+        </Style>
+        <SolidColorBrush x:Key="ClipboardSuccess" Color="#22C55E" />
+        <SolidColorBrush x:Key="ClipboardError" Color="#EF4444" />
+        <Style x:Key="ClipboardButton" TargetType="Button" BasedOn="{StaticResource PillButton}">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="Margin" Value="3" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.85" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <DataTemplate DataType="{x:Type viewModels:RequestTabViewModel}">
             <Grid>
                 <Grid.RowDefinitions>
@@ -43,20 +72,28 @@
         </Grid.ColumnDefinitions>
 
         <DockPanel>
-            <WrapPanel x:Name="Tools" DockPanel.Dock="Bottom" Margin="0,8,0,0">
-                <Button Content="&#xE713;" ToolTip="{DynamicResource Settings.Title}" Click="Settings_Click"
-                        Style="{StaticResource IconButton}" Foreground="{DynamicResource Muted}" />
-                <Button Content="{DynamicResource Clipboard.Stringify}" ToolTip="{DynamicResource Clipboard.StringifyTip}" Click="Stringify_Click"
-                        Style="{StaticResource PillButton}" FontSize="11" Padding="8,3" Margin="8,0,0,0" VerticalAlignment="Center" />
-                <Button Content="{DynamicResource Clipboard.Parse}" ToolTip="{DynamicResource Clipboard.ParseTip}" Click="Parse_Click"
-                        Style="{StaticResource PillButton}" FontSize="11" Padding="8,3" Margin="6,0,0,0" VerticalAlignment="Center" />
-                <!-- Above the buttons, so the sidebar does not move while it is shown. -->
-                <Popup IsOpen="{Binding Clipboard.HasMessage, Mode=OneWay}" PlacementTarget="{Binding ElementName=Tools}" Placement="Top" VerticalOffset="-6" AllowsTransparency="True">
-                    <Border Background="{DynamicResource Button}" BorderBrush="{DynamicResource Edge}" BorderThickness="1" CornerRadius="6" Padding="8,4">
-                        <TextBlock Text="{Binding Clipboard.Message}" Foreground="{DynamicResource Text}" FontSize="12" />
-                    </Border>
-                </Popup>
-            </WrapPanel>
+            <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                <Border Style="{StaticResource ToolGroup}" Margin="0,0,0,5">
+                    <Button Content="&#xE713;" ToolTip="{DynamicResource Settings.Title}" Click="Settings_Click"
+                            Style="{StaticResource IconButton}" Foreground="{DynamicResource Muted}" Padding="8,3" Margin="3" HorizontalAlignment="Left" />
+                </Border>
+                <Border Style="{StaticResource ToolGroup}" Margin="0,0,0,5">
+                    <WrapPanel>
+                        <Button Content="{DynamicResource Clipboard.Stringify}" ToolTip="{DynamicResource Clipboard.StringifyTip}" Click="Stringify_Click"
+                                Style="{StaticResource ClipboardButton}" IsEnabled="{Binding Clipboard.CanChange}" />
+                        <Button Content="{DynamicResource Clipboard.Parse}" ToolTip="{DynamicResource Clipboard.ParseTip}" Click="Parse_Click"
+                                Style="{StaticResource ClipboardButton}" IsEnabled="{Binding Clipboard.CanChange}" />
+                    </WrapPanel>
+                </Border>
+                <Border Style="{StaticResource ToolGroup}">
+                    <WrapPanel>
+                        <Button Content="{DynamicResource Clipboard.EncodeBase64}" ToolTip="{DynamicResource Clipboard.EncodeBase64Tip}" Click="EncodeBase64_Click"
+                                Style="{StaticResource ClipboardButton}" IsEnabled="{Binding Clipboard.CanChange}" />
+                        <Button Content="{DynamicResource Clipboard.DecodeBase64}" ToolTip="{DynamicResource Clipboard.DecodeBase64Tip}" Click="DecodeBase64_Click"
+                                Style="{StaticResource ClipboardButton}" IsEnabled="{Binding Clipboard.CanChange}" />
+                    </WrapPanel>
+                </Border>
+            </StackPanel>
             <Border Style="{StaticResource Panel}">
                 <DockPanel>
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">

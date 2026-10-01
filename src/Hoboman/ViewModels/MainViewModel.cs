@@ -64,7 +64,6 @@ public sealed class MainViewModel(
     public Task LanguageChangedAsync()
     {
         history.Relabel();
-        clipboard.Relabel();
         RelabelTabs();
         return HistoryChangedAsync();
     }

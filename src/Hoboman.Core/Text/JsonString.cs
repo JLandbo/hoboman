@@ -9,8 +9,12 @@ public static class JsonString
     // Letters that are not ASCII stay as they are, as in the files and bodies.
     static readonly JsonSerializerOptions _asWritten = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
-    // JSON is made compact first, so it goes in on one line without the spaces of its layout. Any other text goes in as it is.
-    public static string Of(string text) => JsonSerializer.Serialize(CompactOf(text) ?? text, _asWritten);
+    // A JSON string is already done. Other JSON is made compact first, while any other text goes in as it is.
+    public static string Of(string text)
+    {
+        var trimmed = text.Trim();
+        return TextOf(trimmed) is not null ? trimmed : JsonSerializer.Serialize(CompactOf(text) ?? text, _asWritten);
+    }
 
     // Also when it was copied without its quotes, but not plain text, which would only come back as it was.
     public static string? From(string text)
