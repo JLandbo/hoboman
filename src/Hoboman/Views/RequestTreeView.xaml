@@ -21,6 +21,7 @@
                 <Style TargetType="TreeViewItem" BasedOn="{StaticResource TreeItem}">
                     <EventSetter Event="MouseLeftButtonUp" Handler="Item_MouseLeftButtonUp" />
                     <EventSetter Event="KeyDown" Handler="Item_KeyDown" />
+                    <EventSetter Event="ContextMenuOpening" Handler="Item_ContextMenuOpening" />
                     <Setter Property="ContextMenu" Value="{StaticResource FolderMenu}" />
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding IsFolder}" Value="False">
@@ -34,8 +35,13 @@
                     <DockPanel>
                         <TextBlock x:Name="Chevron" DockPanel.Dock="Left" Width="18" Text="&#xE76C;" FontFamily="{StaticResource IconFont}" FontSize="10"
                                    Foreground="{DynamicResource Muted}" VerticalAlignment="Center" Visibility="Collapsed" />
-                        <TextBlock x:Name="Method" DockPanel.Dock="Left" Width="58" Text="{Binding Method}" FontSize="11" FontWeight="Bold"
-                                   Foreground="{Binding Method, Converter={StaticResource MethodBrush}}" VerticalAlignment="Center" />
+                        <TextBlock x:Name="Method" DockPanel.Dock="Left" Width="58" Text="{Binding Tab.Method}" FontSize="11" FontWeight="Bold"
+                                   Foreground="{Binding Text, RelativeSource={RelativeSource Self}, Converter={StaticResource MethodBrush}}" VerticalAlignment="Center" />
+                        <Button x:Name="NewRequest" DockPanel.Dock="Right" Content="&#xE710;" Click="NewRequest_Click" Style="{StaticResource SmallIconButton}"
+                                ToolTip="{DynamicResource Sidebar.NewRequest}" AutomationProperties.Name="{DynamicResource Sidebar.NewRequest}" VerticalAlignment="Center" Visibility="Collapsed" />
+                        <Button x:Name="NewFolder" DockPanel.Dock="Right" Content="&#xE8F4;" Click="NewFolder_Click" Style="{StaticResource SmallIconButton}" Margin="0,0,4,0"
+                                ToolTip="{DynamicResource Sidebar.NewFolder}" AutomationProperties.Name="{DynamicResource Sidebar.NewFolder}" VerticalAlignment="Center" Visibility="Collapsed" />
+                        <Ellipse x:Name="Unsaved" DockPanel.Dock="Right" Width="7" Height="7" Fill="{DynamicResource Attention}" Margin="6,0,0,0" Visibility="Collapsed" />
                         <TextBlock x:Name="Label" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                     </DockPanel>
                     <HierarchicalDataTemplate.Triggers>
@@ -43,6 +49,17 @@
                             <Setter TargetName="Chevron" Property="Visibility" Value="Visible" />
                             <Setter TargetName="Method" Property="Visibility" Value="Collapsed" />
                             <Setter TargetName="Label" Property="FontWeight" Value="SemiBold" />
+                            <Setter TargetName="NewRequest" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="NewFolder" Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Tab}" Value="{x:Null}">
+                            <Setter TargetName="Method" Property="Text" Value="{Binding Method}" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding IsDraft}" Value="True">
+                            <Setter TargetName="Label" Property="Text" Value="{Binding Tab.Title}" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Tab.IsUnsaved}" Value="True">
+                            <Setter TargetName="Unsaved" Property="Visibility" Value="Visible" />
                         </DataTrigger>
                         <MultiDataTrigger>
                             <MultiDataTrigger.Conditions>

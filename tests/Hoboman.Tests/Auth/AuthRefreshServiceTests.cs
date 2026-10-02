@@ -92,16 +92,24 @@ public sealed class AuthRefreshServiceTests : IDisposable
         }
         var developmentLogin = new TaskCompletionSource<OAuthToken>();
         var productionLogin = new TaskCompletionSource<OAuthToken>();
+        using var loginStarted = new SemaphoreSlim(0);
         var requestsMade = 0;
-        var service = Service(new(cancellationToken => ++requestsMade switch
+        var service = Service(new(cancellationToken =>
         {
-            1 => developmentLogin.Task.WaitAsync(cancellationToken),
-            2 => productionLogin.Task.WaitAsync(cancellationToken),
-            _ => Task.FromResult(FakeOAuthClient.Token),
+            var login = ++requestsMade switch
+            {
+                1 => developmentLogin.Task.WaitAsync(cancellationToken),
+                2 => productionLogin.Task.WaitAsync(cancellationToken),
+                _ => Task.FromResult(FakeOAuthClient.Token),
+            };
+            loginStarted.Release();
+            return login;
         }));
         var source = new AuthSource(settings.Id, settings.Auth, "Users");
         var development = service.RefreshFolderAsync(source, new("Dev", []), Cancellation);
+        await loginStarted.WaitAsync(Cancellation);
         var production = service.RefreshFolderAsync(source, new("Prod", []), Cancellation);
+        await loginStarted.WaitAsync(Cancellation);
 
         developmentLogin.SetResult(FakeOAuthClient.Token);
         Assert.True(await development);

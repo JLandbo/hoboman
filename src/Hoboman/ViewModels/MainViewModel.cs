@@ -40,9 +40,19 @@ public sealed class MainViewModel(
 
     public ClipboardViewModel Clipboard => clipboard;
 
-    public ObservableCollection<RequestTabViewModel> Tabs { get; } = [];
+    public ObservableCollection<RequestTabViewModel> Tabs { get; } = tree.Follow([]);
 
-    public RequestTabViewModel? SelectedTab { get; set => Set(ref field, value); }
+    public RequestTabViewModel? SelectedTab
+    {
+        get;
+        set
+        {
+            if (Set(ref field, value))
+            {
+                tree.Activate(value);
+            }
+        }
+    }
 
     public async Task LoadAsync()
     {
@@ -79,7 +89,7 @@ public sealed class MainViewModel(
 
     public async Task OpenAsync(RequestNodeViewModel node)
     {
-        if (TabOf(node.Path) is { } open)
+        if ((node.IsDraft ? node.Tab : TabOf(node.Path)) is { } open)
         {
             SelectedTab = open;
             return;
@@ -178,15 +188,42 @@ public sealed class MainViewModel(
         {
             return;
         }
+        await CreateFolderAsync(name);
+    }
+
+    public async Task NewDraftAsync(RequestNodeViewModel folder)
+    {
+        var tab = new RequestTabViewModel(tabServices, ApiRequest.New(), destination: folder.Path) { Number = ++_lastNumber };
+        Add(tab);
+        await tab.UpdateAuthSourceAsync();
+    }
+
+    public async Task NewSubfolderAsync(RequestNodeViewModel parent)
+    {
+        if (dialogs.AskName(translator.Format("Folder.TitleIn", parent.Path), "", translator.Of("Folder.Create"), name => name.Contains('/') ? translator.Of("Save.Invalid") : ProblemOfNewFolder($"{parent.Path}/{name.Trim()}")) is not { } name)
+        {
+            return;
+        }
+        var path = $"{parent.Path}/{name.Trim()}";
+        if (await CreateFolderAsync(path))
+        {
+            tree.ExpandTo(path);
+        }
+    }
+
+    async Task<bool> CreateFolderAsync(string name)
+    {
         try
         {
             await library.CreateFolderAsync(name, CancellationToken.None);
             await tree.LoadAsync(CancellationToken.None);
+            return true;
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
             logger.LogError(exception, "Could not create the folder {Name}", name);
             dialogs.Tell(translator.Of("Folder.Failed"), translator.DetailsOf(exception));
+            return false;
         }
     }
 
@@ -254,9 +291,13 @@ public sealed class MainViewModel(
         try
         {
             await tabServices.AuthRefresh.SaveAsync(() => library.RenameFolderAsync(folder.Path, name, CancellationToken.None), CancellationToken.None);
-            foreach (var request in inside.Where(node => !node.IsFolder))
+            foreach (var request in inside.Where(node => !node.IsFolder && !node.IsDraft))
             {
                 TabOf(request.Path)?.Rename(Moved(request.Path));
+            }
+            foreach (var draft in inside.Where(node => node.IsDraft))
+            {
+                draft.Tab!.MoveTo(Moved(draft.Tab.Destination!));
             }
             await tree.LoadAsync(CancellationToken.None);
             foreach (var node in RequestTreeViewModel.Flatten(tree.Nodes).Where(node => opened.Contains(node.Path)))
@@ -298,8 +339,10 @@ public sealed class MainViewModel(
     public async Task DeleteFolderAsync(RequestNodeViewModel folder)
     {
         var inside = RequestTreeViewModel.Flatten([folder]).ToList();
-        var requests = inside.Where(node => !node.IsFolder).Select(node => node.Path).ToList();
-        if (!dialogs.Confirm(translator.Of("DeleteFolder.Title"), translator.Format("DeleteFolder.Message", folder.Name, requests.Count), translator.Of("Delete.Confirm"), []))
+        var requests = inside.Where(node => !node.IsFolder && !node.IsDraft).Select(node => node.Path).ToList();
+        var drafts = inside.Where(node => node.IsDraft).Select(node => node.Tab!).ToList();
+        var unsaved = Tabs.Where(tab => drafts.Contains(tab) || tab.IsDirty && requests.Contains(tab.Name, StringComparer.OrdinalIgnoreCase)).Select(tab => tab.Title).ToList();
+        if (!dialogs.Confirm(translator.Of("DeleteFolder.Title"), translator.Format("DeleteFolder.Message", folder.Name, requests.Count), translator.Of("Delete.Confirm"), unsaved))
         {
             return;
         }
@@ -321,6 +364,11 @@ public sealed class MainViewModel(
                 foreach (var name in requests.Where(name => !library.Exists(name)))
                 {
                     TabOf(name)?.Unlink();
+                }
+                foreach (var draft in drafts.Where(tab => tab.Destination is { } destination && !library.FolderExists(destination)))
+                {
+                    draft.Unlink();
+                    await draft.UpdateAuthSourceAsync();
                 }
                 await tree.LoadAsync(CancellationToken.None);
                 foreach (var id in ids)
@@ -473,6 +521,8 @@ public sealed class MainViewModel(
     RequestTabViewModel? TabOf(string name) => Tabs.FirstOrDefault(tab => SameName(tab.Name, name));
 
     string? ProblemOfFolder(string name) => RequestLibrary.IsValidName(name) ? null : translator.Of("Save.Invalid");
+
+    string? ProblemOfNewFolder(string name) => ProblemOfFolder(name) ?? (library.FolderExists(name) ? translator.Of("Folder.Exists") : null);
 
     // A folder cannot go inside itself.
     string? ProblemOfRenamedFolder(string name, string path) =>

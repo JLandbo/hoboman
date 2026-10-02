@@ -6,6 +6,368 @@ public sealed class MainViewModelTests
 {
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DeleteAsync_WhenADraftWasJustSaved_ThenDeletesItsSecretsWithoutWaitingForTheWatcher(bool deleteFolder)
+    {
+        using var harness = new Harness(new FakeDialogs(answer: "Users/Saved", accept: true));
+        await harness.Library.CreateFolderAsync("Users", Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.NewDraftAsync(NodeOf(main, "Users"));
+        var tab = main.SelectedTab!;
+        tab.Auth.Kind = AuthKind.Basic;
+        tab.Auth.Password = "secret";
+        await tab.SaveAsync();
+        Assert.Equal("secret", await harness.Secrets.OfAsync(tab.Id, SecretKind.Password, Cancellation));
+
+        if (deleteFolder)
+        {
+            await main.DeleteFolderAsync(NodeOf(main, "Users"));
+        }
+        else
+        {
+            await main.DeleteAsync(NodeOf(main, "Users/Saved"));
+        }
+
+        Assert.False(harness.Library.Exists("Users/Saved"));
+        Assert.Null(await harness.Secrets.OfAsync(tab.Id, SecretKind.Password, Cancellation));
+    }
+
+    [Fact]
+    public async Task Close_WhenTheMethodChangedDuringADraftsFirstSave_ThenShowsTheMethodWrittenToDisk()
+    {
+        using var harness = new Harness(new FakeDialogs(answer: "Users/Saved", accept: true));
+        await harness.Library.CreateFolderAsync("Users", Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.NewDraftAsync(NodeOf(main, "Users"));
+        var tab = main.SelectedTab!;
+        Task saving;
+        using (new FileStream(Path.Combine(harness.Folder.Requests, "Users", "Saved.json.tmp"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+        {
+            saving = tab.SaveAsync();
+            tab.Method = "POST";
+        }
+        await saving;
+        Assert.True(tab.IsDirty);
+        Assert.Equal("POST", tab.Method);
+
+        main.Close(tab);
+
+        Assert.Equal("GET", (await harness.Library.LoadAsync("Users/Saved", Cancellation))?.Method);
+        Assert.Null(NodeOf(main, "Users/Saved").Tab);
+        Assert.Equal("GET", NodeOf(main, "Users/Saved").Method);
+    }
+
+    [Theory]
+    [InlineData("Users")]
+    [InlineData("Users/Admin")]
+    [InlineData("Users/Admin/Private")]
+    public async Task NewDraftAsync_WhenCreatedInAFolder_ThenAddsAndSelectsAnUnsavedInheritingTab(string destination)
+    {
+        using var harness = new Harness();
+        await harness.Library.CreateFolderAsync(destination, Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        main.NewTab();
+        var global = main.SelectedTab;
+
+        await main.NewDraftAsync(NodeOf(main, destination));
+        var first = main.SelectedTab!;
+        await main.NewDraftAsync(NodeOf(main, destination));
+        var second = main.SelectedTab!;
+
+        Assert.Equal((3, 4), (first.Number, second.Number));
+        Assert.Equal(destination, second.Destination);
+        Assert.Equal((true, false, true, AuthKind.Inherit), (second.IsDraft, second.IsDirty, second.IsUnsaved, second.Auth.Kind));
+        Assert.Equal([first, second], NodeOf(main, destination).Children.Select(node => node.Tab));
+        Assert.True(NodeOf(main, destination).IsExpanded);
+        Assert.False(global!.IsDraft);
+        Assert.Equal(0, harness.Dialogs.Asked);
+        Assert.Empty(await harness.Library.NamesAsync(Cancellation));
+        main.Close(second);
+        Assert.Same(first, main.SelectedTab);
+        Assert.Same(first, Assert.Single(NodeOf(main, destination).Children).Tab);
+        Assert.Equal(0, harness.Dialogs.Asked);
+    }
+
+    [Theory]
+    [InlineData(" Admin ", null)]
+    [InlineData("", "Save.Invalid")]
+    [InlineData("   ", "Save.Invalid")]
+    [InlineData("../Other", "Save.Invalid")]
+    [InlineData("One/Two", "Save.Invalid")]
+    [InlineData("Bad?", "Save.Invalid")]
+    [InlineData("taken", "Folder.Exists")]
+    [InlineData(null, null)]
+    public async Task NewSubfolderAsync_WhenGivenAName_ThenValidatesAndCreatesOnlyOneChild(string? name, string? problem)
+    {
+        using var harness = new Harness(new FakeDialogs(answer: name));
+        await harness.Library.CreateFolderAsync("Users/Private/Taken", Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+
+        await main.NewSubfolderAsync(NodeOf(main, "Users/Private"));
+
+        var created = name is not null && problem is null;
+        var question = harness.Dialogs.NameQuestion!.Value;
+        Assert.Equal(("New folder in Users/Private", "", "Create", false), (question.Title, question.Name, question.Confirm, question.SelectLastPart));
+        if (problem is not null)
+        {
+            Assert.Equal(harness.Translator.Of(problem), question.ProblemOf(name!));
+        }
+        Assert.Equal(created, harness.Library.FolderExists("Users/Private/Admin"));
+        Assert.Equal(created, NodeOf(main, "Users/Private").IsExpanded);
+        Assert.Equal(created ? 4 : 3, (await harness.Library.FoldersAsync(Cancellation)).Count);
+    }
+
+    [Theory]
+    [InlineData("Archive/People")]
+    [InlineData("People")]
+    [InlineData("users")]
+    public async Task RenameFolderAsync_WhenItContainsDrafts_ThenMovesOnlyTheirDestinations(string name)
+    {
+        using var harness = new Harness(new FakeDialogs(answer: name));
+        await harness.Library.CreateFolderAsync("Users/Admin", Cancellation);
+        await harness.Library.CreateFolderAsync("Users2", Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.NewDraftAsync(NodeOf(main, "Users"));
+        var first = main.SelectedTab!;
+        await main.NewDraftAsync(NodeOf(main, "Users/Admin"));
+        var second = main.SelectedTab!;
+        second.Body = "content";
+        await main.NewDraftAsync(NodeOf(main, "Users2"));
+        var other = main.SelectedTab!;
+        main.SelectedTab = second;
+        var titles = main.Tabs.Select(tab => tab.Title).ToList();
+
+        await main.RenameFolderAsync(NodeOf(main, "Users"));
+        await main.RequestsChangedAsync();
+
+        Assert.Equal((name, $"{name}/Admin", "Users2"), (first.Destination, second.Destination, other.Destination));
+        Assert.Equal(titles, main.Tabs.Select(tab => tab.Title));
+        Assert.Equal("content", second.Body);
+        Assert.True(second.IsDirty);
+        Assert.Same(second, Assert.Single(RequestTreeViewModel.Flatten(main.Tree.Nodes), node => node.IsActive).Tab);
+        Assert.Equal(3, RequestTreeViewModel.Flatten(main.Tree.Nodes).Count(node => node.IsDraft));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DeleteFolderAsync_WhenItContainsDrafts_ThenListsThemAndKeepsTheirContentAfterConfirmation(bool accept)
+    {
+        using var harness = new Harness(new FakeDialogs(accept: accept));
+        await harness.Library.SaveAsync("Users/Admin/Get", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAsync("Users/Clean", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.NewDraftAsync(NodeOf(main, "Users"));
+        var untouched = main.SelectedTab!;
+        await main.OpenAsync(NodeOf(main, "Users/Admin/Get"));
+        var saved = main.SelectedTab!;
+        saved.Body = "saved edit";
+        await main.OpenAsync(NodeOf(main, "Users/Clean"));
+        var clean = main.SelectedTab!;
+        await main.NewDraftAsync(NodeOf(main, "Users/Admin"));
+        var draft = main.SelectedTab!;
+        draft.Body = "draft content";
+        var tabs = main.Tabs.ToList();
+
+        await main.DeleteFolderAsync(NodeOf(main, "Users"));
+
+        Assert.Equal(tabs, main.Tabs);
+        Assert.Same(draft, main.SelectedTab);
+        Assert.Equal("draft content", draft.Body);
+        Assert.Equal("saved edit", saved.Body);
+        Assert.Equal([untouched.Title, saved.Title, draft.Title], harness.Dialogs.ConfirmQuestion!.Value.Items);
+        Assert.Equal(harness.Translator.Format("DeleteFolder.Message", "Users", 2), harness.Dialogs.ConfirmQuestion.Value.Message);
+        Assert.Equal(!accept, draft.IsDraft);
+        Assert.Equal(!accept, untouched.IsDraft);
+        Assert.Equal(accept, untouched.IsDirty);
+        Assert.Equal(accept ? null : "Users/Admin", draft.Destination);
+        Assert.Equal(accept ? null : "Users/Clean", clean.Name);
+        Assert.Equal(accept ? 0 : 2, RequestTreeViewModel.Flatten(main.Tree.Nodes).Count(node => node.IsDraft));
+        Assert.Equal(accept ? null : "Users / Admin /", draft.Folder);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Close_WhenATabIsADraft_ThenOnlyPromptsForEdits(bool edited, bool accept)
+    {
+        using var harness = new Harness(new FakeDialogs(accept: accept));
+        await harness.Library.CreateFolderAsync("Users", Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.NewDraftAsync(NodeOf(main, "Users"));
+        var draft = main.SelectedTab!;
+        if (edited)
+        {
+            draft.Body = "content";
+        }
+        Assert.Equal(!edited || accept, main.CanClose());
+        if (edited)
+        {
+            Assert.Equal([draft.Title], harness.Dialogs.ConfirmQuestion!.Value.Items);
+        }
+
+        main.Close(draft);
+
+        Assert.Equal(edited && !accept, main.Tabs.Contains(draft));
+        Assert.Equal(edited && !accept ? 1 : 0, RequestTreeViewModel.Flatten(main.Tree.Nodes).Count(node => node.IsDraft));
+        Assert.Equal(edited ? 2 : 0, harness.Dialogs.Asked);
+        Assert.Empty(await harness.Library.NamesAsync(Cancellation));
+    }
+
+    [Fact]
+    public async Task OpenAsync_WhenDraftsAndFilesShareAName_ThenOpensTheCorrectTabWithoutDuplicates()
+    {
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("Users/New request (2)", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.NewDraftAsync(NodeOf(main, "Users"));
+        var draft = main.SelectedTab!;
+        var draftRow = Assert.Single(NodeOf(main, "Users").Children, node => node.IsDraft);
+        var fileRow = Assert.Single(NodeOf(main, "Users").Children, node => !node.IsDraft);
+
+        await main.OpenAsync(fileRow);
+        var saved = main.SelectedTab;
+        await main.OpenAsync(draftRow);
+        await main.OpenAsync(draftRow);
+
+        Assert.Same(draft, main.SelectedTab);
+        Assert.Equal(3, main.Tabs.Count);
+        await main.OpenAsync(fileRow);
+        Assert.Same(saved, main.SelectedTab);
+        await draft.SendAsync();
+        await main.HistoryChangedAsync();
+        await main.OpenAsync(Assert.Single(main.History.Items));
+        Assert.False(main.SelectedTab!.IsDraft);
+        Assert.Null(main.SelectedTab.Destination);
+        Assert.DoesNotContain(RequestTreeViewModel.Flatten(main.Tree.Nodes), node => node.IsActive);
+        Assert.Single(RequestTreeViewModel.Flatten(main.Tree.Nodes), node => node.IsDraft);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MoveAsync_WhenDroppingOnADraft_ThenMovesTheFileToItsDestination(bool root)
+    {
+        using var harness = new Harness();
+        await harness.Library.CreateFolderAsync("Users", Cancellation);
+        await harness.Library.SaveAsync("Other/Get", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.NewDraftAsync(NodeOf(main, "Users"));
+        var draft = main.SelectedTab!;
+        if (root)
+        {
+            await harness.Library.DeleteFolderAsync("Users", Cancellation);
+            await main.RequestsChangedAsync();
+        }
+        var row = Assert.Single(RequestTreeViewModel.Flatten(main.Tree.Nodes), node => node.IsDraft);
+
+        await main.MoveAsync(NodeOf(main, "Other/Get"), row);
+
+        Assert.Equal([root ? "Get" : "Users/Get"], await harness.Library.NamesAsync(Cancellation));
+        Assert.Same(draft, Assert.Single(RequestTreeViewModel.Flatten(main.Tree.Nodes), node => node.IsDraft).Tab);
+        Assert.True(draft.IsUnsaved);
+        Assert.False(draft.IsDirty);
+    }
+
+    [Fact]
+    public async Task DeleteFolderAsync_WhenOnlyPartCanBeDeleted_ThenOnlyUnlinksDraftsWhoseFoldersAreGone()
+    {
+        using var harness = new Harness(new FakeDialogs(accept: true));
+        await harness.Library.CreateFolderAsync("Users/Empty", Cancellation);
+        await harness.Library.SaveAsync("Users/Locked/Get", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.NewDraftAsync(NodeOf(main, "Users/Empty"));
+        var empty = main.SelectedTab!;
+        await main.NewDraftAsync(NodeOf(main, "Users/Locked"));
+        var locked = main.SelectedTab!;
+        using var file = new FileStream(Path.Combine(harness.Folder.Requests, "Users", "Locked", "Get.json"), FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        await main.DeleteFolderAsync(NodeOf(main, "Users"));
+
+        Assert.Equal(harness.Library.FolderExists("Users/Empty"), empty.IsDraft);
+        Assert.Equal(harness.Library.FolderExists("Users/Locked"), locked.IsDraft);
+        Assert.True(locked.IsDraft);
+        Assert.Equal("Users/Locked", locked.Destination);
+        Assert.Equal(2, harness.Dialogs.Asked);
+        Assert.Same(locked, main.SelectedTab);
+        Assert.Equal(main.Tabs.Count(tab => tab.IsDraft), RequestTreeViewModel.Flatten(main.Tree.Nodes).Count(node => node.IsDraft));
+    }
+
+    [Fact]
+    public async Task NewSubfolderAsync_WhenCreationFails_ThenReportsItWithoutExpandingTheParent()
+    {
+        using var harness = new Harness(new FakeDialogs(answer: "Child"));
+        await harness.Library.CreateFolderAsync("Users", Cancellation);
+        File.WriteAllText(Path.Combine(harness.Folder.Requests, "Users", "Child"), "blocked");
+        var main = harness.Main();
+        await main.LoadAsync();
+
+        await main.NewSubfolderAsync(NodeOf(main, "Users"));
+
+        Assert.False(NodeOf(main, "Users").IsExpanded);
+        Assert.False(harness.Library.FolderExists("Users/Child"));
+        Assert.Equal(2, harness.Dialogs.Asked);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("Taken")]
+    public async Task RenameFolderAsync_WhenCancelledOrRejected_ThenLeavesDraftsWhereTheyAre(string? answer)
+    {
+        using var harness = new Harness(new FakeDialogs(answer: answer));
+        await harness.Library.CreateFolderAsync("Users/Admin", Cancellation);
+        await harness.Library.CreateFolderAsync("Taken", Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.NewDraftAsync(NodeOf(main, "Users/Admin"));
+        var draft = main.SelectedTab!;
+
+        await main.RenameFolderAsync(NodeOf(main, "Users"));
+
+        Assert.Equal("Users/Admin", draft.Destination);
+        Assert.Same(draft, Assert.Single(RequestTreeViewModel.Flatten(main.Tree.Nodes), node => node.IsDraft).Tab);
+    }
+
+    [Fact]
+    public async Task RequestsChangedAsync_WhenTheFoldersAuthChanges_ThenUpdatesDraftsWithoutChangingTheirContent()
+    {
+        using var harness = new Harness(new FakeDialogs(answer: "People"));
+        await harness.Library.SaveFolderAsync("Users", new() { Id = Guid.NewGuid(), Auth = new(AuthKind.Basic, "user") }, Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.NewDraftAsync(NodeOf(main, "Users"));
+        var draft = main.SelectedTab!;
+        draft.Body = "content";
+        await draft.SendAsync();
+        var response = draft.Response;
+
+        await harness.Library.SaveFolderAsync("Users", new() { Id = Guid.NewGuid(), Auth = new(AuthKind.OAuth2) }, Cancellation);
+        await main.RequestsChangedAsync();
+        await main.RenameFolderAsync(NodeOf(main, "Users"));
+        await main.RequestsChangedAsync();
+
+        Assert.True(draft.HasOAuth);
+        Assert.Equal("People", draft.InheritedAuthFolder);
+        Assert.Equal(harness.Translator.Format("Auth.InheritedFrom", "People"), draft.AuthSourceTip);
+        Assert.Equal("content", draft.Body);
+        Assert.Same(response, draft.Response);
+        Assert.True(draft.IsDirty);
+    }
+
     [Fact]
     public async Task OpenAsync_WhenTheHistoryTabIsFetchingAToken_ThenKeepsIt()
     {

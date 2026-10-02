@@ -83,6 +83,7 @@
     "Environments.ChangedOnDisk": "The environments changed on disk while this window was open. Close the window and open it again.",
     "File.Invalid": "{0} is not valid.",
     "Folder.Title": "New folder",
+    "Folder.TitleIn": "New folder in {0}",
     "Folder.Create": "Create",
     "Folder.Failed": "The folder could not be created",
     "Folder.Exists": "A folder with that name already exists.",

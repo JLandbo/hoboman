@@ -7,6 +7,272 @@ public sealed class RequestTabViewModelTests
 {
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
+    [Theory]
+    [InlineData("Users", 1, false)]
+    [InlineData("Users/Admin", 4, true)]
+    [InlineData("Users/Admin/Private", 12, false)]
+    [InlineData(null, 2, true)]
+    public async Task DraftName_WhenSentAndRelabelled_ThenUsesItsDestinationAndTheCurrentTitle(string? destination, int number, bool danish)
+    {
+        using var harness = new Harness();
+        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "Users") { Number = number };
+        tab.MoveTo(destination);
+        harness.Translator.Use(danish ? Translation.Danish : Translation.English);
+        tab.Relabel();
+        var title = harness.Translator.Format("Tab.New", number);
+        var name = destination is null ? title : $"{destination}/{title}";
+
+        await tab.SendAsync();
+        await tab.SaveAsync();
+
+        Assert.Equal(name, tab.DraftName);
+        Assert.Equal(destination is null ? null : $"{destination.Replace("/", " / ")} /", tab.Folder);
+        var question = harness.Dialogs.NameQuestion!.Value;
+        Assert.Equal((name, true), (question.Name, question.SelectLastPart));
+        Assert.Equal(harness.Translator.Of("Save.Title"), question.Title);
+        Assert.Equal(harness.Translator.Of("Common.Save"), question.Confirm);
+        Assert.Equal(name, Assert.Single(await harness.History().ReadAsync(await harness.History().LatestAsync(10, Cancellation), Cancellation)).Entry.Name);
+        Assert.True(tab.IsDraft);
+        Assert.True(tab.IsUnsaved);
+        Assert.False(tab.IsDirty);
+        Assert.Empty(await harness.Library.NamesAsync(Cancellation));
+        harness.Translator.Use(danish ? Translation.English : Translation.Danish);
+        tab.Relabel();
+        Assert.NotEqual(title, tab.Title);
+        Assert.Equal(number, tab.Number);
+        Assert.Equal(name, Assert.Single(await harness.History().ReadAsync(await harness.History().LatestAsync(10, Cancellation), Cancellation)).Entry.Name);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    public async Task IsUnsaved_WhenEditedAndSent_ThenIncludesDraftsEvenWithoutEdits(bool draft, bool fail)
+    {
+        using var harness = new Harness(send: fail ? () => throw new HttpRequestException("Failed") : null);
+        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: draft ? "Users" : null);
+        var changes = new List<string?>();
+        tab.PropertyChanged += (_, args) => changes.Add(args.PropertyName);
+        Assert.Equal(draft, tab.IsUnsaved);
+        Assert.False(tab.IsDirty);
+        Assert.Equal(AuthKind.Inherit, tab.Auth.Kind);
+        Assert.Equal("GET", tab.Method);
+        Assert.Equal("", tab.Url);
+        Assert.Equal("", tab.Body);
+
+        tab.Body = "content";
+        await tab.SendAsync();
+        await tab.UpdateAuthSourceAsync();
+
+        Assert.True(tab.IsDirty);
+        Assert.True(tab.IsUnsaved);
+        Assert.Contains(nameof(RequestTabViewModel.IsUnsaved), changes);
+        Assert.Equal(fail, tab.Problem is not null);
+        Assert.Empty(await harness.Library.NamesAsync(Cancellation));
+    }
+
+    [Fact]
+    public async Task Draft_WhenFetchingTokensAndSending_ThenKeepsItsDotWithoutCreatingARequestFile()
+    {
+        using var harness = new Harness();
+        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New() with { Auth = new(AuthKind.OAuth2) }, destination: "Users");
+
+        await tab.Auth.FetchTokenAsync();
+        await tab.SendAsync();
+        await tab.UpdateAuthSourceAsync();
+
+        Assert.True(tab.IsDraft);
+        Assert.True(tab.IsUnsaved);
+        Assert.False(tab.IsDirty);
+        Assert.Empty(await harness.Library.NamesAsync(Cancellation));
+        Assert.NotNull(await harness.Secrets.OfAsync(tab.Id, SecretKind.OAuthToken, Cancellation));
+    }
+
+    [Fact]
+    public async Task Draft_WhenItsDestinationChanges_ThenUsesTheNearestFoldersAuth()
+    {
+        using var harness = new Harness();
+        var parent = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.OAuth2) };
+        var child = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Basic, "user") };
+        await harness.Library.SaveFolderAsync("Users", parent, Cancellation);
+        await harness.Library.SaveFolderAsync("Users/Admin", child, Cancellation);
+        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "Users/Admin/Private");
+        await tab.UpdateAuthSourceAsync();
+        Assert.Equal("Users/Admin", tab.InheritedAuthFolder);
+        await tab.SendAsync();
+        Assert.Equal(child.Id, harness.Sender.Auth?.SecretsId);
+
+        tab.MoveTo("Users/Other");
+        await tab.UpdateAuthSourceAsync();
+
+        Assert.True(tab.HasInheritedAuth);
+        Assert.True(tab.HasOAuth);
+        Assert.Equal(harness.Translator.Format("Auth.InheritedFrom", "Users"), tab.AuthSourceTip);
+        Assert.Equal(harness.Translator.Format("OAuth.Reauthenticate", "Users", harness.Translator.Of("Environment.None")), tab.RefreshAuthTip);
+        await tab.SendAsync();
+        Assert.Equal(parent.Id, harness.Sender.Auth?.SecretsId);
+        tab.MoveTo(null);
+        await tab.UpdateAuthSourceAsync();
+        Assert.False(tab.HasInheritedAuth);
+        Assert.Equal("Auth (None)", tab.AuthHeader);
+    }
+
+    [Theory]
+    [InlineData("Users/Saved")]
+    [InlineData("Other/Saved")]
+    [InlineData("Saved")]
+    [InlineData("New/Deep/Saved")]
+    public async Task SaveAsync_WhenSavingADraft_ThenLeavesNoDraftStateAndUsesTheChosenFoldersAuth(string name)
+    {
+        using var harness = new Harness(new FakeDialogs(answer: name));
+        await harness.Library.SaveFolderAsync("Other", new() { Id = Guid.NewGuid(), Auth = new(AuthKind.Basic, "user") }, Cancellation);
+        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "Users") { Number = 3 };
+        tab.Body = "content";
+
+        await tab.SaveAsync();
+
+        Assert.Equal(name, tab.Name);
+        Assert.Equal("Saved", tab.Title);
+        Assert.False(tab.IsDraft);
+        Assert.False(tab.IsUnsaved);
+        Assert.Null(tab.Destination);
+        Assert.Null(tab.DraftName);
+        Assert.Equal("content", (await harness.Library.LoadAsync(name, Cancellation))?.Body);
+        Assert.Equal(name.StartsWith("Other/") ? "Other" : null, tab.InheritedAuthFolder);
+        tab.Unlink();
+        Assert.False(tab.IsDraft);
+        Assert.True(tab.IsUnsaved);
+        Assert.Null(tab.Destination);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("Taken")]
+    [InlineData("taken")]
+    [InlineData("Bad?")]
+    public async Task SaveAsync_WhenADraftNameIsCancelledOrInvalid_ThenKeepsTheDraft(string? answer)
+    {
+        using var harness = new Harness(new FakeDialogs(answer: answer));
+        await harness.Library.SaveAsync("Taken", ApiRequest.New(), Cancellation);
+        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "Users") { Number = 3 };
+        tab.Body = "content";
+
+        await tab.SaveAsync();
+
+        Assert.Equal((true, true, true, "Users", "New request (3)", "content"), (tab.IsDraft, tab.IsDirty, tab.IsUnsaved, tab.Destination, tab.Title, tab.Body));
+        Assert.Null(tab.Name);
+        Assert.Equal(["Taken"], await harness.Library.NamesAsync(Cancellation));
+        var problemOf = harness.Dialogs.NameQuestion!.Value.ProblemOf;
+        Assert.Equal(harness.Translator.Of("Save.Exists"), problemOf("taken"));
+        Assert.Equal(harness.Translator.Of("Save.Invalid"), problemOf("Bad?"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SaveAsync_WhenADraftCannotBeWritten_ThenKeepsItsDestinationAndContent(bool secrets)
+    {
+        using var harness = new Harness(new FakeDialogs(answer: "Other/Saved"));
+        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "Users") { Number = 3 };
+        tab.Body = "content";
+        Directory.CreateDirectory(harness.Folder.Root);
+        if (secrets)
+        {
+            Directory.CreateDirectory(harness.Folder.Secrets);
+            tab.Auth.Password = "secret";
+        }
+        else
+        {
+            Directory.CreateDirectory(harness.Folder.Requests);
+            File.WriteAllText(Path.Combine(harness.Folder.Requests, "Other"), "blocked");
+        }
+
+        await tab.SaveAsync();
+
+        Assert.NotNull(tab.Problem);
+        Assert.Null(tab.Name);
+        Assert.Equal((true, true, "Users", "New request (3)", "content"), (tab.IsDraft, tab.IsUnsaved, tab.Destination, tab.Title, tab.Body));
+        Assert.Empty(await harness.Library.NamesAsync(Cancellation));
+    }
+
+    [Fact]
+    public async Task Unlink_WhenADraftLosesItsFolder_ThenKeepsContentAsAnOrdinaryUnsavedTab()
+    {
+        using var harness = new Harness();
+        await harness.Library.SaveFolderAsync("Users", new() { Auth = new(AuthKind.Basic, "user") }, Cancellation);
+        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "Users") { Number = 3 };
+        await tab.UpdateAuthSourceAsync();
+        tab.Body = "content";
+
+        tab.Unlink();
+        await tab.UpdateAuthSourceAsync();
+        await tab.SaveAsync();
+
+        Assert.False(tab.IsDraft);
+        Assert.True(tab.IsDirty);
+        Assert.Null(tab.Folder);
+        Assert.Null(tab.Destination);
+        Assert.False(tab.HasInheritedAuth);
+        Assert.Equal("content", tab.Body);
+        Assert.Equal("New request (3)", tab.Title);
+        Assert.Equal(("", false), (harness.Dialogs.NameQuestion!.Value.Name, harness.Dialogs.NameQuestion.Value.SelectLastPart));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SaveAsync_WhenANonDraftHasNoFile_ThenSelectsTheWholeSuggestedName(bool history)
+    {
+        using var harness = new Harness();
+        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), suggestedName: history ? "Users/Get" : null, historyName: history ? "call.json" : null);
+
+        await tab.SaveAsync();
+
+        Assert.Equal((history ? "Users/Get" : "", false), (harness.Dialogs.NameQuestion!.Value.Name, harness.Dialogs.NameQuestion.Value.SelectLastPart));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenADraftIsEditedDuringItsFirstSave_ThenKeepsTheNewEditsUnsaved()
+    {
+        using var harness = new Harness(new FakeDialogs(answer: "Users/Saved"));
+        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "Users");
+        tab.Body = "saved content";
+
+        var saving = tab.SaveAsync();
+        tab.Body = "new content";
+        await saving;
+
+        Assert.False(tab.IsDraft);
+        Assert.Null(tab.Destination);
+        Assert.True(tab.IsDirty);
+        Assert.True(tab.IsUnsaved);
+        Assert.Equal("new content", tab.Body);
+        Assert.Equal("saved content", (await harness.Library.LoadAsync("Users/Saved", Cancellation))?.Body);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SendAsync_WhenADraftCannotUseItsFoldersAuth_ThenKeepsItsContentAndDestination(bool invalidFile)
+    {
+        using var harness = new Harness(send: invalidFile ? null : () => throw new MissingSecretException(SecretKind.OAuthToken));
+        await harness.Library.CreateFolderAsync("Users", Cancellation);
+        if (invalidFile)
+        {
+            File.WriteAllText(Path.Combine(harness.Folder.Requests, "Users", ".folder.json"), "{");
+        }
+        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "Users");
+        tab.Body = "content";
+
+        await tab.SendAsync();
+
+        Assert.NotNull(tab.Problem);
+        Assert.Contains(invalidFile ? ".folder.json" : "OAuth", tab.Problem.Details);
+        Assert.Equal((true, "Users", "content"), (tab.IsDraft, tab.Destination, tab.Body));
+        Assert.Empty(await harness.Library.NamesAsync(Cancellation));
+    }
+
     [Fact]
     public async Task SendAsync_WhenTheCallSucceeds_ThenShowsTheResponse()
     {

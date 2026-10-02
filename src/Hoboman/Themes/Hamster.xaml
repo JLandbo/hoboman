@@ -623,6 +623,9 @@
                         <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
                             <Setter TargetName="Row" Property="Background" Value="{DynamicResource Card}" />
                         </Trigger>
+                        <DataTrigger Binding="{Binding IsActive}" Value="True">
+                            <Setter TargetName="Row" Property="Background" Value="{DynamicResource Edge}" />
+                        </DataTrigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="Row" Property="BorderBrush" Value="{DynamicResource Attention}" />
                         </Trigger>

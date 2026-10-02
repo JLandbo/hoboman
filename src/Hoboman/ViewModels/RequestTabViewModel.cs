@@ -32,12 +32,14 @@ public sealed class RequestTabViewModel : ObservableObject
     bool _closed;
     int _authResolution;
 
-    public RequestTabViewModel(RequestTabServices services, ApiRequest request, string? name = null, string? suggestedName = null, string? historyName = null)
+    public RequestTabViewModel(RequestTabServices services, ApiRequest request, string? name = null, string? suggestedName = null, string? historyName = null, string? destination = null)
     {
         _services = services;
         Name = name;
         SuggestedName = suggestedName;
         HistoryName = historyName;
+        IsDraft = destination is not null;
+        Destination = destination;
         OwnsId = historyName is null;
         Auth = new(services.Secrets, services.AuthRefresh, services.Environments, services.Translator, services.Clock, services.Logger);
         Auth.Changed += MarkDirty;
@@ -127,9 +129,46 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public string Title => (Name ?? SuggestedName) is { } name ? RequestLibrary.LastPartOf(name) : _services.Translator.Format("Tab.New", Number);
 
-    public string? Folder => RequestLibrary.ParentOf(Name) is { } parent ? $"{parent.Replace("/", " / ")} /" : null;
+    public string? Folder => RequestLibrary.ParentOf(Name ?? DraftName) is { } parent ? $"{parent.Replace("/", " / ")} /" : null;
+
+    public bool IsDraft
+    {
+        get;
+        private set
+        {
+            if (Set(ref field, value))
+            {
+                OnPropertyChanged(nameof(IsUnsaved));
+                OnPropertyChanged(nameof(Folder));
+            }
+        }
+    }
+
+    public string? Destination
+    {
+        get;
+        private set
+        {
+            if (Set(ref field, value))
+            {
+                OnPropertyChanged(nameof(Folder));
+            }
+        }
+    }
+
+    public string? DraftName => !IsDraft ? null : Destination is { } folder ? $"{folder}/{Title}" : Title;
+
+    public bool IsUnsaved => IsDraft || IsDirty;
+
+    public void MoveTo(string? destination)
+    {
+        Destination = destination;
+        _ = UpdateAuthSourceAsync();
+    }
 
     public string Method { get; set => Change(ref field, value); } = "GET";
+
+    internal string SavedMethod { get; private set; } = "GET";
 
     public string Url
     {
@@ -214,7 +253,7 @@ public sealed class RequestTabViewModel : ObservableObject
     public async Task UpdateAuthSourceAsync()
     {
         var resolution = ++_authResolution;
-        var name = Name ?? SuggestedName;
+        var name = Name ?? SuggestedName ?? DraftName;
         var request = ToRequest();
         try
         {
@@ -306,7 +345,17 @@ public sealed class RequestTabViewModel : ObservableObject
         Send.RaiseCanExecuteChanged();
     }
 
-    public bool IsDirty { get; private set => Set(ref field, value); }
+    public bool IsDirty
+    {
+        get;
+        private set
+        {
+            if (Set(ref field, value))
+            {
+                OnPropertyChanged(nameof(IsUnsaved));
+            }
+        }
+    }
 
     public bool IsSending { get; private set => Set(ref field, value); }
 
@@ -389,7 +438,7 @@ public sealed class RequestTabViewModel : ObservableObject
     public async Task SaveAsync()
     {
         var translator = _services.Translator;
-        var name = Name ?? _services.Dialogs.AskName(translator.Of("Save.Title"), SuggestedName ?? "", translator.Of("Common.Save"), _services.ProblemOfName);
+        var name = Name ?? _services.Dialogs.AskName(translator.Of("Save.Title"), SuggestedName ?? DraftName ?? "", translator.Of("Common.Save"), _services.ProblemOfName, selectLastPart: IsDraft);
         if (name is null)
         {
             return;
@@ -402,9 +451,17 @@ public sealed class RequestTabViewModel : ObservableObject
             var request = ToRequest();
             await _services.Library.SaveAsync(name, request, CancellationToken.None);
             _savedJson = SavedJsonOf(request);
+            SavedMethod = request.Method;
             Name = name;
+            var wasDraft = IsDraft;
+            Destination = null;
+            IsDraft = false;
             // Edits made while the file was being written are still unsaved.
             IsDirty = HasUnsavedChanges();
+            if (wasDraft)
+            {
+                await UpdateAuthSourceAsync();
+            }
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
@@ -547,6 +604,8 @@ public sealed class RequestTabViewModel : ObservableObject
     {
         SuggestedName = Name;
         Name = null;
+        Destination = null;
+        IsDraft = false;
         IsDirty = true;
     }
 
@@ -585,7 +644,7 @@ public sealed class RequestTabViewModel : ObservableObject
             await SaveSecretsAsync(sending.Token);
             // Secrets were all that was unsaved if the request itself is unchanged, such as after fetching a token.
             IsDirty = HasUnsavedChanges();
-            var response = await _services.Runner.RunAsync(ToRequest(), Name ?? SuggestedName, environment, HistorySource.App, sending.Token);
+            var response = await _services.Runner.RunAsync(ToRequest(), Name ?? SuggestedName ?? DraftName, environment, HistorySource.App, sending.Token);
             await ShowAsync(response);
         }
         catch (OperationCanceledException) when (sending.IsCancellationRequested)
@@ -679,6 +738,7 @@ public sealed class RequestTabViewModel : ObservableObject
         _authResolution++;
         _loading = true;
         _savedJson = SavedJsonOf(request);
+        SavedMethod = request.Method;
         Id = request.Id;
         Auth.UseOwner(Id);
         Method = request.Method;
@@ -691,7 +751,7 @@ public sealed class RequestTabViewModel : ObservableObject
         Auth.Load(request.Auth);
         _loading = false;
         IsDirty = false;
-        _inheritedAuth = Name is null && SuggestedName is null ? new(Id, AuthSettings.None) : null;
+        _inheritedAuth = Name is null && SuggestedName is null && !IsDraft ? new(Id, AuthSettings.None) : null;
         RefreshAuthHeader();
     }
 

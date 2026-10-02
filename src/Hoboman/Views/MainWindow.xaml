@@ -216,7 +216,7 @@
                                         </TextBlock.Style>
                                     </TextBlock>
                                     <Ellipse Width="7" Height="7" Fill="{DynamicResource Attention}" Margin="6,0,0,0" VerticalAlignment="Center"
-                                             Visibility="{Binding IsDirty, Converter={StaticResource VisibleWhenTrue}}" />
+                                             Visibility="{Binding IsUnsaved, Converter={StaticResource VisibleWhenTrue}}" />
                                     <Button Content="&#xE718;" ToolTip="{DynamicResource Tab.Pin}" Click="PinTab_Click" Style="{StaticResource SmallIconButton}" Margin="4,0,0,0" VerticalAlignment="Center"
                                             Visibility="{Binding IsPreview, Converter={StaticResource VisibleWhenTrue}}" />
                                     <Button Content="&#xE711;" ToolTip="{DynamicResource Common.Close}" Click="CloseTab_Click" Style="{StaticResource SmallIconButton}" Margin="4,0,0,0" VerticalAlignment="Center" />

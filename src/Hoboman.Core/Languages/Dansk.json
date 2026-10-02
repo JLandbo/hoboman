@@ -83,6 +83,7 @@
     "Environments.ChangedOnDisk": "Environments er ændret på disken, mens vinduet var åbent. Luk vinduet og åbn det igen.",
     "File.Invalid": "{0} er ikke gyldig.",
     "Folder.Title": "Ny mappe",
+    "Folder.TitleIn": "Ny mappe i {0}",
     "Folder.Create": "Opret",
     "Folder.Failed": "Mappen kunne ikke oprettes",
     "Folder.Exists": "Der findes allerede en mappe med det navn.",

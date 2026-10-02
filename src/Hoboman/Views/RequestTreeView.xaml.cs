@@ -2,6 +2,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
+using Hoboman.Core.Requests;
 using Hoboman.ViewModels;
 
 namespace Hoboman.Views;
@@ -11,11 +13,80 @@ public partial class RequestTreeView : UserControl
     // How close to the top or bottom of the tree a dragged request scrolls it.
     const double _scrollEdge = 20;
 
-    public RequestTreeView() => InitializeComponent();
+    public RequestTreeView()
+    {
+        InitializeComponent();
+        DataContextChanged += (_, args) =>
+        {
+            if (args.OldValue is MainViewModel previous)
+            {
+                previous.Tree.Revealed -= Reveal;
+            }
+            if (args.NewValue is MainViewModel current)
+            {
+                current.Tree.Revealed += Reveal;
+            }
+        };
+    }
 
     MainViewModel ViewModel => (MainViewModel)DataContext;
 
     (RequestNodeViewModel Node, Point At)? _pressed;
+
+    void Reveal(RequestNodeViewModel row)
+    {
+        if (!IsVisible)
+        {
+            return;
+        }
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (!IsVisible)
+            {
+                return;
+            }
+            var parents = new Stack<string>();
+            for (var parent = RequestLibrary.ParentOf(row.Path); parent is not null; parent = RequestLibrary.ParentOf(parent))
+            {
+                parents.Push(parent);
+            }
+            ItemsControl container = Tree;
+            foreach (var path in parents)
+            {
+                var folder = container.Items.OfType<RequestNodeViewModel>().FirstOrDefault(node => node.IsFolder && string.Equals(node.Path, path, StringComparison.OrdinalIgnoreCase));
+                if (container.ItemContainerGenerator.ContainerFromItem(folder) is not TreeViewItem item)
+                {
+                    return;
+                }
+                container = item;
+            }
+            (container.ItemContainerGenerator.ContainerFromItem(row) as TreeViewItem)?.BringIntoView();
+        }, DispatcherPriority.Loaded);
+    }
+
+    async void NewRequest_Click(object sender, RoutedEventArgs e)
+    {
+        if (NodeOf(sender) is { } node)
+        {
+            await ViewModel.NewDraftAsync(node);
+        }
+    }
+
+    async void NewFolder_Click(object sender, RoutedEventArgs e)
+    {
+        if (NodeOf(sender) is { } node)
+        {
+            await ViewModel.NewSubfolderAsync(node);
+        }
+    }
+
+    void Item_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (NodeOf(sender) is { IsDraft: true })
+        {
+            e.Handled = true;
+        }
+    }
 
     async void Item_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
@@ -88,7 +159,7 @@ public partial class RequestTreeView : UserControl
 
     // The request is taken from where the button went down, as a quick drag is already over the next one when it starts.
     void Tree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e) =>
-        _pressed = NodeAt(e.OriginalSource) is { IsFolder: false } node ? (node, e.GetPosition(this)) : null;
+        _pressed = NodeAt(e.OriginalSource) is { IsFolder: false, IsDraft: false } node ? (node, e.GetPosition(this)) : null;
 
     // Otherwise a later press outside the tree, moved into it, would drag the request clicked before.
     void Tree_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e) => _pressed = null;
