@@ -24,12 +24,12 @@
             <RowDefinition />
         </Grid.RowDefinitions>
         <Border x:Name="RootDropTarget" Background="{DynamicResource Box}" CornerRadius="6" Padding="8,6" Margin="2,2,2,6" Visibility="Collapsed" AllowDrop="True"
-                DragOver="Tree_DragOver" DragLeave="Tree_DragLeave" Drop="Tree_Drop">
+                DragEnter="Tree_DragOver" DragOver="Tree_DragOver" DragLeave="Tree_DragLeave" Drop="Tree_Drop">
             <TextBlock Text="{DynamicResource Tree.Root}" Foreground="{DynamicResource Muted}" />
         </Border>
         <TreeView x:Name="Tree" Grid.Row="1" ItemsSource="{Binding Tree.Nodes}" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource Text}"
                   ScrollViewer.HorizontalScrollBarVisibility="Disabled" AllowDrop="True"
-                  PreviewMouseLeftButtonDown="Tree_PreviewMouseLeftButtonDown" PreviewMouseLeftButtonUp="Tree_PreviewMouseLeftButtonUp" MouseMove="Tree_MouseMove" DragOver="Tree_DragOver" DragLeave="Tree_DragLeave" Drop="Tree_Drop">
+                  PreviewMouseLeftButtonDown="Tree_PreviewMouseLeftButtonDown" PreviewMouseLeftButtonUp="Tree_PreviewMouseLeftButtonUp" MouseMove="Tree_MouseMove" DragEnter="Tree_DragOver" DragOver="Tree_DragOver" DragLeave="Tree_DragLeave" Drop="Tree_Drop">
             <TreeView.ItemContainerStyle>
                 <Style TargetType="TreeViewItem" BasedOn="{StaticResource TreeItem}">
                     <EventSetter Event="MouseLeftButtonUp" Handler="Item_MouseLeftButtonUp" />

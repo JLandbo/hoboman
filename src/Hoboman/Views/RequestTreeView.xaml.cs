@@ -43,6 +43,7 @@ public partial class RequestTreeView : UserControl
 
     (RequestNodeViewModel Node, Point At)? _pressed;
     DropIndicator? _indicator;
+    DispatcherOperation? _pendingDropClear;
     RequestNodeViewModel? _hoveredFolder;
     readonly DispatcherTimer _expandFolder = new() { Interval = TimeSpan.FromMilliseconds(600) };
 
@@ -209,6 +210,7 @@ public partial class RequestTreeView : UserControl
 
     void Tree_DragOver(object sender, DragEventArgs e)
     {
+        _pendingDropClear?.Abort();
         e.Handled = true;
         e.Effects = DragDropEffects.None;
         if (e.Data.GetData(typeof(RequestNodeViewModel)) is not RequestNodeViewModel source)
@@ -296,11 +298,13 @@ public partial class RequestTreeView : UserControl
 
     void ClearDrop()
     {
+        _pendingDropClear?.Abort();
         _indicator?.Clear();
         Hover(null);
     }
 
-    void Tree_DragLeave(object sender, DragEventArgs e) => ClearDrop();
+    // WPF sends Leave/Enter when crossing child elements within the same drop area.
+    void Tree_DragLeave(object sender, DragEventArgs e) => _pendingDropClear = Dispatcher.InvokeAsync(ClearDrop);
 
     static RequestNodeViewModel? NodeAt(object source)
     {
