@@ -1,6 +1,7 @@
 <UserControl x:Class="Hoboman.Views.KeyValueEditor"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:Hoboman.Controls"
              xmlns:viewModels="clr-namespace:Hoboman.ViewModels">
     <Border CornerRadius="8" Background="{DynamicResource Box}" BorderBrush="{DynamicResource BoxEdge}" BorderThickness="1">
         <DockPanel>
@@ -29,8 +30,8 @@
                                     <CheckBox x:Name="Enabled" IsChecked="{Binding Enabled}" VerticalAlignment="Center" />
                                     <TextBlock x:Name="Placeholder" Grid.Column="1" Text="{DynamicResource Table.Add}" Foreground="{DynamicResource Muted}" FontSize="12"
                                                Margin="6,0" VerticalAlignment="Center" Visibility="Collapsed" />
-                                    <TextBox x:Name="NameBox" Grid.Column="1" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" />
-                                    <TextBox x:Name="ValueBox" Grid.Column="2" Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" />
+                                    <controls:VariableTextBox x:Name="NameBox" Grid.Column="1" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" Padding="4,6" />
+                                    <controls:VariableTextBox x:Name="ValueBox" Grid.Column="2" Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" Padding="4,6" />
                                     <Button x:Name="Remove" Grid.Column="3" Content="&#xE711;" ToolTip="{DynamicResource Table.Remove}" Click="Remove_Click" Style="{StaticResource SmallIconButton}" VerticalAlignment="Center" />
                                 </Grid>
                             </Border>

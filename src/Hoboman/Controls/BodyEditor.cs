@@ -1,6 +1,9 @@
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Media;
+using Hoboman.Core.Environments;
 using ICSharpCode.AvalonEdit.Document;
+using ICSharpCode.AvalonEdit.Rendering;
 
 namespace Hoboman.Controls;
 
@@ -15,6 +18,7 @@ public sealed class BodyEditor : MarkedEditor
     public BodyEditor()
     {
         TextArea.Caret.CaretBrush = (Brush)FindResource("Text");
+        TextArea.TextView.LineTransformers.Add(new VariableColorizer((Brush)FindResource("Attention")));
         TextChanged += (_, _) =>
         {
             _typing = true;
@@ -35,6 +39,17 @@ public sealed class BodyEditor : MarkedEditor
         if (!_typing && body != Text)
         {
             Document = new TextDocument(body);
+        }
+    }
+
+    sealed class VariableColorizer(Brush foreground) : DocumentColorizingTransformer
+    {
+        protected override void ColorizeLine(DocumentLine line)
+        {
+            foreach (Match variable in ApiEnvironment.VariablesIn(CurrentContext.Document.GetText(line)))
+            {
+                ChangeLinePart(line.Offset + variable.Index, line.Offset + variable.Index + variable.Length, element => element.TextRunProperties.SetForegroundBrush(foreground));
+            }
         }
     }
 }
