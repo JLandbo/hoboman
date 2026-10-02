@@ -8,7 +8,6 @@
         <Border CornerRadius="8" Background="{DynamicResource Input}">
             <TextBox x:Name="NameBox" Style="{StaticResource Cell}" Padding="8,6" TextChanged="NameBox_TextChanged" />
         </Border>
-        <TextBlock Text="{DynamicResource Dialog.FolderHint}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,6,0,0" />
         <TextBlock x:Name="ProblemText" Foreground="{DynamicResource Error}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Visibility="Collapsed" />
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
             <Button Content="{DynamicResource Common.Cancel}" Command="{x:Static SystemCommands.CloseWindowCommand}" Style="{StaticResource PillButton}" Margin="0,0,8,0" />

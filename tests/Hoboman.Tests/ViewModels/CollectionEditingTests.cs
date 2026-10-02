@@ -219,7 +219,7 @@ public sealed class CollectionEditingTests
     [Fact]
     public async Task MoveAsync_WhenMovingDraftThenSaving_ThenKeepsDestinationAndPositionWithoutSavingEarly()
     {
-        using var harness = new Harness(new FakeDialogs(answer: "Target/Saved"));
+        using var harness = new Harness(new FakeDialogs(answer: "Saved"));
         await harness.Library.CreateFolderAsync("Source", Cancellation);
         await harness.Library.SaveAsync("Target/A", ApiRequest.New(), Cancellation);
         await harness.Library.SaveAsync("Target/B", ApiRequest.New(), Cancellation);

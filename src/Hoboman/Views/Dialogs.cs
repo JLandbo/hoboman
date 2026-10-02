@@ -5,9 +5,9 @@ namespace Hoboman.Views;
 
 public sealed class Dialogs(Translator translator) : IDialogs
 {
-    public string? AskName(string title, string name, string confirm, Func<string, string?> problemOf, bool selectLastPart = false)
+    public string? AskName(string title, string name, string confirm, Func<string, string?> problemOf)
     {
-        var dialog = new NameDialog(title, name, confirm, problemOf, selectLastPart);
+        var dialog = new NameDialog(title, name, confirm, problemOf);
         return dialog.ShowDialog() == true ? dialog.EnteredName : null;
     }
 

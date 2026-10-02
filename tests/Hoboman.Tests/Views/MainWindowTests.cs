@@ -32,7 +32,7 @@ public sealed class MainWindowTests
             Assert.True(Ui.Descendants<TextBlock>(tree).Single(text => text.Text == harness.Translator.Of("Tree.Empty")).IsVisible);
             Ui.Click(folder);
             await Ui.IdleAsync();
-            Assert.Equal((harness.Translator.Of("Folder.Title"), "", false), (harness.Dialogs.NameQuestion!.Value.Title, harness.Dialogs.NameQuestion.Value.Name, harness.Dialogs.NameQuestion.Value.SelectLastPart));
+            Assert.Equal((harness.Translator.Of("Folder.Title"), ""), (harness.Dialogs.NameQuestion!.Value.Title, harness.Dialogs.NameQuestion.Value.Name));
         });
     }
 

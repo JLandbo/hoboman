@@ -13,7 +13,7 @@ public sealed class CollectionSafetyTests
     [InlineData(true, true)]
     public async Task RenameTabAsync_WhenQueuedBehindAMove_ThenUsesTheCurrentFolder(bool folder, bool saved)
     {
-        using var harness = new Harness(new FakeDialogs(answer: "Renamed"));
+        using var harness = new Harness(new FakeDialogs(answer: "Original"));
         await harness.Library.SaveFolderAsync("Source", new() { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) }, Cancellation);
         await harness.Library.SaveFolderAsync("Target", new() { Id = Guid.NewGuid(), Auth = new(AuthKind.Basic) }, Cancellation);
         var main = harness.Main();
@@ -23,8 +23,9 @@ public sealed class CollectionSafetyTests
         tab.Body = "content";
         if (saved)
         {
-            await tab.SaveAsync("Source/Original");
+            await tab.SaveAsync();
         }
+        harness.Dialogs.Answer = "Renamed";
         var source = Node(main, folder ? "Source" : tab.Name ?? tab.DraftName!);
         var target = Node(main, "Target");
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -50,7 +51,7 @@ public sealed class CollectionSafetyTests
     [InlineData(FileShare.None)]
     public async Task SaveAsync_WhenOnlyTheOrderCannotBeSaved_ThenKeepsTheSavedRequestAndReportsOnlyTheOrderFailure(FileShare sharing)
     {
-        using var harness = new Harness();
+        using var harness = new Harness(new FakeDialogs(answer: "Saved"));
         await harness.Library.CreateFolderAsync("Folder", Cancellation);
         await harness.Library.SaveOrderAsync(["Folder/"], Cancellation);
         var main = harness.Main();
@@ -61,7 +62,7 @@ public sealed class CollectionSafetyTests
         draft.Auth.Token = "token";
         using var locked = new FileStream(harness.Folder.RequestOrder, FileMode.Open, FileAccess.Read, sharing);
 
-        await draft.SaveAsync("Folder/Saved");
+        await draft.SaveAsync();
 
         Assert.Equal("Folder/Saved", draft.Name);
         Assert.Equivalent(draft.ToRequest(), await harness.Library.LoadAsync("Folder/Saved", Cancellation));
@@ -70,7 +71,7 @@ public sealed class CollectionSafetyTests
         Assert.False(draft.IsDraft);
         Assert.Null(draft.Problem);
         Assert.Equal(harness.Translator.Of("Order.SaveFailed"), harness.Dialogs.Notification!.Value.Title);
-        Assert.Equal(1, harness.Dialogs.Asked);
+        Assert.Equal(2, harness.Dialogs.Asked);
     }
 
     [Theory]
@@ -103,7 +104,7 @@ public sealed class CollectionSafetyTests
     [InlineData(true, true)]
     public async Task MoveOrRenameAsync_WhenOnlyTheOrderCannotBeSaved_ThenCompletesAndReportsOnlyTheOrderFailure(bool folder, bool rename)
     {
-        using var harness = new Harness(new FakeDialogs(answer: "Target/Renamed"));
+        using var harness = new Harness(new FakeDialogs(answer: "Renamed"));
         await harness.Library.SaveAsync("Source/Request", ApiRequest.New(), Cancellation);
         await harness.Library.CreateFolderAsync("Target", Cancellation);
         await harness.Library.SaveOrderAsync(["Source/", "Source/Request", "Target/"], Cancellation);
@@ -123,7 +124,7 @@ public sealed class CollectionSafetyTests
             await main.MoveAsync(source, Node(main, "Target"));
         }
 
-        var expected = rename ? folder ? "Target/Renamed/Request" : "Target/Renamed" : folder ? "Target/Source/Request" : "Target/Request";
+        var expected = rename ? folder ? "Renamed/Request" : "Source/Renamed" : folder ? "Target/Source/Request" : "Target/Request";
         Assert.Equal(expected, tab.Name);
         Assert.True(harness.Library.Exists(expected));
         Assert.False(harness.Library.Exists("Source/Request"));
@@ -131,7 +132,7 @@ public sealed class CollectionSafetyTests
         Assert.Equal(harness.Translator.Of("Order.SaveFailed"), harness.Dialogs.Notification!.Value.Title);
         Assert.Equal(rename ? 2 : 1, harness.Dialogs.Asked);
 
-        await main.MoveAsync(Node(main, folder ? RequestLibrary.ParentOf(expected)! : expected), null);
+        await main.MoveAsync(Node(main, folder ? RequestLibrary.ParentOf(expected)! : expected), rename ? Node(main, "Target") : null);
 
         Assert.Equal(rename ? 3 : 2, harness.Dialogs.Asked);
     }
@@ -186,19 +187,20 @@ public sealed class CollectionSafetyTests
     [Fact]
     public async Task SaveAsync_WhenSeparateRequestsCannotSaveTheirOrder_ThenReportsEachFailure()
     {
-        using var harness = new Harness();
+        using var harness = new Harness(new FakeDialogs(answer: "First"));
         await harness.Library.SaveOrderAsync([], Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         using var locked = new FileStream(harness.Folder.RequestOrder, FileMode.Open, FileAccess.Read, FileShare.Read);
 
-        await main.SelectedTab!.SaveAsync("First");
-        Assert.Equal(1, harness.Dialogs.Asked);
+        await main.SelectedTab!.SaveAsync();
+        Assert.Equal(2, harness.Dialogs.Asked);
 
         main.NewTab();
-        await main.SelectedTab!.SaveAsync("Second");
+        harness.Dialogs.Answer = "Second";
+        await main.SelectedTab!.SaveAsync();
 
-        Assert.Equal(2, harness.Dialogs.Asked);
+        Assert.Equal(4, harness.Dialogs.Asked);
         Assert.Equal(harness.Translator.Of("Order.SaveFailed"), harness.Dialogs.Notification!.Value.Title);
         Assert.Equal(["First", "Second"], (await harness.Library.NamesAsync(Cancellation)).Order());
         Assert.Empty(await harness.Library.LoadOrderAsync(Cancellation));
@@ -254,7 +256,7 @@ public sealed class CollectionSafetyTests
     [Fact]
     public async Task SaveAsync_WhenAnotherWriterTakesTheNewNameAfterValidation_ThenKeepsThatRequestAndAllowsRetryUnderAnotherName()
     {
-        using var harness = new Harness();
+        using var harness = new Harness(new FakeDialogs(answer: "Taken"));
         var main = harness.Main();
         await main.LoadAsync();
         var draft = main.SelectedTab!;
@@ -263,7 +265,7 @@ public sealed class CollectionSafetyTests
         var original = ApiRequest.New() with { Body = "other request" };
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var blocked = harness.AuthRefresh.SaveAsync(() => release.Task, Cancellation);
-        var saving = draft.SaveAsync("Taken");
+        var saving = draft.SaveAsync();
         try
         {
             await harness.Library.SaveAsync("Taken", original, Cancellation);
@@ -278,7 +280,8 @@ public sealed class CollectionSafetyTests
         Assert.Null(draft.Name);
         Assert.True(draft.IsDirty);
         Assert.NotNull(draft.Problem);
-        await draft.SaveAsync("Available");
+        harness.Dialogs.Answer = "Available";
+        await draft.SaveAsync();
         Assert.Equivalent(draft.ToRequest(), await harness.Library.LoadAsync("Available", Cancellation));
         Assert.Equal("token", await harness.Secrets.OfAsync(draft.Id, SecretKind.Token, Cancellation));
         Assert.Equivalent(original, await harness.Library.LoadAsync("Taken", Cancellation));
@@ -292,7 +295,7 @@ public sealed class CollectionSafetyTests
     public async Task DeleteFolderAsync_WhenADraftIsSavedAheadOfTheQueuedDeletion_ThenUsesTheCurrentContents(bool nested, bool accept)
     {
         var destination = nested ? "Folder/Nested" : "Folder";
-        using var harness = new Harness(new FakeDialogs(answer: $"{destination}/Saved", accept: accept));
+        using var harness = new Harness(new FakeDialogs(answer: "Saved", accept: accept));
         await harness.Library.CreateFolderAsync(destination, Cancellation);
         var main = harness.Main();
         await main.LoadAsync();

@@ -9,26 +9,25 @@ namespace Hoboman.Tests.Views;
 public sealed class NameDialogTests
 {
     [Theory]
-    [InlineData("Users/Admin/New request (3)", true, "New request (3)")]
-    [InlineData("New request (3)", true, "New request (3)")]
-    [InlineData("Users/Get", false, "Users/Get")]
-    [InlineData("Users/Admin", false, "Users/Admin")]
-    [InlineData("", false, "")]
-    public async Task NameDialog_WhenLoaded_ThenFocusesAndSelectsTheRequestedPart(string name, bool selectLastPart, string selected)
+    [InlineData("New request (3)")]
+    [InlineData("Get")]
+    [InlineData("Admin")]
+    [InlineData("")]
+    public async Task NameDialog_WhenLoaded_ThenFocusesAndSelectsTheName(string name)
     {
         using var harness = new Harness();
         await Ui.RunAsync(async () =>
         {
             await Ui.ShowAsync(harness, harness.Main());
-            var dialog = new NameDialog("Save request", name, "Save", _ => null, selectLastPart);
+            var dialog = new NameDialog("Save request", name, "Save", _ => null);
 
             Ui.Show(dialog);
             await Ui.IdleAsync();
 
             var field = (TextBox)dialog.FindName("NameBox");
             Assert.Same(field, Keyboard.FocusedElement);
-            Assert.Equal(selected, field.SelectedText);
-            Assert.Equal(name.Length - selected.Length, field.SelectionStart);
+            Assert.Equal(name, field.SelectedText);
+            Assert.Equal(0, field.SelectionStart);
             Assert.Equal(name, field.Text);
         });
     }

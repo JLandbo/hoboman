@@ -165,10 +165,6 @@ public sealed class RequestTabViewModel : ObservableObject
     public void MoveTo(string? destination)
     {
         Destination = destination;
-        if (IsDraft && SuggestedName is { } name)
-        {
-            SuggestedName = destination is null ? RequestLibrary.LastPartOf(name) : $"{destination}/{RequestLibrary.LastPartOf(name)}";
-        }
         _ = UpdateAuthSourceAsync();
     }
 
@@ -461,15 +457,20 @@ public sealed class RequestTabViewModel : ObservableObject
         {
             return;
         }
+        if (Name is { } savedName)
+        {
+            await SaveCoreAsync(savedName);
+            return;
+        }
         var translator = _services.Translator;
-        var name = Name ?? _services.Dialogs.AskName(translator.Of("Save.Title"), SuggestedName ?? DraftName ?? "", translator.Of("Common.Save"), _services.ProblemOfName, selectLastPart: IsDraft);
+        var parent = RequestLibrary.ParentOf(SuggestedName) ?? Destination;
+        string FullName(string value) => parent is null ? value : $"{parent}/{value}";
+        var name = _services.Dialogs.AskName(translator.Of("Save.Title"), RequestLibrary.LastPartOf(SuggestedName ?? DraftName ?? ""), translator.Of("Common.Save"), value => value.Contains('/') ? translator.Of("Save.Invalid") : _services.ProblemOfName(FullName(value)));
         if (name is not null)
         {
-            await SaveCoreAsync(name);
+            await SaveCoreAsync(FullName(name));
         }
     });
-
-    public Task SaveAsync(string name) => _services.CollectionChanges.RunAsync(() => SaveCoreAsync(Name ?? name));
 
     // The caller holds CollectionChanges, so the path cannot move between choosing it and saving.
     internal async Task SaveCoreAsync(string name)

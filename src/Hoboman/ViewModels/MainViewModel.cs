@@ -237,7 +237,7 @@ public sealed class MainViewModel(
 
     public async Task NewFolderAsync()
     {
-        if (dialogs.AskName(translator.Of("Folder.Title"), "", translator.Of("Folder.Create"), ProblemOfFolder) is not { } name)
+        if (dialogs.AskName(translator.Of("Folder.Title"), "", translator.Of("Folder.Create"), name => name.Contains('/') ? translator.Of("Save.Invalid") : ProblemOfFolder(name)) is not { } name)
         {
             return;
         }
@@ -282,11 +282,12 @@ public sealed class MainViewModel(
 
     public async Task RenameAsync(RequestNodeViewModel node)
     {
-        if (dialogs.AskName(translator.Of("Rename.Title"), node.Path, translator.Of("Common.Save"), candidate => SameName(candidate, node.Path) ? null : tabServices.ProblemOfName(candidate)) is not { } name || name == node.Path)
+        string FullName(string value) => RequestLibrary.ParentOf(node.Path) is { } parent ? $"{parent}/{value}" : value;
+        if (dialogs.AskName(translator.Of("Rename.Title"), node.Name, translator.Of("Common.Save"), candidate => candidate.Contains('/') ? translator.Of("Save.Invalid") : SameName(candidate, node.Name) ? null : tabServices.ProblemOfName(FullName(candidate))) is not { } name || name == node.Name)
         {
             return;
         }
-        await ChangeCollectionAsync(() => RenameToAsync(node, name, translator.Of("Rename.Failed")));
+        await ChangeCollectionAsync(() => RenameToAsync(node, FullName(name), translator.Of("Rename.Failed")));
     }
 
     public async Task RenameTabAsync(RequestTabViewModel tab)
@@ -448,12 +449,13 @@ public sealed class MainViewModel(
 
     public async Task RenameFolderAsync(RequestNodeViewModel folder)
     {
-        if (dialogs.AskName(translator.Of("RenameFolder.Title"), folder.Path, translator.Of("Common.Save"), candidate => SameName(candidate, folder.Path) ? null : ProblemOfRenamedFolder(candidate, folder.Path)) is not { } name
-            || name == folder.Path)
+        string FullName(string value) => RequestLibrary.ParentOf(folder.Path) is { } parent ? $"{parent}/{value}" : value;
+        if (dialogs.AskName(translator.Of("RenameFolder.Title"), folder.Name, translator.Of("Common.Save"), candidate => candidate.Contains('/') ? translator.Of("Save.Invalid") : SameName(candidate, folder.Name) ? null : ProblemOfNewFolder(FullName(candidate))) is not { } name
+            || name == folder.Name)
         {
             return;
         }
-        await ChangeCollectionAsync(() => RenameFolderToAsync(folder, name));
+        await ChangeCollectionAsync(() => RenameFolderToAsync(folder, FullName(name)));
     }
 
     async Task<bool> RenameFolderToAsync(RequestNodeViewModel folder, string name)
@@ -717,13 +719,6 @@ public sealed class MainViewModel(
     string? ProblemOfFolder(string name) => RequestLibrary.IsValidName(name) ? null : translator.Of("Save.Invalid");
 
     string? ProblemOfNewFolder(string name) => ProblemOfFolder(name) ?? (library.FolderExists(name) ? translator.Of("Folder.Exists") : null);
-
-    // A folder cannot go inside itself.
-    string? ProblemOfRenamedFolder(string name, string path) =>
-        ProblemOfFolder(name)
-        ?? (name.StartsWith($"{path}/", StringComparison.OrdinalIgnoreCase) ? translator.Of("Save.Invalid")
-        : library.FolderExists(name) ? translator.Of("Folder.Exists")
-        : null);
 
     // Windows does not tell upper and lower case apart in file names.
     static bool SameName(string? name, string? other) => string.Equals(name, other, StringComparison.OrdinalIgnoreCase);

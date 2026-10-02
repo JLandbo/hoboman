@@ -7,7 +7,7 @@ public partial class NameDialog : DialogWindow
 {
     readonly Func<string, string?> _problemOf;
 
-    public NameDialog(string title, string name, string confirm, Func<string, string?> problemOf, bool selectLastPart = false)
+    public NameDialog(string title, string name, string confirm, Func<string, string?> problemOf)
     {
         InitializeComponent();
         _problemOf = problemOf;
@@ -17,8 +17,7 @@ public partial class NameDialog : DialogWindow
         Loaded += (_, _) =>
         {
             NameBox.Focus();
-            var start = selectLastPart ? name.LastIndexOf('/') + 1 : 0;
-            NameBox.Select(start, name.Length - start);
+            NameBox.SelectAll();
         };
     }
 

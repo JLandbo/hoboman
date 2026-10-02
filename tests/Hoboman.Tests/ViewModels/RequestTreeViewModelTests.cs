@@ -45,7 +45,7 @@ public sealed class RequestTreeViewModelTests
     [Fact]
     public async Task SaveAsync_WhenAnOlderReadFinishesAfterTheFirstSave_ThenKeepsTheSavedRowAndId()
     {
-        using var harness = new Harness(new FakeDialogs(answer: "Users/Saved"));
+        using var harness = new Harness(new FakeDialogs(answer: "Saved"));
         using var logger = new BlockedReadLogger(Cancellation);
         await harness.Library.CreateFolderAsync("Users", Cancellation);
         var tree = new RequestTreeViewModel(harness.Library, harness.Dialogs, harness.Translator, logger);
@@ -174,17 +174,22 @@ public sealed class RequestTreeViewModelTests
     }
 
     [Theory]
-    [InlineData("Users/Saved")]
-    [InlineData("Other/Deep/Saved")]
-    [InlineData("Saved")]
-    public async Task SaveAsync_WhenADraftIsSaved_ThenImmediatelyReplacesItsRowAndRevealsOnlyOnce(string name)
+    [InlineData("Users")]
+    [InlineData("Other/Deep")]
+    [InlineData(null)]
+    public async Task SaveAsync_WhenADraftIsSaved_ThenImmediatelyReplacesItsRowAndRevealsOnlyOnce(string? destination)
     {
-        using var harness = new Harness(new FakeDialogs(answer: name));
-        await harness.Library.CreateFolderAsync("Users", Cancellation);
+        using var harness = new Harness(new FakeDialogs(answer: "Saved"));
+        var name = destination is null ? "Saved" : $"{destination}/Saved";
+        if (destination is not null)
+        {
+            await harness.Library.CreateFolderAsync(destination, Cancellation);
+        }
         var tree = Tree(harness);
         await tree.LoadAsync(Cancellation);
         var tabs = tree.Follow([]);
-        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "Users");
+        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: destination ?? "Users");
+        tab.MoveTo(destination);
         tabs.Add(tab);
         tree.Activate(tab);
         var reveals = new List<RequestNodeViewModel>();

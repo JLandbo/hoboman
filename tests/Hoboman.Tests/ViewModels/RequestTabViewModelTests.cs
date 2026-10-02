@@ -28,7 +28,7 @@ public sealed class RequestTabViewModelTests
         Assert.Equal(name, tab.DraftName);
         Assert.Equal(destination is null ? null : $"{destination.Replace("/", " / ")} /", tab.Folder);
         var question = harness.Dialogs.NameQuestion!.Value;
-        Assert.Equal((name, true), (question.Name, question.SelectLastPart));
+        Assert.Equal(title, question.Name);
         Assert.Equal(harness.Translator.Of("Save.Title"), question.Title);
         Assert.Equal(harness.Translator.Of("Common.Save"), question.Confirm);
         Assert.Equal(name, Assert.Single(await harness.History().ReadAsync(await harness.History().LatestAsync(10, Cancellation), Cancellation)).Entry.Name);
@@ -119,20 +119,26 @@ public sealed class RequestTabViewModelTests
     }
 
     [Theory]
-    [InlineData("Users/Saved")]
-    [InlineData("Other/Saved")]
-    [InlineData("Saved")]
-    [InlineData("New/Deep/Saved")]
-    public async Task SaveAsync_WhenSavingADraft_ThenLeavesNoDraftStateAndUsesTheChosenFoldersAuth(string name)
+    [InlineData("Users")]
+    [InlineData("Other")]
+    [InlineData(null)]
+    [InlineData("New/Deep")]
+    public async Task SaveAsync_WhenSavingADraft_ThenKeepsItsFolderAndUsesOnlyTheEnteredName(string? destination)
     {
-        using var harness = new Harness(new FakeDialogs(answer: name));
+        using var harness = new Harness(new FakeDialogs(answer: "Saved"));
+        var name = destination is null ? "Saved" : $"{destination}/Saved";
         await harness.Library.SaveFolderAsync("Other", new() { Id = Guid.NewGuid(), Auth = new(AuthKind.Basic, "user") }, Cancellation);
-        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "Users") { Number = 3 };
+        if (destination is not null)
+        {
+            await harness.Library.SaveAsync("Saved", ApiRequest.New() with { Body = "root request" }, Cancellation);
+        }
+        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: destination) { Number = 3 };
         tab.Body = "content";
 
         await tab.SaveAsync();
 
         Assert.Equal(name, tab.Name);
+        Assert.Equal(destination is null ? "" : "New request (3)", harness.Dialogs.NameQuestion!.Value.Name);
         Assert.Equal("Saved", tab.Title);
         Assert.False(tab.IsDraft);
         Assert.False(tab.IsUnsaved);
@@ -140,6 +146,10 @@ public sealed class RequestTabViewModelTests
         Assert.Null(tab.DraftName);
         Assert.Equal("content", (await harness.Library.LoadAsync(name, Cancellation))?.Body);
         Assert.Equal(name.StartsWith("Other/") ? "Other" : null, tab.InheritedAuthFolder);
+        if (destination is not null)
+        {
+            Assert.Equal("root request", (await harness.Library.LoadAsync("Saved", Cancellation))!.Body);
+        }
         tab.Unlink();
         Assert.False(tab.IsDraft);
         Assert.True(tab.IsUnsaved);
@@ -151,10 +161,13 @@ public sealed class RequestTabViewModelTests
     [InlineData("Taken")]
     [InlineData("taken")]
     [InlineData("Bad?")]
+    [InlineData("Other/Saved")]
+    [InlineData("../Saved")]
+    [InlineData("Other\\Saved")]
     public async Task SaveAsync_WhenADraftNameIsCancelledOrInvalid_ThenKeepsTheDraft(string? answer)
     {
         using var harness = new Harness(new FakeDialogs(answer: answer));
-        await harness.Library.SaveAsync("Taken", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAsync("Users/Taken", ApiRequest.New(), Cancellation);
         var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "Users") { Number = 3 };
         tab.Body = "content";
 
@@ -162,10 +175,11 @@ public sealed class RequestTabViewModelTests
 
         Assert.Equal((true, true, true, "Users", "New request (3)", "content"), (tab.IsDraft, tab.IsDirty, tab.IsUnsaved, tab.Destination, tab.Title, tab.Body));
         Assert.Null(tab.Name);
-        Assert.Equal(["Taken"], await harness.Library.NamesAsync(Cancellation));
+        Assert.Equal(["Users/Taken"], await harness.Library.NamesAsync(Cancellation));
         var problemOf = harness.Dialogs.NameQuestion!.Value.ProblemOf;
         Assert.Equal(harness.Translator.Of("Save.Exists"), problemOf("taken"));
         Assert.Equal(harness.Translator.Of("Save.Invalid"), problemOf("Bad?"));
+        Assert.Equal(harness.Translator.Of("Save.Invalid"), problemOf("Other/Saved"));
     }
 
     [Theory]
@@ -173,7 +187,7 @@ public sealed class RequestTabViewModelTests
     [InlineData(true)]
     public async Task SaveAsync_WhenADraftCannotBeWritten_ThenKeepsItsDestinationAndContent(bool secrets)
     {
-        using var harness = new Harness(new FakeDialogs(answer: "Other/Saved"));
+        using var harness = new Harness(new FakeDialogs(answer: "Saved"));
         var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "Users") { Number = 3 };
         tab.Body = "content";
         Directory.CreateDirectory(harness.Folder.Root);
@@ -185,7 +199,7 @@ public sealed class RequestTabViewModelTests
         else
         {
             Directory.CreateDirectory(harness.Folder.Requests);
-            File.WriteAllText(Path.Combine(harness.Folder.Requests, "Other"), "blocked");
+            File.WriteAllText(Path.Combine(harness.Folder.Requests, "Users"), "blocked");
         }
 
         await tab.SaveAsync();
@@ -216,26 +230,28 @@ public sealed class RequestTabViewModelTests
         Assert.False(tab.HasInheritedAuth);
         Assert.Equal("content", tab.Body);
         Assert.Equal("New request (3)", tab.Title);
-        Assert.Equal(("", false), (harness.Dialogs.NameQuestion!.Value.Name, harness.Dialogs.NameQuestion.Value.SelectLastPart));
+        Assert.Equal("", harness.Dialogs.NameQuestion!.Value.Name);
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task SaveAsync_WhenANonDraftHasNoFile_ThenSelectsTheWholeSuggestedName(bool history)
+    public async Task SaveAsync_WhenANonDraftHasNoFile_ThenUsesItsSuggestedFolderButOnlyShowsTheName(bool history)
     {
-        using var harness = new Harness();
+        using var harness = new Harness(new FakeDialogs(answer: "Copy"));
         var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), suggestedName: history ? "Users/Get" : null, historyName: history ? "call.json" : null);
 
         await tab.SaveAsync();
 
-        Assert.Equal((history ? "Users/Get" : "", false), (harness.Dialogs.NameQuestion!.Value.Name, harness.Dialogs.NameQuestion.Value.SelectLastPart));
+        Assert.Equal(history ? "Get" : "", harness.Dialogs.NameQuestion!.Value.Name);
+        Assert.Equal(history ? "Users/Copy" : "Copy", tab.Name);
+        Assert.True(harness.Library.Exists(tab.Name!));
     }
 
     [Fact]
     public async Task SaveAsync_WhenADraftIsEditedDuringItsFirstSave_ThenKeepsTheNewEditsUnsaved()
     {
-        using var harness = new Harness(new FakeDialogs(answer: "Users/Saved"));
+        using var harness = new Harness(new FakeDialogs(answer: "Saved"));
         var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "Users");
         tab.Body = "saved content";
 
@@ -727,7 +743,7 @@ public sealed class RequestTabViewModelTests
     public async Task SaveAsync_WhenTheTabIsNew_ThenSavesUnderTheGivenName()
     {
         // Arrange
-        using var harness = new Harness(new FakeDialogs(answer: "Test/Ping"));
+        using var harness = new Harness(new FakeDialogs(answer: "Ping"));
         var tab = harness.Tab();
         tab.Url = "https://dev.local";
 
@@ -735,14 +751,14 @@ public sealed class RequestTabViewModelTests
         await tab.SaveAsync();
 
         // Assert
-        Assert.Equal("https://dev.local", (await harness.Library.LoadAsync("Test/Ping", Cancellation))?.Url);
+        Assert.Equal("https://dev.local", (await harness.Library.LoadAsync("Ping", Cancellation))?.Url);
     }
 
     [Fact]
     public async Task SaveAsync_WhenTheTabIsNew_ThenTakesTheGivenName()
     {
         // Arrange
-        using var harness = new Harness(new FakeDialogs(answer: "Test/Ping"));
+        using var harness = new Harness(new FakeDialogs(answer: "Ping"));
         var tab = harness.Tab();
         tab.Url = "https://dev.local";
 
@@ -750,14 +766,14 @@ public sealed class RequestTabViewModelTests
         await tab.SaveAsync();
 
         // Assert
-        Assert.Equal("Test/Ping", tab.Name);
+        Assert.Equal("Ping", tab.Name);
     }
 
     [Fact]
     public async Task SaveAsync_WhenTheTabIsNew_ThenIsNoLongerUnsaved()
     {
         // Arrange
-        using var harness = new Harness(new FakeDialogs(answer: "Test/Ping"));
+        using var harness = new Harness(new FakeDialogs(answer: "Ping"));
         var tab = harness.Tab();
         tab.Url = "https://dev.local";
 

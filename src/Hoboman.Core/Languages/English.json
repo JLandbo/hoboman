@@ -59,7 +59,6 @@
     "DeleteFolder.Title": "Delete folder",
     "DeleteFolder.Message": "Do you want to delete the folder {0} and everything in it? Requests: {1}",
     "DeleteFolder.Failed": "The folder could not be deleted",
-    "Dialog.FolderHint": "Use / to put it in a folder.",
     "Edit.Cut": "Cut",
     "Edit.Copy": "Copy",
     "Edit.Paste": "Paste",

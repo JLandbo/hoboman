@@ -11,7 +11,7 @@ public sealed class MainViewModelTests
     [InlineData(true)]
     public async Task DeleteAsync_WhenADraftWasJustSaved_ThenDeletesItsSecretsWithoutWaitingForTheWatcher(bool deleteFolder)
     {
-        using var harness = new Harness(new FakeDialogs(answer: "Users/Saved", accept: true));
+        using var harness = new Harness(new FakeDialogs(answer: "Saved", accept: true));
         await harness.Library.CreateFolderAsync("Users", Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
@@ -38,7 +38,7 @@ public sealed class MainViewModelTests
     [Fact]
     public async Task Close_WhenTheMethodChangedDuringADraftsFirstSave_ThenShowsTheMethodWrittenToDisk()
     {
-        using var harness = new Harness(new FakeDialogs(answer: "Users/Saved", accept: true));
+        using var harness = new Harness(new FakeDialogs(answer: "Saved", accept: true));
         await harness.Library.CreateFolderAsync("Users", Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
@@ -113,7 +113,7 @@ public sealed class MainViewModelTests
 
         var created = name is not null && problem is null;
         var question = harness.Dialogs.NameQuestion!.Value;
-        Assert.Equal(("New folder in Users/Private", "", "Create", false), (question.Title, question.Name, question.Confirm, question.SelectLastPart));
+        Assert.Equal(("New folder in Users/Private", "", "Create"), (question.Title, question.Name, question.Confirm));
         if (problem is not null)
         {
             Assert.Equal(harness.Translator.Of(problem), question.ProblemOf(name!));
@@ -124,7 +124,7 @@ public sealed class MainViewModelTests
     }
 
     [Theory]
-    [InlineData("Archive/People")]
+    [InlineData("Archive")]
     [InlineData("People")]
     [InlineData("users")]
     public async Task RenameFolderAsync_WhenItContainsDrafts_ThenMovesOnlyTheirDestinations(string name)
@@ -669,11 +669,14 @@ public sealed class MainViewModelTests
         Assert.False(canClose);
     }
 
-    [Fact]
-    public async Task NewFolderAsync_WhenANameIsGiven_ThenShowsTheFolder()
+    [Theory]
+    [InlineData("Users", true)]
+    [InlineData("Other/Users", false)]
+    [InlineData("Other\\Users", false)]
+    public async Task NewFolderAsync_WhenANameIsGiven_ThenAcceptsOnlyOneFolderName(string name, bool accepted)
     {
         // Arrange
-        using var harness = new Harness(new FakeDialogs(answer: "Users"));
+        using var harness = new Harness(new FakeDialogs(answer: name));
         var main = harness.Main();
         await main.LoadAsync();
 
@@ -681,7 +684,7 @@ public sealed class MainViewModelTests
         await main.NewFolderAsync();
 
         // Assert
-        Assert.Equal("Users", Assert.Single(main.Tree.Nodes).Path);
+        Assert.Equal(accepted ? ["Users"] : Array.Empty<string>(), main.Tree.Nodes.Select(node => node.Path));
     }
 
     [Fact]
@@ -704,17 +707,18 @@ public sealed class MainViewModelTests
     public async Task RenameAsync_WhenTheRequestIsOpen_ThenTheTabFollows()
     {
         // Arrange
-        using var harness = new Harness(new FakeDialogs(answer: "Health/Ping"));
-        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        using var harness = new Harness(new FakeDialogs(answer: "Renamed"));
+        await harness.Library.SaveAsync("Health/Ping", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
-        await main.OpenAsync(main.Tree.Nodes.Single());
+        await main.OpenAsync(NodeOf(main, "Health/Ping"));
 
         // Act
-        await main.RenameAsync(main.Tree.Nodes.Single());
+        await main.RenameAsync(NodeOf(main, "Health/Ping"));
 
         // Assert
-        Assert.Equal("Health/Ping", main.SelectedTab?.Name);
+        Assert.Equal("Health/Renamed", main.SelectedTab?.Name);
+        Assert.Equal("Ping", harness.Dialogs.NameQuestion!.Value.Name);
     }
 
     [Fact]
@@ -877,20 +881,23 @@ public sealed class MainViewModelTests
 
     static RequestNodeViewModel NodeOf(MainViewModel main, string path) => RequestTreeViewModel.Flatten(main.Tree.Nodes).Single(node => node.Path == path);
 
-    [Fact]
-    public async Task RenameFolderAsync_WhenGivenAName_ThenMovesTheFolder()
+    [Theory]
+    [InlineData("Users", "People")]
+    [InlineData("Parent/Users", "Parent/People")]
+    public async Task RenameFolderAsync_WhenGivenAName_ThenKeepsTheParentFolder(string original, string renamed)
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(answer: "People"));
-        await harness.Library.SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAsync($"{original}/Get", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
 
         // Act
-        await main.RenameFolderAsync(NodeOf(main, "Users"));
+        await main.RenameFolderAsync(NodeOf(main, original));
 
         // Assert
-        Assert.Equal(["People/Get"], await harness.Library.NamesAsync(Cancellation));
+        Assert.Equal([$"{renamed}/Get"], await harness.Library.NamesAsync(Cancellation));
+        Assert.Equal("Users", harness.Dialogs.NameQuestion!.Value.Name);
     }
 
     [Fact]
@@ -928,17 +935,17 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public async Task RenameFolderAsync_WhenMovedIntoAClosedFolder_ThenOpensIt()
+    public async Task MoveAsync_WhenMovingAFolderIntoAClosedFolder_ThenOpensIt()
     {
         // Arrange
-        using var harness = new Harness(new FakeDialogs(answer: "Archive/Users"));
+        using var harness = new Harness();
         await harness.Library.SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
         await harness.Library.CreateFolderAsync("Archive", Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
 
         // Act
-        await main.RenameFolderAsync(NodeOf(main, "Users"));
+        await main.MoveAsync(NodeOf(main, "Users"), NodeOf(main, "Archive"));
 
         // Assert
         Assert.True(NodeOf(main, "Archive").IsExpanded);
@@ -947,6 +954,8 @@ public sealed class MainViewModelTests
     [Theory]
     [InlineData("Taken")]
     [InlineData("Users/Inside")]
+    [InlineData("Other/Users")]
+    [InlineData("Other\\Users")]
     public async Task RenameFolderAsync_WhenTheNameCannotBeUsed_ThenKeepsTheFolder(string answer)
     {
         // Arrange
@@ -1413,11 +1422,14 @@ public sealed class MainViewModelTests
         Assert.Equal("200 OK", main.SelectedTab?.Response?.Status);
     }
 
-    [Fact]
-    public async Task RenameAsync_WhenTheNewNameIsTaken_ThenKeepsBothFiles()
+    [Theory]
+    [InlineData("Taken")]
+    [InlineData("Other/Renamed")]
+    [InlineData("Other\\Renamed")]
+    public async Task RenameAsync_WhenTheNewNameIsTakenOrContainsAPath_ThenKeepsBothFiles(string name)
     {
         // Arrange
-        using var harness = new Harness(new FakeDialogs(answer: "Taken"));
+        using var harness = new Harness(new FakeDialogs(answer: name));
         await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
         await harness.Library.SaveAsync("Taken", ApiRequest.New(), Cancellation);
         var main = harness.Main();

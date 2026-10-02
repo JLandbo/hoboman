@@ -59,7 +59,6 @@
     "DeleteFolder.Title": "Slet mappe",
     "DeleteFolder.Message": "Vil du slette mappen {0} og alt i den? Antal requests: {1}",
     "DeleteFolder.Failed": "Mappen kunne ikke slettes",
-    "Dialog.FolderHint": "Brug / for at lægge den i en mappe.",
     "Edit.Cut": "Klip",
     "Edit.Copy": "Kopiér",
     "Edit.Paste": "Sæt ind",
