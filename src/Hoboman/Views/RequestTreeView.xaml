@@ -5,7 +5,12 @@
     <UserControl.Resources>
         <ContextMenu x:Key="RequestMenu" x:Shared="False" Style="{StaticResource PopupMenu}">
             <MenuItem Header="{DynamicResource Tree.Rename}" Click="Rename_Click" />
+            <MenuItem Header="{DynamicResource Tree.Clone}" Click="Clone_Click" />
             <MenuItem Header="{DynamicResource Tree.Delete}" Click="Delete_Click" />
+        </ContextMenu>
+        <ContextMenu x:Key="DraftMenu" x:Shared="False" Style="{StaticResource PopupMenu}">
+            <MenuItem Header="{DynamicResource Tree.Rename}" Click="Rename_Click" />
+            <MenuItem Header="{DynamicResource Tree.Clone}" Click="Clone_Click" />
         </ContextMenu>
         <ContextMenu x:Key="FolderMenu" x:Shared="False" Style="{StaticResource PopupMenu}">
             <MenuItem Header="{DynamicResource Tree.FolderAuth}" Click="FolderAuth_Click" />
@@ -14,18 +19,28 @@
         </ContextMenu>
     </UserControl.Resources>
     <Grid>
-        <TreeView x:Name="Tree" ItemsSource="{Binding Tree.Nodes}" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource Text}"
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition />
+        </Grid.RowDefinitions>
+        <Border x:Name="RootDropTarget" Background="{DynamicResource Box}" CornerRadius="6" Padding="8,6" Margin="2,2,2,6" Visibility="Collapsed" AllowDrop="True"
+                DragOver="Tree_DragOver" DragLeave="Tree_DragLeave" Drop="Tree_Drop">
+            <TextBlock Text="{DynamicResource Tree.Root}" Foreground="{DynamicResource Muted}" />
+        </Border>
+        <TreeView x:Name="Tree" Grid.Row="1" ItemsSource="{Binding Tree.Nodes}" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource Text}"
                   ScrollViewer.HorizontalScrollBarVisibility="Disabled" AllowDrop="True"
-                  PreviewMouseLeftButtonDown="Tree_PreviewMouseLeftButtonDown" PreviewMouseLeftButtonUp="Tree_PreviewMouseLeftButtonUp" MouseMove="Tree_MouseMove" DragOver="Tree_DragOver" Drop="Tree_Drop">
+                  PreviewMouseLeftButtonDown="Tree_PreviewMouseLeftButtonDown" PreviewMouseLeftButtonUp="Tree_PreviewMouseLeftButtonUp" MouseMove="Tree_MouseMove" DragOver="Tree_DragOver" DragLeave="Tree_DragLeave" Drop="Tree_Drop">
             <TreeView.ItemContainerStyle>
                 <Style TargetType="TreeViewItem" BasedOn="{StaticResource TreeItem}">
                     <EventSetter Event="MouseLeftButtonUp" Handler="Item_MouseLeftButtonUp" />
                     <EventSetter Event="KeyDown" Handler="Item_KeyDown" />
-                    <EventSetter Event="ContextMenuOpening" Handler="Item_ContextMenuOpening" />
                     <Setter Property="ContextMenu" Value="{StaticResource FolderMenu}" />
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding IsFolder}" Value="False">
                             <Setter Property="ContextMenu" Value="{StaticResource RequestMenu}" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding IsDraft}" Value="True">
+                            <Setter Property="ContextMenu" Value="{StaticResource DraftMenu}" />
                         </DataTrigger>
                     </Style.Triggers>
                 </Style>
@@ -72,7 +87,7 @@
                 </HierarchicalDataTemplate>
             </TreeView.ItemTemplate>
         </TreeView>
-        <TextBlock Text="{DynamicResource Tree.Empty}" Foreground="{DynamicResource Muted}" Margin="8,4,0,0">
+        <TextBlock Grid.Row="1" Text="{DynamicResource Tree.Empty}" Foreground="{DynamicResource Muted}" Margin="8,4,0,0" IsHitTestVisible="False">
             <TextBlock.Style>
                 <Style TargetType="TextBlock">
                     <Setter Property="Visibility" Value="Collapsed" />

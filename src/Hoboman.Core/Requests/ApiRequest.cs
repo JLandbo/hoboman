@@ -15,7 +15,7 @@ public sealed record ApiRequest
 
     public IReadOnlyList<KeyValue> Headers { get; init; } = [];
 
-    public BodyKind BodyKind { get; init; } = BodyKind.None;
+    public BodyKind BodyKind { get; init; } = BodyKind.Json;
 
     public string Body { get; init; } = "";
 

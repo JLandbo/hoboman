@@ -74,6 +74,8 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public static IReadOnlyList<string> Methods { get; } = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
+    public event Func<RequestTabViewModel, Task>? Created;
+
     public string? Name
     {
         get;
@@ -163,6 +165,10 @@ public sealed class RequestTabViewModel : ObservableObject
     public void MoveTo(string? destination)
     {
         Destination = destination;
+        if (IsDraft && SuggestedName is { } name)
+        {
+            SuggestedName = destination is null ? RequestLibrary.LastPartOf(name) : $"{destination}/{RequestLibrary.LastPartOf(name)}";
+        }
         _ = UpdateAuthSourceAsync();
     }
 
@@ -397,7 +403,7 @@ public sealed class RequestTabViewModel : ObservableObject
     public ProblemMessage? Problem { get; private set => Set(ref field, value); }
 
     // All tabs share one view, so each tab keeps which sections it shows.
-    public RequestSection RequestSection { get; set => Set(ref field, value); }
+    public RequestSection RequestSection { get; set => Set(ref field, value); } = RequestSection.Body;
 
     public ResponseSection ResponseSection { get; set => Set(ref field, value); }
 
@@ -449,12 +455,33 @@ public sealed class RequestTabViewModel : ObservableObject
         await UpdateAuthSourceAsync();
     }
 
-    public async Task SaveAsync()
+    public Task SaveAsync() => _services.CollectionChanges.RunAsync(async () =>
     {
+        if (_closed)
+        {
+            return;
+        }
         var translator = _services.Translator;
         var name = Name ?? _services.Dialogs.AskName(translator.Of("Save.Title"), SuggestedName ?? DraftName ?? "", translator.Of("Common.Save"), _services.ProblemOfName, selectLastPart: IsDraft);
-        if (name is null)
+        if (name is not null)
         {
+            await SaveCoreAsync(name);
+        }
+    });
+
+    public Task SaveAsync(string name) => _services.CollectionChanges.RunAsync(() => SaveCoreAsync(Name ?? name));
+
+    // The caller holds CollectionChanges, so the path cannot move between choosing it and saving.
+    internal async Task SaveCoreAsync(string name)
+    {
+        if (_closed)
+        {
+            return;
+        }
+        var creating = Name is null;
+        if (creating && _services.ProblemOfName(name) is { } problem)
+        {
+            Problem = new(_services.Translator.Of("Save.Failed"), problem);
             return;
         }
         EnsureOwnId();
@@ -463,7 +490,7 @@ public sealed class RequestTabViewModel : ObservableObject
             // The secrets go first, so a failure leaves no request file behind that points at secrets that were never saved.
             await SaveSecretsAsync(CancellationToken.None);
             var request = ToRequest();
-            await _services.Library.SaveAsync(name, request, CancellationToken.None);
+            await (creating ? _services.Library.CreateAsync(name, request, CancellationToken.None) : _services.Library.SaveAsync(name, request, CancellationToken.None));
             _savedJson = SavedJsonOf(request);
             SavedMethod = request.Method;
             Name = name;
@@ -476,11 +503,18 @@ public sealed class RequestTabViewModel : ObservableObject
             {
                 await UpdateAuthSourceAsync();
             }
+            if (creating && Created is { } created)
+            {
+                foreach (var handler in created.GetInvocationList().Cast<Func<RequestTabViewModel, Task>>())
+                {
+                    await handler(this);
+                }
+            }
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
             _services.Logger.LogError(exception, "Could not save {Name}", name);
-            Problem = new(translator.Of("Save.Failed"), translator.DetailsOf(exception));
+            Problem = new(_services.Translator.Of("Save.Failed"), _services.Translator.DetailsOf(exception));
         }
     }
 
@@ -623,7 +657,7 @@ public sealed class RequestTabViewModel : ObservableObject
         IsDirty = true;
     }
 
-    ApiRequest ToRequest() => new()
+    public ApiRequest ToRequest() => new()
     {
         Id = Id,
         Method = Method,
@@ -639,7 +673,7 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public async Task SendAsync()
     {
-        if (IsAuthRefreshing)
+        if (_closed || IsAuthRefreshing)
         {
             return;
         }

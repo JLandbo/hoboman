@@ -73,10 +73,16 @@ public sealed class SecretStore(AppFolder folder, ILogger<SecretStore> logger)
         logger.LogInformation("The secrets followed {Count} renamed or removed environments", changes.Count);
     }
 
-    public async Task DeleteAsync(Guid id, CancellationToken cancellationToken)
+    public Task DeleteAsync(Guid id, CancellationToken cancellationToken) => DeleteAsync(new HashSet<Guid> { id }, cancellationToken);
+
+    public async Task DeleteAsync(IReadOnlySet<Guid> ids, CancellationToken cancellationToken)
     {
-        await _file.UpdateAsync(secrets => secrets.Where(secret => !secret.Key.StartsWith($"{id}/", StringComparison.Ordinal)).ToDictionary(), cancellationToken).ConfigureAwait(false);
-        logger.LogInformation("Deleted the secrets for {Id}", id);
+        if (ids.Count == 0)
+        {
+            return;
+        }
+        await _file.UpdateAsync(secrets => secrets.Where(secret => !Guid.TryParse(secret.Key.Split('/')[0], out var id) || !ids.Contains(id)).ToDictionary(), cancellationToken).ConfigureAwait(false);
+        logger.LogInformation("Deleted the secrets for {Count} owners", ids.Count);
     }
 
     public async Task CopyAsync(Guid sourceId, Guid targetId, CancellationToken cancellationToken)

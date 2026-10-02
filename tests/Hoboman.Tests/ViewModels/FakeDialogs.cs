@@ -6,6 +6,8 @@ public sealed class FakeDialogs(string? answer = null, bool accept = false) : ID
 
     public object? Shown { get; private set; }
 
+    public (string Title, string Message)? Notification { get; private set; }
+
     public (string Title, string Name, string Confirm, Func<string, string?> ProblemOf, bool SelectLastPart)? NameQuestion { get; private set; }
 
     public (string Title, string Message, string Confirm, IReadOnlyList<string> Items)? ConfirmQuestion { get; private set; }
@@ -25,7 +27,11 @@ public sealed class FakeDialogs(string? answer = null, bool accept = false) : ID
         return accept;
     }
 
-    public void Tell(string title, string message) => Asked++;
+    public void Tell(string title, string message)
+    {
+        Asked++;
+        Notification = (title, message);
+    }
 
     public void EditSettings(SettingsViewModel settings) => Shown = settings;
 

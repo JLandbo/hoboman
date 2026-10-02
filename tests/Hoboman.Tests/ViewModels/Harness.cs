@@ -22,7 +22,7 @@ public sealed class Harness : IDisposable
         var runner = new RequestRunner(Sender, Library, History(), NullLogger<RequestRunner>.Instance);
         Secrets = new(Folder, NullLogger<SecretStore>.Instance);
         AuthRefresh = new(OAuth, Library, Secrets);
-        Services = new(runner, Secrets, AuthRefresh, Library, Environments, Dialogs, _translator, Clock, NullLogger<RequestTabViewModel>.Instance);
+        Services = new(runner, Secrets, AuthRefresh, Library, new(), Environments, Dialogs, _translator, Clock, NullLogger<RequestTabViewModel>.Instance);
     }
 
     public AppFolder Folder { get; }
@@ -55,15 +55,16 @@ public sealed class Harness : IDisposable
     public RequestTabViewModel Tab(ApiRequest? request = null, string? name = null) => new(Services, request ?? ApiRequest.New(), name);
 
     public MainViewModel Main() => new(
-        new(Library, NullLogger<RequestTreeViewModel>.Instance),
+        new(Library, Dialogs, _translator, NullLogger<RequestTreeViewModel>.Instance),
         new(History(), _translator, TimeProvider.System, NullLogger<HistoryViewModel>.Instance),
         Environments,
         new(SettingsStore, _translator, NullLogger<SettingsViewModel>.Instance),
+        SettingsStore,
         EnvironmentEditor(),
         FolderAuth(),
         Services,
         Library,
-        Secrets,
+        new RequestDeletion(Library, Secrets, Folder, NullLogger<RequestDeletion>.Instance),
         Dialogs,
         new(new FakeClipboard(), NullLogger<ClipboardViewModel>.Instance),
         _translator,

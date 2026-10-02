@@ -6,7 +6,7 @@ public sealed class RequestTreeViewModelTests
 {
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
-    static RequestTreeViewModel Tree(Harness harness) => new(harness.Library, NullLogger<RequestTreeViewModel>.Instance);
+    static RequestTreeViewModel Tree(Harness harness) => new(harness.Library, harness.Dialogs, harness.Translator, NullLogger<RequestTreeViewModel>.Instance);
 
     [Fact]
     public async Task LoadAsync_WhenAnOlderReadFinishesAfterAFolderMove_ThenKeepsTheNewDestination()
@@ -14,7 +14,7 @@ public sealed class RequestTreeViewModelTests
         using var harness = new Harness();
         using var logger = new BlockedReadLogger(Cancellation);
         await harness.Library.CreateFolderAsync("Users", Cancellation);
-        var tree = new RequestTreeViewModel(harness.Library, logger);
+        var tree = new RequestTreeViewModel(harness.Library, harness.Dialogs, harness.Translator, logger);
         await tree.LoadAsync(Cancellation);
         var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "Users");
         tree.Follow([tab]);
@@ -48,7 +48,7 @@ public sealed class RequestTreeViewModelTests
         using var harness = new Harness(new FakeDialogs(answer: "Users/Saved"));
         using var logger = new BlockedReadLogger(Cancellation);
         await harness.Library.CreateFolderAsync("Users", Cancellation);
-        var tree = new RequestTreeViewModel(harness.Library, logger);
+        var tree = new RequestTreeViewModel(harness.Library, harness.Dialogs, harness.Translator, logger);
         await tree.LoadAsync(Cancellation);
         var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "Users");
         tree.Follow([tab]);
@@ -67,7 +67,6 @@ public sealed class RequestTreeViewModelTests
         }
 
         Assert.Equal(tab.Id, tree.IdOf("users/saved"));
-        Assert.True(tree.IsUsed(tab.Id));
         var row = Assert.Single(RequestTreeViewModel.Flatten(tree.Nodes), node => node.Tab == tab);
         Assert.Equal("Users/Saved", row.Path);
         Assert.False(row.IsDraft);

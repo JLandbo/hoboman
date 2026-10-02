@@ -29,6 +29,21 @@ public sealed class AppFolderWatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task RequestsChanged_WhenTheOrderIsSaved_ThenFiresWithoutChangingRequests()
+    {
+        var folder = new AppFolder(_temporary.Path);
+        using var watcher = new AppFolderWatcher(folder, NullLogger<AppFolderWatcher>.Instance);
+        var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        watcher.RequestsChanged += () => changed.TrySetResult();
+        watcher.Start();
+        var library = new RequestLibrary(folder, NullLogger<RequestLibrary>.Instance);
+        await library.SaveOrderAsync(["B", "Folder/", "A"], Cancellation);
+        await changed.Task.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+        Assert.Equal(["B", "Folder/", "A"], await library.LoadOrderAsync(Cancellation));
+        Assert.Empty(await library.NamesAsync(Cancellation));
+    }
+
+    [Fact]
     public async Task HistoryChanged_WhenACallIsAdded_ThenFires()
     {
         // Arrange

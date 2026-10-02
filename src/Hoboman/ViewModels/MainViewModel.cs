@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
-using Hoboman.Core.Auth;
 using Hoboman.Core.Languages;
 using Hoboman.Core.Requests;
+using Hoboman.Core.Settings;
 using Hoboman.Core.Storage;
 using Hoboman.Mvvm;
 using Microsoft.Extensions.Logging;
@@ -13,11 +13,12 @@ public sealed class MainViewModel(
     HistoryViewModel history,
     EnvironmentsViewModel environments,
     SettingsViewModel settings,
+    SettingsStore settingsStore,
     EnvironmentEditorViewModel environmentEditor,
     FolderAuthViewModel folderAuth,
     RequestTabServices tabServices,
     RequestLibrary library,
-    SecretStore secrets,
+    RequestDeletion deletion,
     IDialogs dialogs,
     ClipboardViewModel clipboard,
     Translator translator,
@@ -26,7 +27,7 @@ public sealed class MainViewModel(
     readonly HashSet<string> _opening = new(StringComparer.OrdinalIgnoreCase);
     int _lastNumber;
 
-    Coalescer RequestsReload => field ??= new(ReloadRequestsAsync);
+    Coalescer RequestsReload => field ??= new(() => tabServices.CollectionChanges.RunAsync(ReloadRequestsAsync));
 
     Coalescer HistoryReload => field ??= new(() => history.RefreshAsync(CancellationToken.None));
 
@@ -42,6 +43,23 @@ public sealed class MainViewModel(
 
     public ObservableCollection<RequestTabViewModel> Tabs { get; } = tree.Follow([]);
 
+    public TabSession Session => new([.. Tabs.Where(tab => tab.Name is { } name && library.Exists(name)).Select(tab => tab.Name!)], SelectedTab?.Name);
+
+    public bool IsChangingCollection => tabServices.CollectionChanges.IsRunning;
+
+    public void MoveTab(RequestTabViewModel tab, RequestTabViewModel? target, bool after)
+    {
+        if (!Tabs.Contains(tab) || tab == target || target is not null && !Tabs.Contains(target))
+        {
+            return;
+        }
+        var remaining = Tabs.Where(item => item != tab).ToList();
+        var index = target is null ? remaining.Count : remaining.IndexOf(target) + (after ? 1 : 0);
+        var selected = SelectedTab;
+        Tabs.Move(Tabs.IndexOf(tab), index);
+        SelectedTab = selected;
+    }
+
     public RequestTabViewModel? SelectedTab
     {
         get;
@@ -56,9 +74,28 @@ public sealed class MainViewModel(
 
     public async Task LoadAsync()
     {
+        await tabServices.CollectionChanges.RunAsync(RetrySecretCleanupAsync);
         await RequestsChangedAsync();
         await HistoryChangedAsync();
         await EnvironmentsChangedAsync();
+        try
+        {
+            if ((await settingsStore.LoadAsync(CancellationToken.None)).Session is { } session)
+            {
+                foreach (var name in session.Requests.Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    if (RequestTreeViewModel.Flatten(tree.Nodes).FirstOrDefault(node => !node.IsFolder && SameName(node.Path, name)) is { } node)
+                    {
+                        await OpenAsync(node);
+                    }
+                }
+                SelectedTab = Tabs.FirstOrDefault(tab => SameName(tab.Name, session.Selected)) ?? SelectedTab;
+            }
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            logger.LogWarning(exception, "Could not restore the open request tabs");
+        }
         if (Tabs.Count == 0)
         {
             NewTab();
@@ -91,6 +128,7 @@ public sealed class MainViewModel(
     {
         if ((node.IsDraft ? node.Tab : TabOf(node.Path)) is { } open)
         {
+            open.RequestSection = RequestSection.Body;
             SelectedTab = open;
             return;
         }
@@ -124,6 +162,7 @@ public sealed class MainViewModel(
     {
         if (Tabs.FirstOrDefault(tab => tab.HistoryName == item.File.Name) is { } open)
         {
+            open.RequestSection = RequestSection.Body;
             SelectedTab = open;
             return;
         }
@@ -154,6 +193,15 @@ public sealed class MainViewModel(
             }
             logger.LogInformation("Closed {Title} without saving it", tab.Title);
         }
+        CloseTab(tab);
+    }
+
+    void CloseTab(RequestTabViewModel tab)
+    {
+        if (!Tabs.Contains(tab))
+        {
+            return;
+        }
         tab.Close();
         var index = Tabs.IndexOf(tab);
         var wasSelected = SelectedTab == tab;
@@ -172,6 +220,11 @@ public sealed class MainViewModel(
 
     public bool CanClose()
     {
+        if (IsChangingCollection)
+        {
+            dialogs.Tell(translator.Of("Close.BusyTitle"), translator.Of("Close.BusyMessage"));
+            return false;
+        }
         var unsaved = Tabs.Where(tab => tab.IsDirty).Select(tab => tab.Title).ToList();
         if (unsaved.Count == 0)
         {
@@ -233,43 +286,163 @@ public sealed class MainViewModel(
         {
             return;
         }
-        await RenameToAsync(node, name, translator.Of("Rename.Failed"));
+        await ChangeCollectionAsync(() => RenameToAsync(node, name, translator.Of("Rename.Failed")));
+    }
+
+    public async Task RenameTabAsync(RequestTabViewModel tab)
+    {
+        string FullName(string value) => (RequestLibrary.ParentOf(tab.Name ?? tab.SuggestedName) ?? tab.Destination) is { } parent ? $"{parent}/{value}" : value;
+        if (dialogs.AskName(translator.Of("Rename.Title"), tab.Title, translator.Of("Common.Save"), value => value.Contains('/') ? translator.Of("Save.Invalid") : SameName(FullName(value), tab.Name) ? null : tabServices.ProblemOfName(FullName(value))) is not { } name)
+        {
+            return;
+        }
+        await ChangeCollectionAsync(async () =>
+        {
+            if (!Tabs.Contains(tab))
+            {
+                return;
+            }
+            if (tab.Name is not { } current)
+            {
+                await tab.SaveCoreAsync(FullName(name));
+                return;
+            }
+            if (FullName(name) != current)
+            {
+                await RenameToAsync(new(current, tab.Method, false), FullName(name), translator.Of("Rename.Failed"));
+            }
+        });
+    }
+
+    public Task CloneAsync(RequestNodeViewModel node) => ChangeCollectionAsync(() => CloneCoreAsync(node));
+
+    async Task CloneCoreAsync(RequestNodeViewModel node)
+    {
+        if (node.IsFolder)
+        {
+            return;
+        }
+        try
+        {
+            var open = node.Tab ?? TabOf(node.Path);
+            var source = open?.ToRequest() ?? await library.LoadAsync(node.Path, CancellationToken.None);
+            if (source is null)
+            {
+                return;
+            }
+            var parent = node.IsDraft ? open!.Destination : RequestLibrary.ParentOf(node.Path);
+            var stem = node.IsDraft ? open!.Title : node.Name;
+            var number = 1;
+            var suffix = stem.LastIndexOf(" (", StringComparison.Ordinal);
+            if (suffix >= 0 && stem.EndsWith(')') && int.TryParse(stem.AsSpan(suffix + 2, stem.Length - suffix - 3), out var previous) && previous is >= 0 and < int.MaxValue)
+            {
+                stem = stem[..suffix];
+                number = previous + 1;
+            }
+            string name;
+            do
+            {
+                var leaf = $"{stem} ({number++})";
+                name = parent is null ? leaf : $"{parent}/{leaf}";
+            } while (library.Exists(name) || Tabs.Any(tab => SameName(tab.DraftName, name)));
+            var clone = source with { Id = Guid.NewGuid() };
+            try
+            {
+                if (open is not null)
+                {
+                    await open.Auth.CopySecretsAsync(clone.Id, CancellationToken.None);
+                }
+                else
+                {
+                    await tabServices.AuthRefresh.SaveAsync(() => tabServices.Secrets.CopyAsync(source.Id, clone.Id, CancellationToken.None), CancellationToken.None);
+                }
+                await library.CreateAsync(name, clone, CancellationToken.None);
+            }
+            catch
+            {
+                await tabServices.Secrets.DeleteAsync(clone.Id, CancellationToken.None);
+                throw;
+            }
+            await tree.LoadAsync(CancellationToken.None);
+            await tree.PlaceAsync(name, parent, node.OrderKey, DropPosition.After);
+            await OpenAsync(new RequestNodeViewModel(name, clone.Method, false));
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            logger.LogError(exception, "Could not clone {Name}", node.Path);
+            dialogs.Tell(translator.Of("Clone.Failed"), translator.DetailsOf(exception));
+        }
     }
 
     // A request dropped on another request goes into the folder that one is in, and one dropped beside the folders goes to the top.
-    public async Task MoveAsync(RequestNodeViewModel node, RequestNodeViewModel? target)
+    public bool CanMove(RequestNodeViewModel node, RequestNodeViewModel? target, DropPosition position)
     {
-        var folder = target is null ? null : target.IsFolder ? target.Path : RequestLibrary.ParentOf(target.Path);
+        var folder = DestinationOf(target, position);
         var name = folder is null ? node.Name : $"{folder}/{node.Name}";
-        if (SameName(name, node.Path))
-        {
-            return;
-        }
-        // Otherwise the request would seem to vanish into a closed folder.
-        if (target is { IsFolder: true })
-        {
-            target.IsExpanded = true;
-        }
-        if (tabServices.ProblemOfName(name) is { } problem)
-        {
-            dialogs.Tell(translator.Of("Move.Failed"), problem);
-            return;
-        }
-        await RenameToAsync(node, name, translator.Of("Move.Failed"));
+        return node != target && (target is null || !SameName(node.OrderKey, target.OrderKey))
+            && (!node.IsFolder || !SameName(folder, node.Path) && folder?.StartsWith($"{node.Path}/", StringComparison.OrdinalIgnoreCase) != true)
+            && (folder is null || library.FolderExists(folder))
+            && (node.IsDraft || SameName(name, node.Path) || (node.IsFolder ? !library.FolderExists(name) : !library.Exists(name)));
     }
 
-    async Task RenameToAsync(RequestNodeViewModel node, string name, string failed)
+    static string? DestinationOf(RequestNodeViewModel? target, DropPosition position) => target is null ? null : position == DropPosition.Inside && target.IsFolder ? target.Path : RequestLibrary.ParentOf(target.Path);
+
+    public Task MoveAsync(RequestNodeViewModel node, RequestNodeViewModel? target, DropPosition position = DropPosition.Inside) => ChangeCollectionAsync(() => MoveCoreAsync(node, target, position));
+
+    async Task MoveCoreAsync(RequestNodeViewModel node, RequestNodeViewModel? target, DropPosition position)
+    {
+        var current = RequestTreeViewModel.Flatten(tree.Nodes).FirstOrDefault(row => SameName(row.OrderKey, node.OrderKey));
+        if (current is null)
+        {
+            return;
+        }
+        node = current;
+        if (!CanMove(node, target, position))
+        {
+            if (node != target)
+            {
+                dialogs.Tell(translator.Of("Move.Failed"), translator.Of("Move.Invalid"));
+            }
+            return;
+        }
+        var folder = DestinationOf(target, position);
+        var name = folder is null ? node.Name : $"{folder}/{node.Name}";
+        try
+        {
+            if (node.IsDraft)
+            {
+                node.Tab!.MoveTo(folder);
+                tree.RefreshDrafts();
+            }
+            else if (!SameName(name, node.Path) && !(node.IsFolder ? await RenameFolderToAsync(node, name) : await RenameToAsync(node, name, translator.Of("Move.Failed"))))
+            {
+                return;
+            }
+            await tree.PlaceAsync(node.IsDraft ? node.OrderKey : node.IsFolder ? $"{name}/" : name, folder, position == DropPosition.Inside ? null : target?.OrderKey, position);
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            logger.LogError(exception, "Could not move {Name}", node.Path);
+            dialogs.Tell(translator.Of("Move.Failed"), translator.DetailsOf(exception));
+        }
+    }
+
+    async Task<bool> RenameToAsync(RequestNodeViewModel node, string name, string failed)
     {
         try
         {
             await library.RenameAsync(node.Path, name, CancellationToken.None);
             TabOf(node.Path)?.Rename(name);
+            await tree.RenamedAsync(node, name);
             await tree.LoadAsync(CancellationToken.None);
+            return true;
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
             logger.LogError(exception, "Could not rename {Name} to {NewName}", node.Path, name);
             dialogs.Tell(failed, translator.DetailsOf(exception));
+            await tree.LoadAsync(CancellationToken.None);
+            return false;
         }
     }
 
@@ -280,6 +453,12 @@ public sealed class MainViewModel(
         {
             return;
         }
+        await ChangeCollectionAsync(() => RenameFolderToAsync(folder, name));
+    }
+
+    async Task<bool> RenameFolderToAsync(RequestNodeViewModel folder, string name)
+    {
+        folder = RequestTreeViewModel.Flatten(tree.Nodes).FirstOrDefault(node => node.IsFolder && SameName(node.Path, folder.Path)) ?? folder;
         var inside = RequestTreeViewModel.Flatten([folder]).ToList();
         // The tree keeps folders open by their path, so the open ones are opened again under the new one,
         // and the folders it now lies in are opened too, as it would otherwise seem to vanish.
@@ -299,22 +478,28 @@ public sealed class MainViewModel(
             {
                 draft.Tab!.MoveTo(Moved(draft.Tab.Destination!));
             }
+            await tree.RenamedAsync(folder, name);
             await tree.LoadAsync(CancellationToken.None);
             foreach (var node in RequestTreeViewModel.Flatten(tree.Nodes).Where(node => opened.Contains(node.Path)))
             {
                 node.IsExpanded = true;
             }
+            return true;
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
             logger.LogError(exception, "Could not rename the folder {Name} to {NewName}", folder.Path, name);
             dialogs.Tell(translator.Of("RenameFolder.Failed"), translator.DetailsOf(exception));
+            await tree.LoadAsync(CancellationToken.None);
+            return false;
         }
 
         string Moved(string path) => $"{name}{path[folder.Path.Length..]}";
     }
 
-    public async Task DeleteAsync(RequestNodeViewModel node)
+    public Task DeleteAsync(RequestNodeViewModel node) => ChangeCollectionAsync(() => DeleteCoreAsync(node));
+
+    async Task DeleteCoreAsync(RequestNodeViewModel node)
     {
         if (!dialogs.Confirm(translator.Of("Delete.Title"), translator.Format("Delete.Message", node.Name), translator.Of("Delete.Confirm"), []))
         {
@@ -322,12 +507,7 @@ public sealed class MainViewModel(
         }
         try
         {
-            var id = tree.IdOf(node.Path);
-            var tab = TabOf(node.Path);
-            await library.DeleteAsync(node.Path, CancellationToken.None);
-            tab?.Unlink();
-            await tree.LoadAsync(CancellationToken.None);
-            await DeleteSecretsIfUnusedAsync(id);
+            await DeleteFromLibraryAsync(node);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
@@ -336,8 +516,11 @@ public sealed class MainViewModel(
         }
     }
 
-    public async Task DeleteFolderAsync(RequestNodeViewModel folder)
+    public Task DeleteFolderAsync(RequestNodeViewModel folder) => ChangeCollectionAsync(() => DeleteFolderCoreAsync(folder));
+
+    async Task DeleteFolderCoreAsync(RequestNodeViewModel folder)
     {
+        folder = RequestTreeViewModel.Flatten(tree.Nodes).FirstOrDefault(node => node.IsFolder && SameName(node.Path, folder.Path)) ?? folder;
         var inside = RequestTreeViewModel.Flatten([folder]).ToList();
         var requests = inside.Where(node => !node.IsFolder && !node.IsDraft).Select(node => node.Path).ToList();
         var drafts = inside.Where(node => node.IsDraft).Select(node => node.Tab!).ToList();
@@ -348,41 +531,7 @@ public sealed class MainViewModel(
         }
         try
         {
-            var ids = requests.Select(tree.IdOf).ToList();
-            var folders = new List<(string Path, Guid Id)>();
-            foreach (var node in inside.Where(node => node.IsFolder))
-            {
-                folders.Add((node.Path, await FolderIdOfAsync(node.Path)));
-            }
-            try
-            {
-                await tabServices.AuthRefresh.SaveAsync(() => library.DeleteFolderAsync(folder.Path, CancellationToken.None), CancellationToken.None);
-            }
-            // A file that cannot be deleted stops only itself, so what is gone is let go of either way, and what is left is kept.
-            finally
-            {
-                foreach (var name in requests.Where(name => !library.Exists(name)))
-                {
-                    TabOf(name)?.Unlink();
-                }
-                foreach (var draft in drafts.Where(tab => tab.Destination is { } destination && !library.FolderExists(destination)))
-                {
-                    draft.Unlink();
-                    await draft.UpdateAuthSourceAsync();
-                }
-                await tree.LoadAsync(CancellationToken.None);
-                foreach (var id in ids)
-                {
-                    await DeleteSecretsIfUnusedAsync(id);
-                }
-                foreach (var (path, id) in folders)
-                {
-                    if (id != Guid.Empty && !library.FolderExists(path) && !await library.SharesFolderIdAsync(path, id, CancellationToken.None))
-                    {
-                        await secrets.DeleteAsync(id, CancellationToken.None);
-                    }
-                }
-            }
+            await DeleteFromLibraryAsync(folder);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
@@ -391,31 +540,60 @@ public sealed class MainViewModel(
         }
     }
 
-    // A copy with the same id shares the secrets, so they stay while any request still uses them.
-    async Task DeleteSecretsIfUnusedAsync(Guid id)
-    {
-        if (id == Guid.Empty || tree.IsUsed(id))
-        {
-            return;
-        }
-        await secrets.DeleteAsync(id, CancellationToken.None);
-        foreach (var open in Tabs.Where(open => open.Id == id))
-        {
-            open.Auth.ForgetSavedSecrets();
-        }
-    }
-
-    // A folder whose settings cannot be read is still deleted; only its secrets cannot be found.
-    async Task<Guid> FolderIdOfAsync(string name)
+    async Task DeleteFromLibraryAsync(RequestNodeViewModel node)
     {
         try
         {
-            return (await library.LoadFolderAsync(name, CancellationToken.None))?.Id ?? Guid.Empty;
+            await tabServices.AuthRefresh.SaveAsync(() => DeleteAndCloseAsync(node), CancellationToken.None);
+        }
+        finally
+        {
+            await tree.LoadAsync(CancellationToken.None);
+        }
+        await tree.SaveOrderAsync();
+    }
+
+    async Task DeleteAndCloseAsync(RequestNodeViewModel node)
+    {
+        node = RequestTreeViewModel.Flatten(tree.Nodes).FirstOrDefault(row => row.IsFolder == node.IsFolder && SameName(row.Path, node.Path)) ?? node;
+        var inside = RequestTreeViewModel.Flatten([node]).ToList();
+        var requests = inside.Where(row => !row.IsFolder && !row.IsDraft).ToDictionary(row => row.Path, row => tree.IdOf(row.Path));
+        var drafts = inside.Where(row => row.IsDraft).Select(row => row.Tab!).ToList();
+        try
+        {
+            await deletion.DeleteAsync(node.Path, node.IsFolder, CancellationToken.None);
+        }
+        finally
+        {
+            var removed = requests.Where(request => !library.Exists(request.Key)).ToList();
+            foreach (var (name, _) in removed)
+            {
+                if (TabOf(name) is { } tab)
+                {
+                    CloseTab(tab);
+                }
+            }
+            foreach (var tab in Tabs.Where(tab => !tab.OwnsId && removed.Any(request => request.Value == tab.Id)))
+            {
+                tab.Auth.ForgetSavedSecrets();
+            }
+            foreach (var draft in drafts.Where(tab => tab.Destination is { } destination && !library.FolderExists(destination)))
+            {
+                CloseTab(draft);
+            }
+        }
+    }
+
+    async Task RetrySecretCleanupAsync()
+    {
+        try
+        {
+            await tabServices.AuthRefresh.SaveAsync(() => deletion.CleanupAsync(CancellationToken.None), CancellationToken.None);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
-            logger.LogWarning(exception, "Could not read the settings of the folder {Name}", name);
-            return Guid.Empty;
+            logger.LogWarning(exception, "Could not finish the pending secret cleanup");
+            dialogs.Tell(translator.Of("Secrets.CleanupFailed"), translator.DetailsOf(exception));
         }
     }
 
@@ -467,6 +645,22 @@ public sealed class MainViewModel(
                 logger.LogWarning(exception, "Could not reload {Name}", tab.Name);
                 tab.ShowFileProblem(translator.DetailsOf(exception));
             }
+        }
+    }
+
+    async Task ChangeCollectionAsync(Func<Task> change)
+    {
+        try
+        {
+            await tabServices.CollectionChanges.RunAsync(async () =>
+            {
+                tree.ResetOrderFailure();
+                await change();
+            });
+        }
+        finally
+        {
+            await RequestsChangedAsync();
         }
     }
 

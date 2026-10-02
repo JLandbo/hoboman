@@ -15,4 +15,8 @@ public sealed class AppFolder(string root)
     public string Secrets => Path.Combine(root, "secrets.json");
 
     public string Settings => Path.Combine(root, "settings.json");
+
+    public string RequestOrder => Path.Combine(root, "request-order.json");
+
+    public string PendingSecretCleanup => Path.Combine(root, "pending-secret-cleanup.json");
 }

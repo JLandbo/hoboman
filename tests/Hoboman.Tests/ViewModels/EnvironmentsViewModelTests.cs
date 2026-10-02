@@ -21,6 +21,28 @@ public sealed class EnvironmentsViewModelTests
         Assert.Equal("Prod", restarted.Selected?.Name);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("Dev")]
+    [InlineData("Prod")]
+    public async Task ChooseAsync_WhenTheSessionHasNoSelectedSavedTab_ThenRemembersTheLastEnvironment(string? name)
+    {
+        using var harness = new Harness();
+        await harness.EnvironmentStore.SaveAsync([new("Dev", []), new("Prod", [])], Cancellation);
+        await harness.SettingsStore.UpdateAsync(settings => settings with { Session = new(["Request"], null) }, Cancellation);
+        await harness.Environments.LoadAsync(Cancellation);
+        await harness.Environments.ChooseAsync(harness.Environments.Items[1]);
+
+        await harness.Environments.ChooseAsync(harness.Environments.Items.FirstOrDefault(environment => environment.Name == name));
+        await harness.SettingsStore.UpdateAsync(settings => settings with { Layout = new(1200, 800, false, 340), Session = new(["Request"], null) }, Cancellation);
+        var restarted = harness.Restarted();
+        await restarted.LoadAsync(Cancellation);
+
+        Assert.Equal(name, restarted.Selected?.Name);
+        Assert.Equal(name, (await harness.SettingsStore.LoadAsync(Cancellation)).EnvironmentName);
+        Assert.Equal(["Request"], (await harness.SettingsStore.LoadAsync(Cancellation)).Session!.Requests);
+    }
+
     [Fact]
     public async Task LoadAsync_WhenTheChosenEnvironmentIsGone_ThenChoosesNone()
     {

@@ -1,12 +1,13 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using Hoboman.Core.Languages;
 using Hoboman.Core.Requests;
 using Hoboman.Core.Storage;
 using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
 
-public sealed class RequestTreeViewModel(RequestLibrary library, ILogger<RequestTreeViewModel> logger)
+public sealed class RequestTreeViewModel(RequestLibrary library, IDialogs dialogs, Translator translator, ILogger<RequestTreeViewModel> logger)
 {
     IReadOnlyDictionary<Guid, string> _nameById = new Dictionary<Guid, string>();
     Dictionary<string, Guid> _idByName = new(StringComparer.OrdinalIgnoreCase);
@@ -14,14 +15,68 @@ public sealed class RequestTreeViewModel(RequestLibrary library, ILogger<Request
     IReadOnlySet<string> _earlierNames = new HashSet<string>();
     IReadOnlyList<string> _folders = [];
     IReadOnlyList<(string Name, string? Method)> _files = [];
+    IReadOnlyList<string> _order = [];
     ObservableCollection<RequestTabViewModel> _tabs = [];
     readonly HashSet<RequestTabViewModel> _followed = [];
     RequestTabViewModel? _selected;
     int _loadVersion;
+    bool _orderSaveFailed;
 
     public ObservableCollection<RequestNodeViewModel> Nodes { get; } = [];
 
     public event Action<RequestNodeViewModel>? Revealed;
+
+    internal void ResetOrderFailure() => _orderSaveFailed = false;
+
+    public Task SaveOrderAsync()
+    {
+        _loadVersion++;
+        _order = [.. Flatten(Nodes).Select(node => node.OrderKey)];
+        return PersistOrderAsync();
+    }
+
+    public Task RenamedAsync(RequestNodeViewModel node, string name)
+    {
+        _loadVersion++;
+        _order = [.. Flatten(Nodes).Select(row => row.OrderKey).Select(key => key.Equals(node.OrderKey, StringComparison.OrdinalIgnoreCase) || node.IsFolder && key.StartsWith($"{node.Path}/", StringComparison.OrdinalIgnoreCase) ? $"{name}{key[node.Path.Length..]}" : key)];
+        return PersistOrderAsync();
+    }
+
+    async Task PersistOrderAsync()
+    {
+        try
+        {
+            await library.SaveOrderAsync([.. _order.Where(key => !key.StartsWith('\0'))], CancellationToken.None);
+            _orderSaveFailed = false;
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            logger.LogWarning(exception, "Could not save the request order");
+            if (_orderSaveFailed)
+            {
+                return;
+            }
+            _orderSaveFailed = true;
+            dialogs.Tell(translator.Of("Order.SaveFailed"), translator.DetailsOf(exception));
+        }
+    }
+
+    public async Task PlaceAsync(string key, string? parent, string? relativeTo, DropPosition position)
+    {
+        var siblings = FolderRowOf(parent)?.Children ?? Nodes;
+        if (siblings.FirstOrDefault(node => node.OrderKey.Equals(key, StringComparison.OrdinalIgnoreCase)) is not { } moved)
+        {
+            return;
+        }
+        var ordered = siblings.Where(node => node != moved).ToList();
+        var target = ordered.FindIndex(node => node.OrderKey.Equals(relativeTo, StringComparison.OrdinalIgnoreCase));
+        var index = target < 0 ? ordered.Count : target + (position == DropPosition.After ? 1 : 0);
+        siblings.Move(siblings.IndexOf(moved), index);
+        await SaveOrderAsync();
+        Reveal(moved);
+    }
+
+    public void RefreshDrafts() => Show();
 
     public ObservableCollection<RequestTabViewModel> Follow(ObservableCollection<RequestTabViewModel> tabs)
     {
@@ -37,11 +92,13 @@ public sealed class RequestTreeViewModel(RequestLibrary library, ILogger<Request
         foreach (var tab in _followed.Where(tab => !_tabs.Contains(tab)).ToList())
         {
             tab.PropertyChanged -= TabChanged;
+            tab.Created -= TabCreatedAsync;
             _followed.Remove(tab);
         }
         foreach (var tab in _tabs.Where(tab => _followed.Add(tab)))
         {
             tab.PropertyChanged += TabChanged;
+            tab.Created += TabCreatedAsync;
         }
         ShowTabs();
     }
@@ -90,6 +147,7 @@ public sealed class RequestTreeViewModel(RequestLibrary library, ILogger<Request
             return;
         }
         _loadVersion++;
+        _order = [.. Flatten(Nodes).Select(node => node.IsDraft && node.Tab == tab ? name : node.OrderKey)];
         _idByName[name] = tab.Id;
         _files = [.. _files.Where(file => !string.Equals(file.Name, name, StringComparison.OrdinalIgnoreCase)), (name, tab.SavedMethod)];
         Show();
@@ -99,13 +157,24 @@ public sealed class RequestTreeViewModel(RequestLibrary library, ILogger<Request
         }
     }
 
+    Task TabCreatedAsync(RequestTabViewModel tab)
+    {
+        ResetOrderFailure();
+        if (tab.Name is { } name && !_files.Any(file => file.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+        {
+            _loadVersion++;
+            _idByName[name] = tab.Id;
+            _files = [.. _files, (name, tab.SavedMethod)];
+            Show();
+        }
+        return SaveOrderAsync();
+    }
+
     // Moving a file shows up as a delete and a create, so open tabs find their file again by its id, under a name that is new since the last load.
     // A copy that is left with the id after its original is deleted was there before, so it is not taken for a move.
     public string? NameOf(Guid id) => _nameById.GetValueOrDefault(id) is { } name && !_earlierNames.Contains(name) ? name : null;
 
     public Guid IdOf(string name) => _idByName.GetValueOrDefault(name);
-
-    public bool IsUsed(Guid id) => _idByName.Values.Contains(id);
 
     public async Task LoadAsync(CancellationToken cancellationToken)
     {
@@ -114,6 +183,7 @@ public sealed class RequestTreeViewModel(RequestLibrary library, ILogger<Request
         {
             var folders = await library.FoldersAsync(cancellationToken);
             var names = await library.NamesAsync(cancellationToken);
+            var order = (await LoadOrderAsync(cancellationToken)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             var requests = new ApiRequest?[names.Count];
             await Parallel.ForEachAsync(Enumerable.Range(0, names.Count), cancellationToken, async (index, token) => requests[index] = await RequestOfAsync(names[index], token));
             if (version != _loadVersion)
@@ -125,11 +195,31 @@ public sealed class RequestTreeViewModel(RequestLibrary library, ILogger<Request
             _idByName = names.Zip(requests).Where(pair => pair.Second is not null).ToDictionary(pair => pair.First, pair => pair.Second!.Id, StringComparer.OrdinalIgnoreCase);
             _folders = folders;
             _files = [.. names.Zip(requests).Select(pair => (pair.First, pair.Second?.Method))];
+            // Draft positions belong to this session, not the order file.
+            foreach (var key in _order.Where(key => key.StartsWith('\0')))
+            {
+                var following = _order.SkipWhile(previous => previous != key).Skip(1).FirstOrDefault(order.Contains);
+                order.Insert(following is null ? order.Count : order.IndexOf(following), key);
+            }
+            _order = order;
             Show();
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
             logger.LogError(exception, "Could not list the requests");
+        }
+    }
+
+    async Task<IReadOnlyList<string>> LoadOrderAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await library.LoadOrderAsync(cancellationToken);
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            logger.LogWarning(exception, "Could not read the request order; keeping the last known order");
+            return [.. _order.Where(key => !key.StartsWith('\0'))];
         }
     }
 
@@ -150,6 +240,7 @@ public sealed class RequestTreeViewModel(RequestLibrary library, ILogger<Request
         {
             ShowDraft(tab);
         }
+        Sort(Nodes);
         Link();
 
         ObservableCollection<RequestNodeViewModel> ChildrenOf(string path) => RequestLibrary.ParentOf(path) is { } parent ? FolderOf(parent).Children : Nodes;
@@ -164,6 +255,26 @@ public sealed class RequestTreeViewModel(RequestLibrary library, ILogger<Request
                 byPath[path] = node;
             }
             return node;
+        }
+    }
+
+    void Sort(ObservableCollection<RequestNodeViewModel> nodes)
+    {
+        var positions = _order.Select((key, index) => (key, index)).ToDictionary(pair => pair.key, pair => pair.index, StringComparer.OrdinalIgnoreCase);
+        SortChildren(nodes);
+
+        void SortChildren(ObservableCollection<RequestNodeViewModel> children)
+        {
+            var ordered = children.OrderBy(node => positions.GetValueOrDefault(node.OrderKey, int.MaxValue)).ToList();
+            for (var index = 0; index < ordered.Count; index++)
+            {
+                var current = children.IndexOf(ordered[index]);
+                if (current != index)
+                {
+                    children.Move(current, index);
+                }
+                SortChildren(ordered[index].Children);
+            }
         }
     }
 
@@ -185,7 +296,7 @@ public sealed class RequestTreeViewModel(RequestLibrary library, ILogger<Request
 
     void ShowTabs()
     {
-        foreach (var row in Flatten(Nodes).Where(node => node.IsDraft && (node.Tab is not { IsDraft: true } || !_tabs.Contains(node.Tab))).ToList())
+        foreach (var row in Flatten(Nodes).Where(node => node.IsDraft && (node.Tab is not { IsDraft: true } || !_tabs.Contains(node.Tab) || node.Path != node.Tab.DraftName)).ToList())
         {
             (FolderRowOf(RequestLibrary.ParentOf(row.Path))?.Children ?? Nodes).Remove(row);
         }
@@ -193,6 +304,7 @@ public sealed class RequestTreeViewModel(RequestLibrary library, ILogger<Request
         {
             ShowDraft(tab);
         }
+        Sort(Nodes);
         Link();
     }
 

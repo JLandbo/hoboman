@@ -40,6 +40,7 @@ public sealed class RequestLibraryTests : IDisposable
 
         // Assert
         Assert.Equivalent(new ApiRequest { Url = "https://dev.local" }, loaded, strict: true);
+        Assert.Equal(BodyKind.Json, loaded!.BodyKind);
     }
 
     [Fact]

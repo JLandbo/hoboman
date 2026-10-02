@@ -142,6 +142,14 @@ static class Ui
 
     public static void Select(RadioButton button) => ((ISelectionItemProvider)new RadioButtonAutomationPeer(button)).Select();
 
+    public static DragEventArgs Drag(UIElement element, object data, Point point, RoutedEvent routedEvent)
+    {
+        var args = (DragEventArgs)Activator.CreateInstance(typeof(DragEventArgs), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, [new DataObject(data), DragDropKeyStates.LeftMouseButton, DragDropEffects.Move, element, point], null)!;
+        args.RoutedEvent = routedEvent;
+        element.RaiseEvent(args);
+        return args;
+    }
+
     public static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject => Enumerable.Range(0, VisualTreeHelper.GetChildrenCount(root)).Select(index => VisualTreeHelper.GetChild(root, index)).SelectMany(child => new[] { child }.OfType<T>().Concat(Descendants<T>(child)));
 
     public static TreeViewItem Item(DependencyObject root, RequestNodeViewModel node) => Descendants<TreeViewItem>(root).Single(item => ReferenceEquals(item.DataContext, node));

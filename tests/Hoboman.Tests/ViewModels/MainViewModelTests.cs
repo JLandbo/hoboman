@@ -158,7 +158,7 @@ public sealed class MainViewModelTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task DeleteFolderAsync_WhenItContainsDrafts_ThenListsThemAndKeepsTheirContentAfterConfirmation(bool accept)
+    public async Task DeleteFolderAsync_WhenItContainsDrafts_ThenClosesThemOnlyAfterConfirmation(bool accept)
     {
         using var harness = new Harness(new FakeDialogs(accept: accept));
         await harness.Library.SaveAsync("Users/Admin/Get", ApiRequest.New(), Cancellation);
@@ -179,19 +179,18 @@ public sealed class MainViewModelTests
 
         await main.DeleteFolderAsync(NodeOf(main, "Users"));
 
-        Assert.Equal(tabs, main.Tabs);
-        Assert.Same(draft, main.SelectedTab);
-        Assert.Equal("draft content", draft.Body);
-        Assert.Equal("saved edit", saved.Body);
         Assert.Equal([untouched.Title, saved.Title, draft.Title], harness.Dialogs.ConfirmQuestion!.Value.Items);
         Assert.Equal(harness.Translator.Format("DeleteFolder.Message", "Users", 2), harness.Dialogs.ConfirmQuestion.Value.Message);
-        Assert.Equal(!accept, draft.IsDraft);
-        Assert.Equal(!accept, untouched.IsDraft);
-        Assert.Equal(accept, untouched.IsDirty);
-        Assert.Equal(accept ? null : "Users/Admin", draft.Destination);
-        Assert.Equal(accept ? null : "Users/Clean", clean.Name);
+        Assert.Equal(1, harness.Dialogs.Asked);
+        Assert.Equal(tabs.Where(tab => !accept || tab != untouched && tab != saved && tab != clean && tab != draft), main.Tabs);
         Assert.Equal(accept ? 0 : 2, RequestTreeViewModel.Flatten(main.Tree.Nodes).Count(node => node.IsDraft));
-        Assert.Equal(accept ? null : "Users / Admin /", draft.Folder);
+        Assert.Same(accept ? main.Tabs[0] : draft, main.SelectedTab);
+        if (!accept)
+        {
+            Assert.Equal("draft content", draft.Body);
+            Assert.Equal("saved edit", saved.Body);
+            Assert.Equal("Users/Admin", draft.Destination);
+        }
     }
 
     [Theory]
@@ -283,7 +282,7 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public async Task DeleteFolderAsync_WhenOnlyPartCanBeDeleted_ThenOnlyUnlinksDraftsWhoseFoldersAreGone()
+    public async Task DeleteFolderAsync_WhenOnlyPartCanBeDeleted_ThenOnlyClosesDraftsWhoseFoldersAreGone()
     {
         using var harness = new Harness(new FakeDialogs(accept: true));
         await harness.Library.CreateFolderAsync("Users/Empty", Cancellation);
@@ -298,8 +297,8 @@ public sealed class MainViewModelTests
 
         await main.DeleteFolderAsync(NodeOf(main, "Users"));
 
-        Assert.Equal(harness.Library.FolderExists("Users/Empty"), empty.IsDraft);
-        Assert.Equal(harness.Library.FolderExists("Users/Locked"), locked.IsDraft);
+        Assert.Equal(harness.Library.FolderExists("Users/Empty"), main.Tabs.Contains(empty));
+        Assert.Equal(harness.Library.FolderExists("Users/Locked"), main.Tabs.Contains(locked));
         Assert.True(locked.IsDraft);
         Assert.Equal("Users/Locked", locked.Destination);
         Assert.Equal(2, harness.Dialogs.Asked);
@@ -1035,7 +1034,7 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public async Task DeleteFolderAsync_WhenItsSettingsCannotBeRead_ThenDeletesItAnyway()
+    public async Task DeleteFolderAsync_WhenItsSettingsCannotBeRead_ThenKeepsItAndReportsTheFailure()
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(accept: true));
@@ -1048,7 +1047,9 @@ public sealed class MainViewModelTests
         await main.DeleteFolderAsync(NodeOf(main, "Users"));
 
         // Assert
-        Assert.False(harness.Library.FolderExists("Users"));
+        Assert.True(harness.Library.FolderExists("Users"));
+        Assert.True(harness.Library.Exists("Users/Get"));
+        Assert.Equal(2, harness.Dialogs.Asked);
     }
 
     [Fact]
@@ -1092,7 +1093,7 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public async Task DeleteFolderAsync_WhenAFileCannotBeDeleted_ThenOnlyTheTabsOfWhatIsGoneBecomeUnsaved()
+    public async Task DeleteFolderAsync_WhenAFileCannotBeDeleted_ThenOnlyClosesTheTabsOfWhatIsGone()
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(accept: true));
@@ -1110,7 +1111,9 @@ public sealed class MainViewModelTests
         await main.DeleteFolderAsync(NodeOf(main, "Users"));
 
         // Assert
-        Assert.Equal((null, "Users/Admin/List"), (get.Name, list.Name));
+        Assert.DoesNotContain(get, main.Tabs);
+        Assert.Contains(list, main.Tabs);
+        Assert.Equal("Users/Admin/List", list.Name);
     }
 
     [Fact]
@@ -1133,7 +1136,7 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public async Task DeleteFolderAsync_WhenARequestInItIsOpen_ThenTheTabKeepsItAsUnsaved()
+    public async Task DeleteFolderAsync_WhenARequestInItIsOpen_ThenClosesItsTab()
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(accept: true));
@@ -1142,12 +1145,17 @@ public sealed class MainViewModelTests
         await main.LoadAsync();
         await main.OpenAsync(NodeOf(main, "Users").Children.Single());
         var tab = main.SelectedTab!;
+        main.Close(main.Tabs.Single(open => open.Name is null));
 
         // Act
         await main.DeleteFolderAsync(NodeOf(main, "Users"));
 
         // Assert
-        Assert.Equal((null, true, "https://dev.local"), (tab.Name, tab.IsDirty, tab.Url));
+        Assert.DoesNotContain(tab, main.Tabs);
+        Assert.NotSame(tab, main.SelectedTab);
+        Assert.Null(Assert.Single(main.Tabs).Name);
+        Assert.Equal(BodyKind.Json, main.SelectedTab!.BodyKind);
+        Assert.Equal(RequestSection.Body, main.SelectedTab.RequestSection);
     }
 
     [Fact]
@@ -1174,16 +1182,22 @@ public sealed class MainViewModelTests
         await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
+        await main.OpenAsync(main.Tree.Nodes.Single());
+        var tab = main.SelectedTab!;
+        tab.Body = "unsaved";
 
         // Act
         await main.DeleteAsync(main.Tree.Nodes.Single());
 
         // Assert
         Assert.Equal(["Ping"], await harness.Library.NamesAsync(Cancellation));
+        Assert.Same(tab, main.SelectedTab);
+        Assert.Equal("unsaved", tab.Body);
+        Assert.Contains(tab, main.Tabs);
     }
 
     [Fact]
-    public async Task DeleteAsync_WhenTheRequestIsOpen_ThenTheTabBecomesUnsaved()
+    public async Task DeleteAsync_WhenTheRequestIsOpen_ThenClosesItsTab()
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(accept: true));
@@ -1191,12 +1205,14 @@ public sealed class MainViewModelTests
         var main = harness.Main();
         await main.LoadAsync();
         await main.OpenAsync(main.Tree.Nodes.Single());
+        var tab = main.SelectedTab!;
 
         // Act
         await main.DeleteAsync(main.Tree.Nodes.Single());
 
         // Assert
-        Assert.True(main.SelectedTab!.IsDirty);
+        Assert.DoesNotContain(tab, main.Tabs);
+        Assert.False(main.SelectedTab!.IsDirty);
     }
 
     [Fact]
@@ -1282,7 +1298,7 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public async Task DeleteAsync_WhenTheTabIsSavedAgain_ThenSavesItsSecretsAgain()
+    public async Task DeleteAsync_WhenTheTabHasAToken_ThenClosesItAndRemovesTheSecret()
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(answer: "Ping", accept: true));
@@ -1293,13 +1309,13 @@ public sealed class MainViewModelTests
         await main.LoadAsync();
         await main.OpenAsync(main.Tree.Nodes.Single());
         var tab = main.SelectedTab!;
+        // Act
         await main.DeleteAsync(main.Tree.Nodes.Single());
 
-        // Act
-        await tab.SaveAsync();
-
         // Assert
-        Assert.Equal("token", await harness.Secrets.OfAsync(request.Id, SecretKind.Token, Cancellation));
+        Assert.DoesNotContain(tab, main.Tabs);
+        Assert.False(harness.Library.Exists("Ping"));
+        Assert.Null(await harness.Secrets.OfAsync(request.Id, SecretKind.Token, Cancellation));
     }
 
     [Fact]
@@ -1469,7 +1485,7 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public async Task RequestsChangedAsync_WhenARequestWithACopyIsDeleted_ThenTheTabKeepsItsEdits()
+    public async Task RequestsChangedAsync_WhenARequestWithACopyIsDeleted_ThenDoesNotReopenItsTab()
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(accept: true));
@@ -1487,7 +1503,9 @@ public sealed class MainViewModelTests
         await main.RequestsChangedAsync();
 
         // Assert
-        Assert.Equal("https://edited.local", tab.Url);
+        Assert.DoesNotContain(tab, main.Tabs);
+        Assert.DoesNotContain(main.Tabs, open => open.Id == request.Id);
+        Assert.Equal("https://b.local", (await harness.Library.LoadAsync("B", Cancellation))!.Url);
     }
 
     [Fact]
@@ -1720,7 +1738,7 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public async Task DeleteAsync_WhenTheTabIsSavedAgain_ThenSavesItsPasswordAgain()
+    public async Task DeleteAsync_WhenTheTabHasAPassword_ThenClosesItAndRemovesTheSecret()
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(answer: "Ping", accept: true));
@@ -1731,13 +1749,13 @@ public sealed class MainViewModelTests
         await main.LoadAsync();
         await main.OpenAsync(main.Tree.Nodes.Single());
         var tab = main.SelectedTab!;
+        // Act
         await main.DeleteAsync(main.Tree.Nodes.Single());
 
-        // Act
-        await tab.SaveAsync();
-
         // Assert
-        Assert.Equal("hemmelig", await harness.Secrets.OfAsync(request.Id, SecretKind.Password, Cancellation));
+        Assert.DoesNotContain(tab, main.Tabs);
+        Assert.False(harness.Library.Exists("Ping"));
+        Assert.Null(await harness.Secrets.OfAsync(request.Id, SecretKind.Password, Cancellation));
     }
 
     [Fact]

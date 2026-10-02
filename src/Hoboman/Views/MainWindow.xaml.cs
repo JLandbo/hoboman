@@ -154,7 +154,8 @@ public partial class MainWindow : Window
         var layout = new WindowLayout(size.Width, size.Height, WindowState == WindowState.Maximized, SidebarColumn.ActualWidth);
         try
         {
-            _settings.UpdateAsync(saved => saved with { Layout = layout }, CancellationToken.None).GetAwaiter().GetResult();
+            var session = _viewModel.Session;
+            _settings.UpdateAsync(saved => saved with { Layout = layout, Session = session }, CancellationToken.None).GetAwaiter().GetResult();
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {

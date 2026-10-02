@@ -173,19 +173,7 @@
                                     </Style.Triggers>
                                 </Style>
                             </WrapPanel.Style>
-                            <TextBlock Text="{Binding Base64.EncodeSummary}" Foreground="{DynamicResource Muted}" FontSize="12" VerticalAlignment="Center" Margin="12,0,0,0">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding BodyKind}" Value="{x:Static requests:BodyKind.Json}">
-                                                <Setter Property="Visibility" Value="Visible" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                            <CheckBox Content="{DynamicResource Body.UseEnvironmentVariables}" IsChecked="{Binding UseEnvironmentVariablesInBody}" FontSize="12" VerticalAlignment="Center" Margin="12,0,0,0" />
+                            <ToggleButton Content="{DynamicResource Body.UseEnvironmentVariables}" IsChecked="{Binding UseEnvironmentVariablesInBody}" Style="{StaticResource Switch}" Margin="12,0,0,0" />
                             <ToggleButton Content="{DynamicResource Base64.WholeBody}" IsChecked="{Binding Base64.EncodesWholeBody}" Style="{StaticResource Switch}" Margin="12,0,0,0" />
                         </WrapPanel>
                     </DockPanel>

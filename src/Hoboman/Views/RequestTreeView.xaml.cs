@@ -1,9 +1,11 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Hoboman.Core.Requests;
+using Hoboman.Controls;
 using Hoboman.ViewModels;
 
 namespace Hoboman.Views;
@@ -16,6 +18,14 @@ public partial class RequestTreeView : UserControl
     public RequestTreeView()
     {
         InitializeComponent();
+        _expandFolder.Tick += (_, _) =>
+        {
+            _expandFolder.Stop();
+            if (_hoveredFolder is { } folder)
+            {
+                folder.IsExpanded = true;
+            }
+        };
         DataContextChanged += (_, args) =>
         {
             if (args.OldValue is MainViewModel previous)
@@ -32,6 +42,9 @@ public partial class RequestTreeView : UserControl
     MainViewModel ViewModel => (MainViewModel)DataContext;
 
     (RequestNodeViewModel Node, Point At)? _pressed;
+    DropIndicator? _indicator;
+    RequestNodeViewModel? _hoveredFolder;
+    readonly DispatcherTimer _expandFolder = new() { Interval = TimeSpan.FromMilliseconds(600) };
 
     void Reveal(RequestNodeViewModel row)
     {
@@ -80,14 +93,6 @@ public partial class RequestTreeView : UserControl
         }
     }
 
-    void Item_ContextMenuOpening(object sender, ContextMenuEventArgs e)
-    {
-        if (NodeOf(sender) is { IsDraft: true })
-        {
-            e.Handled = true;
-        }
-    }
-
     async void Item_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
@@ -121,7 +126,20 @@ public partial class RequestTreeView : UserControl
     {
         if (NodeOf(sender) is { } node)
         {
+            if (node.IsDraft)
+            {
+                await ViewModel.RenameTabAsync(node.Tab!);
+                return;
+            }
             await ViewModel.RenameAsync(node);
+        }
+    }
+
+    async void Clone_Click(object sender, RoutedEventArgs e)
+    {
+        if (NodeOf(sender) is { } node)
+        {
+            await ViewModel.CloneAsync(node);
         }
     }
 
@@ -159,7 +177,7 @@ public partial class RequestTreeView : UserControl
 
     // The request is taken from where the button went down, as a quick drag is already over the next one when it starts.
     void Tree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e) =>
-        _pressed = NodeAt(e.OriginalSource) is { IsFolder: false, IsDraft: false } node ? (node, e.GetPosition(this)) : null;
+        _pressed = DragElements.Ancestor<ButtonBase>(e.OriginalSource) is null && NodeAt(e.OriginalSource) is { } node ? (node, e.GetPosition(this)) : null;
 
     // Otherwise a later press outside the tree, moved into it, would drag the request clicked before.
     void Tree_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e) => _pressed = null;
@@ -177,47 +195,116 @@ public partial class RequestTreeView : UserControl
             return;
         }
         _pressed = null;
-        DragDrop.DoDragDrop((DependencyObject)sender, pressed.Node, DragDropEffects.Move);
+        RootDropTarget.Visibility = Visibility.Visible;
+        try
+        {
+            DragDrop.DoDragDrop((DependencyObject)sender, pressed.Node, DragDropEffects.Move);
+        }
+        finally
+        {
+            RootDropTarget.Visibility = Visibility.Collapsed;
+            ClearDrop();
+        }
     }
 
     void Tree_DragOver(object sender, DragEventArgs e)
     {
-        e.Effects = e.Data.GetDataPresent(typeof(RequestNodeViewModel)) ? DragDropEffects.Move : DragDropEffects.None;
         e.Handled = true;
-        // The tree does not scroll by itself while dragging, so a folder out of sight could not be reached.
-        if (Tree.Template.FindName("_tv_scrollviewer_", Tree) is not ScrollViewer scroller)
+        e.Effects = DragDropEffects.None;
+        if (e.Data.GetData(typeof(RequestNodeViewModel)) is not RequestNodeViewModel source)
         {
+            ClearDrop();
             return;
         }
+        // The tree does not scroll by itself while dragging, so a folder out of sight could not be reached.
+        var scroller = Tree.Template.FindName("_tv_scrollviewer_", Tree) as ScrollViewer;
         var y = e.GetPosition(Tree).Y;
         if (y < _scrollEdge)
         {
-            scroller.LineUp();
+            scroller?.LineUp();
         }
         else if (y > Tree.ActualHeight - _scrollEdge)
         {
-            scroller.LineDown();
+            scroller?.LineDown();
         }
+        var target = DropAt(e.GetPosition(this), sender == RootDropTarget);
+        if (!ViewModel.CanMove(source, target.Node, target.Position))
+        {
+            ClearDrop();
+            return;
+        }
+        e.Effects = DragDropEffects.Move;
+        (_indicator ??= new(this)).Show(target.Bounds, target.Position == DropPosition.Inside && (target.Node is not null || sender == RootDropTarget));
+        Hover(target.Position == DropPosition.Inside ? target.Node : null);
     }
 
     async void Tree_Drop(object sender, DragEventArgs e)
     {
-        if (e.Data.GetData(typeof(RequestNodeViewModel)) is RequestNodeViewModel node)
+        e.Handled = true;
+        var target = DropAt(e.GetPosition(this), sender == RootDropTarget);
+        ClearDrop();
+        e.Effects = DragDropEffects.None;
+        if (e.Data.GetData(typeof(RequestNodeViewModel)) is RequestNodeViewModel node && ViewModel.CanMove(node, target.Node, target.Position))
         {
-            await ViewModel.MoveAsync(node, NodeAt(e.OriginalSource));
+            e.Effects = DragDropEffects.Move;
+            await ViewModel.MoveAsync(node, target.Node, target.Position);
         }
     }
 
+    internal (RequestNodeViewModel? Node, DropPosition Position, Rect Bounds) DropAt(Point point, bool root = false)
+    {
+        if (root)
+        {
+            return (null, DropPosition.Inside, DragElements.Bounds(RootDropTarget, this));
+        }
+        var item = DragElements.Ancestor<TreeViewItem>(InputHitTest(point));
+        while (item is not null)
+        {
+            var row = (Border)item.Template.FindName("Row", item);
+            var bounds = DragElements.Bounds(row, this);
+            if (point.X >= bounds.Left && point.Y >= bounds.Top && point.Y <= bounds.Bottom && item.DataContext is RequestNodeViewModel node)
+            {
+                var fraction = (point.Y - bounds.Top) / bounds.Height;
+                var position = node.IsFolder && fraction is >= 0.25 and <= 0.75 ? DropPosition.Inside : fraction < 0.5 ? DropPosition.Before : DropPosition.After;
+                if (position == DropPosition.After && node.IsFolder && node.IsExpanded)
+                {
+                    position = DropPosition.Inside;
+                }
+                return (node, position, position == DropPosition.Inside ? bounds : new Rect(bounds.Left, position == DropPosition.Before ? bounds.Top : bounds.Bottom, bounds.Width, 0));
+            }
+            item = DragElements.Ancestor<TreeViewItem>(VisualTreeHelper.GetParent(item));
+        }
+        var tree = DragElements.Bounds(Tree, this);
+        var last = Tree.Items.Count > 0 ? Tree.ItemContainerGenerator.ContainerFromIndex(Tree.Items.Count - 1) as TreeViewItem : null;
+        var bottom = last is null ? tree.Top + 2 : Math.Clamp(DragElements.Bounds(last, this).Bottom, tree.Top + 2, tree.Bottom - 2);
+        return (null, DropPosition.Inside, new Rect(tree.Left + 2, bottom, Math.Max(0, tree.Width - 4), 0));
+    }
+
+    void Hover(RequestNodeViewModel? folder)
+    {
+        if (_hoveredFolder == folder)
+        {
+            return;
+        }
+        _expandFolder.Stop();
+        _hoveredFolder = folder;
+        if (folder is { IsFolder: true, IsExpanded: false })
+        {
+            _expandFolder.Start();
+        }
+    }
+
+    void ClearDrop()
+    {
+        _indicator?.Clear();
+        Hover(null);
+    }
+
+    void Tree_DragLeave(object sender, DragEventArgs e) => ClearDrop();
+
     static RequestNodeViewModel? NodeAt(object source)
     {
-        for (var element = source as DependencyObject; element is not null; element = VisualTreeHelper.GetParent(element))
-        {
-            if (element is TreeViewItem item)
-            {
-                return item.DataContext as RequestNodeViewModel;
-            }
-        }
-        return null;
+        return DragElements.Ancestor<TreeViewItem>(source)?.DataContext as RequestNodeViewModel;
     }
 
     // A menu left open while the tree reloads points at a node that is no longer in the tree.

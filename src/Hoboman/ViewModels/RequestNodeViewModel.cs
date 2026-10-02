@@ -10,6 +10,8 @@ public sealed class RequestNodeViewModel(string path, string? method, bool isFol
 
     public string Name => RequestLibrary.LastPartOf(path);
 
+    public string OrderKey => IsDraft ? $"\0{Tab!.Id}" : IsFolder ? $"{Path}/" : Path;
+
     public string? Method => method;
 
     public bool IsFolder => isFolder;

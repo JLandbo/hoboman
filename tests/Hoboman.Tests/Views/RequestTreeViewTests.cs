@@ -398,7 +398,7 @@ public sealed class RequestTreeViewTests
     }
 
     [Fact]
-    public async Task DraftRow_WhenUsingContextMenuOrDragging_ThenCannotActOnAFile()
+    public async Task Rows_WhenUsingContextMenuOrDragging_ThenAllowsFoldersAndDraftsWithoutDraftDeletion()
     {
         using var harness = new Harness();
         await harness.Library.SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
@@ -423,12 +423,16 @@ public sealed class RequestTreeViewTests
                 handled = null;
                 Ui.Key(item, Key.Apps);
                 await Ui.IdleAsync();
-                Assert.Equal(node.IsDraft, handled);
+                Assert.False(handled);
+                if (node.IsDraft)
+                {
+                    Assert.DoesNotContain(item.ContextMenu.Items.OfType<MenuItem>(), menu => Equals(menu.Header, harness.Translator.Of("Tree.Delete")));
+                }
                 object? pressed = null;
                 item.AddHandler(Mouse.MouseDownEvent, new MouseButtonEventHandler((_, _) => pressed = typeof(RequestTreeView).GetField("_pressed", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(view)), handledEventsToo: true);
                 Ui.Press(Ui.Named<TextBlock>(Ui.Row(item), "Label"));
                 await Ui.IdleAsync();
-                Assert.Equal(!node.IsFolder && !node.IsDraft, pressed is not null);
+                Assert.NotNull(pressed);
             }
         });
     }

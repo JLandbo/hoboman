@@ -33,9 +33,6 @@ public sealed class Base64ViewModel(Translator translator, TimeProvider clock) :
     // While the body is not JSON, the checkboxes stay where they were, greyed, instead of blinking on and off.
     public bool BodyMarksAreCurrent { get; private set => Set(ref field, value); } = true;
 
-    // The whole body has its own switch, so only the properties are counted.
-    public string? EncodeSummary => Encode.Count(path => path != JsonPath.Root) is > 0 and var count ? translator.Format("Base64.Count", count) : null;
-
     public bool EncodesWholeBody
     {
         get => Encode.Contains(JsonPath.Root);
@@ -70,7 +67,6 @@ public sealed class Base64ViewModel(Translator translator, TimeProvider clock) :
         var decodeChanged = !decode.SequenceEqual(Decode);
         (Encode, Decode) = (paths?.Encode ?? [], decode);
         Use(OutlineOf(body, useVariables), letGo: false);
-        OnPropertyChanged(nameof(EncodeSummary));
         OnPropertyChanged(nameof(EncodesWholeBody));
         OnPropertyChanged(nameof(DecodesWholeResponse));
         if (decodeChanged)
@@ -103,7 +99,6 @@ public sealed class Base64ViewModel(Translator translator, TimeProvider clock) :
     {
         Encode = Toggled(Encode, path);
         MarkBody();
-        OnPropertyChanged(nameof(EncodeSummary));
         OnPropertyChanged(nameof(EncodesWholeBody));
         Changed?.Invoke();
     }
@@ -116,11 +111,7 @@ public sealed class Base64ViewModel(Translator translator, TimeProvider clock) :
         DecodeChanged?.Invoke();
     }
 
-    public void Relabel()
-    {
-        MarkBody();
-        OnPropertyChanged(nameof(EncodeSummary));
-    }
+    public void Relabel() => MarkBody();
 
     // Pure, so it can run off the UI thread with the choices of the moment.
     public static ShownResponse ShowResponse(ApiResponse response, BodyFormat format, IReadOnlyList<string> decode, Translator translator, CancellationToken cancellationToken)
@@ -154,7 +145,6 @@ public sealed class Base64ViewModel(Translator translator, TimeProvider clock) :
         if (letGo && Encode.Any(path => !IsIn(outline, path)))
         {
             Encode = [.. Encode.Where(path => IsIn(outline, path))];
-            OnPropertyChanged(nameof(EncodeSummary));
             Changed?.Invoke();
         }
         MarkBody();

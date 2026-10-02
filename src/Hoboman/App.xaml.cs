@@ -105,6 +105,8 @@ public partial class App : Application
         services.AddSingleton<EnvironmentStore>();
         services.AddSingleton<RequestLibrary>();
         services.AddSingleton<SecretStore>();
+        services.AddSingleton<RequestDeletion>();
+        services.AddSingleton<CollectionChanges>();
         services.AddSingleton<HttpClients>();
         services.AddSingleton<IRequestSender, HttpRequestSender>();
         services.AddSingleton<HistoryStore>();

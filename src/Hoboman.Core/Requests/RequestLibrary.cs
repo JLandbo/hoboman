@@ -9,6 +9,12 @@ public sealed class RequestLibrary(AppFolder folder, ILogger<RequestLibrary> log
     // The settings of a folder live inside it, so they move along when the folder is moved or renamed.
     const string _folderFile = ".folder.json";
 
+    readonly JsonFile<IReadOnlyList<string>> _order = new(folder.RequestOrder, [], logger);
+
+    public Task<IReadOnlyList<string>> LoadOrderAsync(CancellationToken cancellationToken) => _order.LoadAsync(cancellationToken);
+
+    public Task SaveOrderAsync(IReadOnlyList<string> order, CancellationToken cancellationToken) => _order.SaveAsync(order, cancellationToken);
+
     // Windows drops trailing dots and spaces from names, so such a name would not match the file it creates.
     // Names starting with a dot are kept for Hoboman's own files, such as the folder settings.
     public static bool IsValidName(string name) =>
@@ -32,6 +38,8 @@ public sealed class RequestLibrary(AppFolder folder, ILogger<RequestLibrary> log
         await FileOf(name).SaveAsync(request, cancellationToken).ConfigureAwait(false);
         logger.LogInformation("Saved the request {Name}", name);
     }
+
+    public Task CreateAsync(string name, ApiRequest request, CancellationToken cancellationToken) => FileOf(name).SaveAsync(request, cancellationToken, overwrite: false);
 
     public bool FolderExists(string name) => Directory.Exists(FolderOf(name));
 

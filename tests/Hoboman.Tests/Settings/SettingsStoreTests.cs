@@ -35,4 +35,23 @@ public sealed class SettingsStoreTests : IDisposable
         // Assert
         Assert.Equal("English", (await Store().LoadAsync(Cancellation)).LanguageName);
     }
+
+    [Theory]
+    [InlineData(false, null)]
+    [InlineData(true, null)]
+    [InlineData(true, "Request")]
+    public async Task UpdateAsync_WhenSavingASession_ThenCanReadItAndCreateHttpClients(bool hasRequests, string? selected)
+    {
+        var session = new TabSession(hasRequests ? ["Request"] : [], selected);
+        await Store().UpdateAsync(settings => settings with { Session = session }, Cancellation);
+
+        var restored = (await Store().LoadAsync(Cancellation)).Session!;
+        Assert.Equal(session.Requests, restored.Requests);
+        Assert.Equal(selected, restored.Selected);
+        using var clients = new HttpClients(Store());
+        Assert.NotNull(await clients.CurrentAsync(Cancellation));
+        Assert.NotNull(await clients.TokenClientAsync(Cancellation));
+        await Store().UpdateAsync(settings => settings with { LanguageName = "English" }, Cancellation);
+        Assert.Equal("English", (await Store().LoadAsync(Cancellation)).LanguageName);
+    }
 }

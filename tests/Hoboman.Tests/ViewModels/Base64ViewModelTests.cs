@@ -138,7 +138,8 @@ public sealed class Base64ViewModelTests
     public void Load_WhenAVariableStandsForANumber_ThenStillMarksTheBody()
     {
         // Act
-        var base64 = Loaded("""{"count": {{count}}}""");
+        var base64 = Loaded("{}");
+        base64.Load(null, """{"count": {{count}}}""", useVariables: true);
 
         // Assert
         Assert.Equal("$.count", base64.BodyMarks.Single().Path);

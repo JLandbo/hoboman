@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
 
-public sealed record RequestTabServices(RequestRunner Runner, SecretStore Secrets, AuthRefreshService AuthRefresh, RequestLibrary Library, EnvironmentsViewModel Environments, IDialogs Dialogs, Translator Translator, TimeProvider Clock, ILogger<RequestTabViewModel> Logger)
+public sealed record RequestTabServices(RequestRunner Runner, SecretStore Secrets, AuthRefreshService AuthRefresh, RequestLibrary Library, CollectionChanges CollectionChanges, EnvironmentsViewModel Environments, IDialogs Dialogs, Translator Translator, TimeProvider Clock, ILogger<RequestTabViewModel> Logger)
 {
     public string? ProblemOfName(string name) =>
         !RequestLibrary.IsValidName(name) ? Translator.Of("Save.Invalid")

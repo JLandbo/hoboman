@@ -127,6 +127,25 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
 
     public Task SaveSecretsAsync(Guid id, CancellationToken cancellationToken) => refreshes.SaveAsync(() => SaveSecretsUnderLockAsync(id, cancellationToken), cancellationToken);
 
+    public Task CopySecretsAsync(Guid targetId, CancellationToken cancellationToken)
+    {
+        var sourceId = _secretsId;
+        var edits = new[] { (SecretKind.Password, Password, _savedPassword), (SecretKind.Token, Token, _savedToken), (SecretKind.ClientSecret, ClientSecret, _savedClientSecret) }.Where(secret => secret.Item2 != secret.Item3).ToArray();
+        return refreshes.SaveAsync(async () =>
+        {
+            var tokens = _tokens.ToArray();
+            await secrets.CopyAsync(sourceId, targetId, cancellationToken);
+            foreach (var (kind, value, _) in edits)
+            {
+                await secrets.SaveAsync(targetId, kind, value, cancellationToken);
+            }
+            foreach (var (environment, token) in tokens)
+            {
+                await secrets.SaveAsync(targetId, SecretKind.OAuthToken, environment, token.ToJson(), cancellationToken);
+            }
+        }, cancellationToken);
+    }
+
     // Each secret is saved on its own and only marked as saved afterwards, so a value typed while saving is saved next time.
     internal async Task SaveSecretsUnderLockAsync(Guid id, CancellationToken cancellationToken)
     {

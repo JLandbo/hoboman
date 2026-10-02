@@ -199,7 +199,9 @@
                 </Popup>
                 <DockPanel HorizontalAlignment="Left" VerticalAlignment="Bottom">
                     <Button DockPanel.Dock="Right" Content="&#xE710;" ToolTip="{DynamicResource Sidebar.NewRequest}" Click="NewRequest_Click" Style="{StaticResource SmallIconButton}" FontSize="12" Margin="2,0,0,4" VerticalAlignment="Center" />
-                    <ListBox ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab}" Style="{StaticResource Tabs}" SelectionChanged="Tabs_SelectionChanged">
+                    <ListBox x:Name="RequestTabs" ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab}" Style="{StaticResource Tabs}" SelectionChanged="Tabs_SelectionChanged" AllowDrop="True"
+                             PreviewMouseLeftButtonDown="Tabs_PreviewMouseLeftButtonDown" PreviewMouseLeftButtonUp="Tabs_PreviewMouseLeftButtonUp" MouseMove="Tabs_MouseMove"
+                             DragOver="Tabs_DragOver" DragLeave="Tabs_DragLeave" Drop="Tabs_Drop">
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="{x:Type viewModels:RequestTabViewModel}">
                                 <StackPanel Orientation="Horizontal">
@@ -219,7 +221,7 @@
                                              Visibility="{Binding IsUnsaved, Converter={StaticResource VisibleWhenTrue}}" />
                                     <Button Content="&#xE718;" ToolTip="{DynamicResource Tab.Pin}" Click="PinTab_Click" Style="{StaticResource SmallIconButton}" Margin="4,0,0,0" VerticalAlignment="Center"
                                             Visibility="{Binding IsPreview, Converter={StaticResource VisibleWhenTrue}}" />
-                                    <Button Content="&#xE711;" ToolTip="{DynamicResource Common.Close}" Click="CloseTab_Click" Style="{StaticResource SmallIconButton}" Margin="4,0,0,0" VerticalAlignment="Center" />
+                                    <Button Content="&#xE711;" ToolTip="{DynamicResource Common.Close}" Click="CloseTab_Click" Style="{StaticResource CloseButton}" Margin="4,0,0,0" VerticalAlignment="Center" />
                                 </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
