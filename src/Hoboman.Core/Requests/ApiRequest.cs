@@ -19,6 +19,8 @@ public sealed record ApiRequest
 
     public string Body { get; init; } = "";
 
+    public bool UseEnvironmentVariablesInBody { get; init; }
+
     public Base64Paths? Base64 { get; init; }
 
     public AuthSettings Auth { get; init; } = AuthSettings.Inherit;

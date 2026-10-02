@@ -13,12 +13,15 @@ public sealed class BodyEditor : MarkedEditor
     public static readonly DependencyProperty BodyProperty = DependencyProperty.Register(nameof(Body), typeof(string), typeof(BodyEditor),
         new FrameworkPropertyMetadata("", FrameworkPropertyMetadataOptions.BindsTwoWayByDefault, (editor, e) => ((BodyEditor)editor).Show(e.NewValue as string ?? "")));
 
+    public static readonly DependencyProperty UseEnvironmentVariablesProperty = DependencyProperty.Register(nameof(UseEnvironmentVariables), typeof(bool), typeof(BodyEditor),
+        new(false, (editor, _) => ((BodyEditor)editor).TextArea.TextView.Redraw()));
+
     bool _typing;
 
     public BodyEditor()
     {
         TextArea.Caret.CaretBrush = (Brush)FindResource("Text");
-        TextArea.TextView.LineTransformers.Add(new VariableColorizer((Brush)FindResource("Attention")));
+        TextArea.TextView.LineTransformers.Add(new VariableColorizer(this, (Brush)FindResource("Attention")));
         TextChanged += (_, _) =>
         {
             _typing = true;
@@ -33,6 +36,12 @@ public sealed class BodyEditor : MarkedEditor
         set => SetValue(BodyProperty, value);
     }
 
+    public bool UseEnvironmentVariables
+    {
+        get => (bool)GetValue(UseEnvironmentVariablesProperty);
+        set => SetValue(UseEnvironmentVariablesProperty, value);
+    }
+
     // Another tab's body gets a new document, so undo cannot bring back the text of the tab shown before.
     void Show(string body)
     {
@@ -42,10 +51,14 @@ public sealed class BodyEditor : MarkedEditor
         }
     }
 
-    sealed class VariableColorizer(Brush foreground) : DocumentColorizingTransformer
+    sealed class VariableColorizer(BodyEditor editor, Brush foreground) : DocumentColorizingTransformer
     {
         protected override void ColorizeLine(DocumentLine line)
         {
+            if (!editor.UseEnvironmentVariables)
+            {
+                return;
+            }
             foreach (Match variable in ApiEnvironment.VariablesIn(CurrentContext.Document.GetText(line)))
             {
                 ChangeLinePart(line.Offset + variable.Index, line.Offset + variable.Index + variable.Length, element => element.TextRunProperties.SetForegroundBrush(foreground));

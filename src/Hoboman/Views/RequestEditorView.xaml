@@ -164,6 +164,15 @@
                             </Button>
                         </StackPanel>
                         <WrapPanel HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <WrapPanel.Style>
+                                <Style TargetType="WrapPanel">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding BodyKind}" Value="{x:Static requests:BodyKind.None}">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </WrapPanel.Style>
                             <TextBlock Text="{Binding Base64.EncodeSummary}" Foreground="{DynamicResource Muted}" FontSize="12" VerticalAlignment="Center" Margin="12,0,0,0">
                                 <TextBlock.Style>
                                     <Style TargetType="TextBlock">
@@ -176,17 +185,8 @@
                                     </Style>
                                 </TextBlock.Style>
                             </TextBlock>
-                            <ToggleButton Content="{DynamicResource Base64.WholeBody}" IsChecked="{Binding Base64.EncodesWholeBody}" Margin="12,0,0,0">
-                                <ToggleButton.Style>
-                                    <Style TargetType="ToggleButton" BasedOn="{StaticResource Switch}">
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding BodyKind}" Value="{x:Static requests:BodyKind.None}">
-                                                <Setter Property="Visibility" Value="Collapsed" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </ToggleButton.Style>
-                            </ToggleButton>
+                            <CheckBox Content="{DynamicResource Body.UseEnvironmentVariables}" IsChecked="{Binding UseEnvironmentVariablesInBody}" FontSize="12" VerticalAlignment="Center" Margin="12,0,0,0" />
+                            <ToggleButton Content="{DynamicResource Base64.WholeBody}" IsChecked="{Binding Base64.EncodesWholeBody}" Style="{StaticResource Switch}" Margin="12,0,0,0" />
                         </WrapPanel>
                     </DockPanel>
                     <TextBlock DockPanel.Dock="Top" Text="{Binding BodyLayoutProblem}" Foreground="{DynamicResource Error}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8">
@@ -210,7 +210,7 @@
                                 </Style.Triggers>
                             </Style>
                         </Border.Style>
-                        <controls:BodyEditor x:Name="BodyText" Body="{Binding Body}" PreviewKeyDown="Body_PreviewKeyDown" Marks="{Binding Base64.BodyMarks}" MarksAreCurrent="{Binding Base64.BodyMarksAreCurrent}" MarkToggled="Body_MarkToggled">
+                        <controls:BodyEditor x:Name="BodyText" Body="{Binding Body}" UseEnvironmentVariables="{Binding UseEnvironmentVariablesInBody}" PreviewKeyDown="Body_PreviewKeyDown" Marks="{Binding Base64.BodyMarks}" MarksAreCurrent="{Binding Base64.BodyMarksAreCurrent}" MarkToggled="Body_MarkToggled">
                             <controls:BodyEditor.Style>
                                 <Style TargetType="controls:BodyEditor" BasedOn="{StaticResource {x:Type controls:BodyEditor}}">
                                     <Style.Triggers>

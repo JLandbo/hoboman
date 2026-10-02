@@ -12,11 +12,13 @@ public sealed class RequestLibraryTests : IDisposable
 
     public void Dispose() => _temporary.Dispose();
 
-    [Fact]
-    public async Task LoadAsync_WhenTheRequestWasSaved_ThenGivesItBack()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LoadAsync_WhenTheRequestWasSaved_ThenGivesItBack(bool useVariables)
     {
         // Arrange
-        var request = ApiRequest.New() with { Method = "POST", Url = "https://dev.local", Headers = [new("Accept", "application/json")], BodyKind = BodyKind.Json, Body = "{}", Base64 = new() { Encode = ["$.html"], Decode = ["$.token"] } };
+        var request = ApiRequest.New() with { Method = "POST", Url = "https://dev.local", Headers = [new("Accept", "application/json")], BodyKind = BodyKind.Json, Body = "{}", UseEnvironmentVariablesInBody = useVariables, Base64 = new() { Encode = ["$.html"], Decode = ["$.token"] } };
         await Library().SaveAsync("Users/Create user", request, Cancellation);
 
         // Act

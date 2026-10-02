@@ -5,13 +5,13 @@ using Hoboman.Core.Requests;
 namespace Hoboman.ViewModels;
 
 // Lays out a JSON or XML request body the way a response is shown, or gives null when it is not what its kind says.
-// The variables are filled in only when the body is sent, so while it is laid out, a text unlike anything in a body stands in for each where it would not fit.
+// When variables are enabled, placeholders preserve them during formatting; their values are filled in only when sending.
 public static class BodyLayout
 {
-    public static string? Of(string body, BodyKind kind) => kind switch
+    public static string? Of(string body, BodyKind kind, bool useVariables = false) => kind switch
     {
-        BodyKind.Json => JsonOf(body),
-        BodyKind.Xml => XmlOf(body),
+        BodyKind.Json => useVariables ? JsonOf(body) : ResponseDisplay.PrettyJsonOf(body),
+        BodyKind.Xml => useVariables ? XmlOf(body) : ResponseDisplay.PrettyXmlOf(body),
         _ => null,
     };
 

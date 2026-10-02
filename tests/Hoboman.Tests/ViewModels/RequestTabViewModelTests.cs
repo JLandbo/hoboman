@@ -833,7 +833,7 @@ public sealed class RequestTabViewModelTests
         // Arrange
         using var harness = new Harness();
         await harness.Environments.ChooseAsync(new("Dev", [new("decimal", "5")]));
-        var tab = harness.Tab(ApiRequest.New() with { BodyKind = BodyKind.Json, Body = "{\"amount\": 1.{{decimal}}}" });
+        var tab = harness.Tab(ApiRequest.New() with { BodyKind = BodyKind.Json, Body = "{\"amount\": 1.{{decimal}}}", UseEnvironmentVariablesInBody = true });
 
         // Act
         await tab.LaidOutBodyAsync();

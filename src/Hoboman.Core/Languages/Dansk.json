@@ -31,6 +31,7 @@
     "Body.Json": "JSON",
     "Body.Xml": "XML",
     "Body.Text": "Tekst",
+    "Body.UseEnvironmentVariables": "Brug miljøvariabler i body",
     "Clipboard.Stringify": "{ STRINGIFY }",
     "Clipboard.StringifyTip": "Lav teksten i udklipsholderen om til en JSON-tekst",
     "Clipboard.Parse": "{ PARSE }",

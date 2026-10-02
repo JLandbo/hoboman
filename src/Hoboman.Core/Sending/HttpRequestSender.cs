@@ -131,11 +131,11 @@ public sealed class HttpRequestSender(SecretStore secrets, HttpClients clients, 
 
     static string LoggableOf(Uri? address) => address is null ? "(no address yet)" : SafeAddress.Of(address);
 
-    // The variables are filled in first, so a variable inside a chosen value is encoded with it.
+    // When enabled, variables are filled in before Base64 encoding.
     // Only JSON has properties to choose, so of any other body only the whole can go as Base64, and the Content-Type stays the one of the body's kind.
     static string BodyOf(ApiRequest request, ApiEnvironment environment)
     {
-        var body = environment.Resolve(request.Body);
+        var body = request.UseEnvironmentVariablesInBody ? environment.Resolve(request.Body) : request.Body;
         var chosen = (request.Base64?.Encode ?? []).Where(path => request.BodyKind == BodyKind.Json || path == JsonPath.Root);
         if (!chosen.Any())
         {

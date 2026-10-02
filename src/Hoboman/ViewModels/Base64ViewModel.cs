@@ -62,14 +62,14 @@ public sealed class Base64ViewModel(Translator translator, TimeProvider clock) :
 
     // Choices that do not fit the body are kept, so opening a request never changes it.
     // A file edited by hand can decode other values, and the response shown is then decoded again.
-    public void Load(Base64Paths? paths, string body)
+    public void Load(Base64Paths? paths, string body, bool useVariables = false)
     {
         _waiting?.Dispose();
         _reading++;
         var decode = paths?.Decode ?? [];
         var decodeChanged = !decode.SequenceEqual(Decode);
         (Encode, Decode) = (paths?.Encode ?? [], decode);
-        Use(OutlineOf(body), letGo: false);
+        Use(OutlineOf(body, useVariables), letGo: false);
         OnPropertyChanged(nameof(EncodeSummary));
         OnPropertyChanged(nameof(EncodesWholeBody));
         OnPropertyChanged(nameof(DecodesWholeResponse));
@@ -82,13 +82,13 @@ public sealed class Base64ViewModel(Translator translator, TimeProvider clock) :
     public Base64Paths? ToPaths() => Encode.Count > 0 || Decode.Count > 0 ? new() { Encode = Encode, Decode = Decode } : null;
 
     // A large body takes a while to read, so it is read on the timer's thread, and only what is shown changes on the UI thread.
-    public void BodyChanged(string body)
+    public void BodyChanged(string body, bool useVariables = false)
     {
         _waiting?.Dispose();
         var reading = ++_reading;
         _waiting = clock.CreateTimer(_ =>
         {
-            var outline = OutlineOf(body);
+            var outline = OutlineOf(body, useVariables);
             _ui.Post(() =>
             {
                 if (reading == _reading)
@@ -138,8 +138,8 @@ public sealed class Base64ViewModel(Translator translator, TimeProvider clock) :
     static IReadOnlyList<string> Toggled(IReadOnlyList<string> paths, string path) =>
         paths.Contains(path) ? [.. paths.Where(chosen => chosen != path)] : [.. paths.Where(chosen => !JsonPath.IsInside(chosen, path)), path];
 
-    // A variable outside quotes, such as a number, is not JSON until it is filled in, so it is read as a number.
-    static IReadOnlyList<JsonProperty>? OutlineOf(string body) => JsonOutline.Of(ApiEnvironment.WithVariablesAs(body, _ => "0"));
+    // When enabled, a variable outside quotes is read as a number until its value is filled in when sending.
+    static IReadOnlyList<JsonProperty>? OutlineOf(string body, bool useVariables) => JsonOutline.Of(useVariables ? ApiEnvironment.WithVariablesAs(body, _ => "0") : body);
 
     void Use(IReadOnlyList<JsonProperty>? outline, bool letGo)
     {

@@ -108,8 +108,10 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
         Assert.Equal("application/json; charset=utf-8", echo.Headers["Content-Type"]);
     }
 
-    [Fact]
-    public async Task SendAsync_WhenPropertiesAreChosenForBase64_ThenSendsThemEncodedAfterFillingInTheVariables()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SendAsync_WhenPropertiesAreChosenForBase64_ThenResolvesVariablesOnlyWhenEnabled(bool useVariables)
     {
         // Arrange
         var request = Request() with
@@ -117,6 +119,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
             Method = "POST",
             BodyKind = BodyKind.Json,
             Body = """{"html":"<p>{{place}}</p>","data":{"name":"Hobo"},"rendered":false}""",
+            UseEnvironmentVariablesInBody = useVariables,
             Base64 = new() { Encode = ["$.html", "$.data"] },
         };
 
@@ -125,7 +128,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
 
         // Assert
         using var body = JsonDocument.Parse(echo.Body);
-        Assert.Equal("<p>Ærø</p>", Base64Text.Decode(body.RootElement.GetProperty("html").GetString()!));
+        Assert.Equal(useVariables ? "<p>Ærø</p>" : "<p>{{place}}</p>", Base64Text.Decode(body.RootElement.GetProperty("html").GetString()!));
         Assert.Equal("""{"name":"Hobo"}""", Base64Text.Decode(body.RootElement.GetProperty("data").GetString()!));
         Assert.False(body.RootElement.GetProperty("rendered").GetBoolean());
     }
@@ -134,7 +137,7 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
     public async Task SendAsync_WhenTheBodyIsXml_ThenSendsItAsXml()
     {
         // Arrange
-        var request = Request() with { Method = "POST", BodyKind = BodyKind.Xml, Body = "<order id=\"{{id}}\" />" };
+        var request = Request() with { Method = "POST", BodyKind = BodyKind.Xml, Body = "<order id=\"{{id}}\" />", UseEnvironmentVariablesInBody = true };
 
         // Act
         var echo = await SendAndEchoAsync(request, new ApiEnvironment("dev", [new("id", "17")]));
@@ -156,17 +159,59 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
         Assert.Equal((Base64Text.Encode("""{"a": 1}"""), "application/json; charset=utf-8"), (echo.Body, echo.Headers["Content-Type"]));
     }
 
-    [Fact]
-    public async Task SendAsync_WhenTheWholeTextBodyIsChosenForBase64_ThenSendsItEncodedAsText()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SendAsync_WhenTheWholeTextBodyIsChosenForBase64_ThenResolvesVariablesOnlyWhenEnabled(bool useVariables)
     {
         // Arrange
-        var request = Request() with { Method = "POST", BodyKind = BodyKind.Text, Body = "Hej {{place}}", Base64 = new() { Encode = [JsonPath.Root] } };
+        var request = Request() with { Method = "POST", BodyKind = BodyKind.Text, Body = "Hej {{place}}", UseEnvironmentVariablesInBody = useVariables, Base64 = new() { Encode = [JsonPath.Root] } };
 
         // Act
         var echo = await SendAndEchoAsync(request, new ApiEnvironment("dev", [new("place", "Ærø")]));
 
         // Assert
-        Assert.Equal((Base64Text.Encode("Hej Ærø"), "text/plain; charset=utf-8"), (echo.Body, echo.Headers["Content-Type"]));
+        Assert.Equal((Base64Text.Encode(useVariables ? "Hej Ærø" : "Hej {{place}}"), "text/plain; charset=utf-8"), (echo.Body, echo.Headers["Content-Type"]));
+    }
+
+    [Theory]
+    [InlineData(BodyKind.Json, "{\"html\":\"<h1>{{a}}</h1>\"}", false)]
+    [InlineData(BodyKind.Json, "{\"html\":\"<h1>{{a}}</h1>\"}", true)]
+    [InlineData(BodyKind.Xml, "<name>{{a}}</name>", false)]
+    [InlineData(BodyKind.Xml, "<name>{{a}}</name>", true)]
+    [InlineData(BodyKind.Text, "Hej {{a}}", false)]
+    [InlineData(BodyKind.Text, "Hej {{a}}", true)]
+    public async Task SendAsync_WhenBodyVariablesAreToggled_ThenOnlyResolvesThemWhenEnabled(BodyKind kind, string body, bool useVariables)
+    {
+        var request = Request() with { Method = "POST", BodyKind = kind, Body = body, UseEnvironmentVariablesInBody = useVariables };
+
+        var echo = await SendAndEchoAsync(request, new("dev", [new("a", "Jacob")]));
+
+        Assert.Equal(useVariables ? body.Replace("{{a}}", "Jacob", StringComparison.Ordinal) : body, echo.Body);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenBodyVariablesAreDisabledByDefault_ThenStillResolvesTheOtherFields()
+    {
+        var request = Request() with
+        {
+            Method = "POST",
+            Url = "{{base}}items",
+            Query = [new("{{a}}", "{{a}}")],
+            Headers = [new("X-{{a}}", "{{a}}")],
+            BodyKind = BodyKind.Text,
+            Body = "{{a}}",
+            Auth = new(AuthKind.Bearer),
+        };
+        await Secrets().SaveAsync(request.Id, SecretKind.Token, "{{a}}", Cancellation);
+
+        var echo = await SendAndEchoAsync(request, new("dev", [new("base", $"{server.Http}"), new("a", "resolved")]));
+
+        Assert.False(request.UseEnvironmentVariablesInBody);
+        Assert.Equal("{{a}}", echo.Body);
+        Assert.Equal("/items?resolved=resolved", echo.Target);
+        Assert.Equal("resolved", echo.Headers["X-resolved"]);
+        Assert.Equal("Bearer resolved", echo.Headers["Authorization"]);
     }
 
     [Fact]

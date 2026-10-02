@@ -203,10 +203,24 @@ public sealed class RequestTabViewModel : ObservableObject
             {
                 MarkDirty();
                 ShowLayoutProblem(null);
-                Base64.BodyChanged(value);
+                Base64.BodyChanged(value, UseEnvironmentVariablesInBody);
             }
         }
     } = "";
+
+    public bool UseEnvironmentVariablesInBody
+    {
+        get;
+        set
+        {
+            if (Set(ref field, value))
+            {
+                MarkDirty();
+                ShowLayoutProblem(null);
+                Base64.BodyChanged(Body, value);
+            }
+        }
+    }
 
     // Why the body could not be laid out, until it or its kind changes, in the language of the moment.
     public string? BodyLayoutProblem => _layoutProblem switch
@@ -556,11 +570,11 @@ public sealed class RequestTabViewModel : ObservableObject
         _layingOut = true;
         try
         {
-            var (body, kind, environment) = (Body, BodyKind, EnvironmentOrNone());
+            var (body, kind, environment, useVariables) = (Body, BodyKind, EnvironmentOrNone(), UseEnvironmentVariablesInBody);
             var (laidOut, problem) = await Task.Run<(string? LaidOut, LayoutProblem? Problem)>(() =>
-                BodyLayout.Of(body, kind) is { } text ? (text, null) : (null, ProblemOf(body, kind, environment)));
-            // The body, its kind or the environment that tells whether its variables make it valid changed while it was laid out.
-            if (body != Body || kind != BodyKind || environment != EnvironmentOrNone())
+                BodyLayout.Of(body, kind, useVariables) is { } text ? (text, null) : (null, ProblemOf(body, kind, environment, useVariables)));
+            // The body or how it is interpreted changed while it was laid out.
+            if (body != Body || kind != BodyKind || environment != EnvironmentOrNone() || useVariables != UseEnvironmentVariablesInBody)
             {
                 return null;
             }
@@ -575,8 +589,8 @@ public sealed class RequestTabViewModel : ObservableObject
 
     ApiEnvironment EnvironmentOrNone() => _services.Environments.Selected ?? ApiEnvironment.None;
 
-    static LayoutProblem ProblemOf(string body, BodyKind kind, ApiEnvironment environment) =>
-        BodyLayout.NeedsVariables(body, kind, environment) ? LayoutProblem.NeedsVariables
+    static LayoutProblem ProblemOf(string body, BodyKind kind, ApiEnvironment environment, bool useVariables) =>
+        useVariables && BodyLayout.NeedsVariables(body, kind, environment) ? LayoutProblem.NeedsVariables
         : kind == BodyKind.Xml ? LayoutProblem.NotXml
         : LayoutProblem.NotJson;
 
@@ -618,6 +632,7 @@ public sealed class RequestTabViewModel : ObservableObject
         Headers = Headers.ToList(),
         BodyKind = BodyKind,
         Body = Body,
+        UseEnvironmentVariablesInBody = UseEnvironmentVariablesInBody,
         Base64 = Base64.ToPaths(),
         Auth = Auth.ToSettings(),
     };
@@ -747,7 +762,8 @@ public sealed class RequestTabViewModel : ObservableObject
         Headers.Load(request.Headers);
         BodyKind = request.BodyKind;
         Body = request.Body;
-        Base64.Load(request.Base64, request.Body);
+        UseEnvironmentVariablesInBody = request.UseEnvironmentVariablesInBody;
+        Base64.Load(request.Base64, request.Body, request.UseEnvironmentVariablesInBody);
         Auth.Load(request.Auth);
         _loading = false;
         IsDirty = false;

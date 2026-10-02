@@ -18,7 +18,7 @@ public sealed class BodyLayoutTests
     public void Of_WhenAVariableIsOutsideQuotes_ThenKeepsItThere()
     {
         // Act
-        var laidOut = BodyLayout.Of("""{"count":{{count}},"name":"{{name}}"}""", BodyKind.Json);
+        var laidOut = BodyLayout.Of("""{"count":{{count}},"name":"{{name}}"}""", BodyKind.Json, useVariables: true);
 
         // Assert
         Assert.Equal(Lines("{", "\t\"count\": {{count}},", "\t\"name\": \"{{name}}\"", "}"), laidOut);
@@ -38,7 +38,7 @@ public sealed class BodyLayoutTests
     public void Of_WhenAVariableStandsForAnXmlName_ThenLaysItOut()
     {
         // Act
-        var laidOut = BodyLayout.Of("<{{root}}><{{child}} {{name}}=\"1\" /></{{root}}>", BodyKind.Xml);
+        var laidOut = BodyLayout.Of("<{{root}}><{{child}} {{name}}=\"1\" /></{{root}}>", BodyKind.Xml, useVariables: true);
 
         // Assert
         Assert.Equal(Lines("<{{root}}>", "\t<{{child}} {{name}}=\"1\" />", "</{{root}}>"), laidOut);
