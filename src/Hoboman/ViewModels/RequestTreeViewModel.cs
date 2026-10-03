@@ -38,7 +38,7 @@ public sealed class RequestTreeViewModel(RequestLibrary library, IDialogs dialog
     public Task RenamedAsync(RequestNodeViewModel node, string name)
     {
         _loadVersion++;
-        _order = [.. Flatten(Nodes).Select(row => row.OrderKey).Select(key => key.Equals(node.OrderKey, StringComparison.OrdinalIgnoreCase) || node.IsFolder && key.StartsWith($"{node.Path}/", StringComparison.OrdinalIgnoreCase) ? $"{name}{key[node.Path.Length..]}" : key)];
+        _order = [.. Flatten(Nodes).Select(row => row.OrderKey).Select(key => (node.IsFolder ? key.StartsWith($"{node.Path}/", StringComparison.OrdinalIgnoreCase) : key.Equals(node.Path, StringComparison.OrdinalIgnoreCase)) ? $"{name}{key[node.Path.Length..]}" : key)];
         return PersistOrderAsync();
     }
 
@@ -176,6 +176,11 @@ public sealed class RequestTreeViewModel(RequestLibrary library, IDialogs dialog
 
     public Guid IdOf(string name) => _idByName.GetValueOrDefault(name);
 
+    public string KeyOf(string name) => Flatten(Nodes).FirstOrDefault(node => !node.IsFolder && !node.IsDraft && node.Path.Equals(name, StringComparison.OrdinalIgnoreCase))?.OrderKey ?? name;
+
+    // Where the request with the id is now. An id that several files share points at none of them.
+    public string? PathOf(Guid id) => _nameById.GetValueOrDefault(id);
+
     public async Task LoadAsync(CancellationToken cancellationToken)
     {
         var version = ++_loadVersion;
@@ -183,16 +188,21 @@ public sealed class RequestTreeViewModel(RequestLibrary library, IDialogs dialog
         {
             var folders = await library.FoldersAsync(cancellationToken);
             var names = await library.NamesAsync(cancellationToken);
-            var order = (await LoadOrderAsync(cancellationToken)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var loaded = (await LoadOrderAsync(cancellationToken)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             var requests = new ApiRequest?[names.Count];
             await Parallel.ForEachAsync(Enumerable.Range(0, names.Count), cancellationToken, async (index, token) => requests[index] = await RequestOfAsync(names[index], token));
             if (version != _loadVersion)
             {
                 return;
             }
-            _nameById = UniqueIds(names, requests);
+            var namesById = names.Zip(requests).Where(pair => pair.Second is { Id: var id } && id != Guid.Empty).ToLookup(pair => pair.Second!.Id, pair => pair.First);
+            _nameById = UniqueIds(namesById);
             (_earlierNames, _names) = (_names, names.ToHashSet(StringComparer.OrdinalIgnoreCase));
             _idByName = names.Zip(requests).Where(pair => pair.Second is not null).ToDictionary(pair => pair.First, pair => pair.Second!.Id, StringComparer.OrdinalIgnoreCase);
+            // An id that an Explorer copy now shares is replaced by the paths of its files, so the original keeps its place.
+            var order = loaded.SelectMany(key => Guid.TryParse(key, out var id) && namesById[id].Skip(1).Any() ? namesById[id] : [IdKeyOf(key) is var known && known != Guid.Empty ? $"{known}" : key])
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var mapped = !order.SequenceEqual(loaded, StringComparer.OrdinalIgnoreCase);
             _folders = folders;
             _files = [.. names.Zip(requests).Select(pair => (pair.First, pair.Second?.Method))];
             // Draft positions belong to this session, not the order file.
@@ -203,6 +213,10 @@ public sealed class RequestTreeViewModel(RequestLibrary library, IDialogs dialog
             }
             _order = order;
             Show();
+            if (mapped)
+            {
+                await PersistOrderAsync();
+            }
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
@@ -234,7 +248,7 @@ public sealed class RequestTreeViewModel(RequestLibrary library, IDialogs dialog
         }
         foreach (var (name, method) in _files.OrderBy(file => file.Name, StringComparer.CurrentCultureIgnoreCase))
         {
-            ChildrenOf(name).Add(new(name, method, isFolder: false));
+            ChildrenOf(name).Add(new(name, method, isFolder: false, IdKeyOf(name)));
         }
         foreach (var tab in _tabs.Where(tab => tab.IsDraft))
         {
@@ -320,20 +334,23 @@ public sealed class RequestTreeViewModel(RequestLibrary library, IDialogs dialog
         }
     }
 
-    IReadOnlyDictionary<Guid, string> UniqueIds(IReadOnlyList<string> names, IReadOnlyList<ApiRequest?> requests)
+    IReadOnlyDictionary<Guid, string> UniqueIds(ILookup<Guid, string> namesById)
     {
         var nameById = new Dictionary<Guid, string>();
-        foreach (var group in names.Zip(requests).Where(pair => pair.Second is { Id: var id } && id != Guid.Empty).GroupBy(pair => pair.Second!.Id))
+        foreach (var group in namesById)
         {
             if (group.Count() == 1)
             {
-                nameById[group.Key] = group.First().First;
+                nameById[group.Key] = group.First();
                 continue;
             }
-            logger.LogWarning("{Names} share the id {Id}, so they share their secrets", string.Join(", ", group.Select(pair => pair.First)), group.Key);
+            logger.LogWarning("{Names} share the id {Id}, so they share their secrets", string.Join(", ", group), group.Key);
         }
         return nameById;
     }
+
+    // A tab saved under a new name keeps its id until the next load, while the file that had it may still be there, so the id must point at this file.
+    Guid IdKeyOf(string name) => _idByName.GetValueOrDefault(name) is var id && _nameById.GetValueOrDefault(id) is { } path && path.Equals(name, StringComparison.OrdinalIgnoreCase) ? id : Guid.Empty;
 
     async Task<ApiRequest?> RequestOfAsync(string name, CancellationToken cancellationToken)
     {

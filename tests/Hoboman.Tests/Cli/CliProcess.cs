@@ -69,14 +69,15 @@ sealed class CliProcess : IDisposable
         }
     }
 
-    public IReadOnlyDictionary<string, byte[]> Snapshot(bool includeHistory = false) =>
+    // The history and the runs are what the CLI writes, so they are left out unless asked for.
+    public IReadOnlyDictionary<string, byte[]> Snapshot(bool includeOutput = false) =>
         Directory.EnumerateFileSystemEntries(Folder.Root, "*", SearchOption.AllDirectories)
-            .Where(path => includeHistory || !path.StartsWith(Folder.History, StringComparison.OrdinalIgnoreCase))
+            .Where(path => includeOutput || (!path.StartsWith(Folder.History, StringComparison.OrdinalIgnoreCase) && !path.StartsWith(Folder.Runs, StringComparison.OrdinalIgnoreCase)))
             .ToDictionary(path => path, path => Directory.Exists(path) ? [] : File.ReadAllBytes(path));
 
-    public void AssertUnchanged(IReadOnlyDictionary<string, byte[]> original, bool includeHistory = false)
+    public void AssertUnchanged(IReadOnlyDictionary<string, byte[]> original, bool includeOutput = false)
     {
-        var current = Snapshot(includeHistory);
+        var current = Snapshot(includeOutput);
         Assert.Equal(original.Keys.Order(StringComparer.Ordinal), current.Keys.Order(StringComparer.Ordinal));
         Assert.All(original, file => Assert.Equal(file.Value, current[file.Key]));
     }

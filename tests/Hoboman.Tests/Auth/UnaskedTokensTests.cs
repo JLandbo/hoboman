@@ -44,13 +44,14 @@ public sealed class UnaskedTokensTests : IDisposable
     {
         // Arrange
         var id = Guid.NewGuid();
+        var environment = new ApiEnvironment("Dev", []) { Id = Guid.NewGuid() };
         var tokens = Tokens(new(_ => Task.FromResult(_fetched)));
 
         // Act
-        var fetched = await tokens.FetchAsync(Source(id), new("Dev", []), Cancellation);
+        var fetched = await tokens.FetchAsync(Source(id), environment, Cancellation);
 
         // Assert
-        Assert.Equal((true, _fetched.ToJson()), (fetched, await Secrets.OfAsync(id, SecretKind.OAuthToken, "Dev", Cancellation)));
+        Assert.Equal((true, _fetched.ToJson()), (fetched, await Secrets.OfAsync(id, SecretKind.OAuthToken, environment.Id, Cancellation)));
     }
 
     [Fact]

@@ -22,8 +22,9 @@ public sealed class RequestTreeViewTests
     [InlineData("external")]
     public async Task ActiveRow_WhenItsSavedRequestMoves_ThenMarksTheNewRow(string change)
     {
-        using var harness = new Harness(new FakeDialogs(answer: change == "folder" ? "People" : "People/Get"));
-        await harness.Library.SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
+        var original = change == "rename" ? "People/Old" : "Users/Get";
+        using var harness = new Harness(new FakeDialogs(answer: change == "folder" ? "People" : "Get"));
+        await harness.Library.SaveAsync(original, ApiRequest.New(), Cancellation);
         await harness.Library.CreateFolderAsync("People", Cancellation);
         if (change == "folder")
         {
@@ -33,12 +34,12 @@ public sealed class RequestTreeViewTests
         {
             var main = harness.Main();
             await main.LoadAsync();
-            await main.OpenAsync(Node(main, "Users/Get"));
+            await main.OpenAsync(Node(main, original));
             var window = await Ui.ShowAsync(harness, main);
 
             switch (change)
             {
-                case "rename": await main.RenameAsync(Node(main, "Users/Get")); break;
+                case "rename": await main.RenameAsync(Node(main, original)); break;
                 case "move": await main.MoveAsync(Node(main, "Users/Get"), Node(main, "People")); break;
                 case "folder": await main.RenameFolderAsync(Node(main, "Users")); break;
                 case "external":
@@ -440,7 +441,7 @@ public sealed class RequestTreeViewTests
     [Fact]
     public async Task Scroll_WhenSelectingSavingEditingAndReloading_ThenOnlyRevealsOnSelectionAndFirstSave()
     {
-        using var harness = new Harness(new FakeDialogs(answer: "Z/Deep/Saved"));
+        using var harness = new Harness(new FakeDialogs(answer: "Saved"));
         for (var number = 0; number < 65; number++)
         {
             await harness.Library.SaveAsync($"A/Request {number:00}", ApiRequest.New(), Cancellation);

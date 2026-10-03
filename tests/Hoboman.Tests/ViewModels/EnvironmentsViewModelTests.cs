@@ -2,6 +2,9 @@ namespace Hoboman.Tests.ViewModels;
 
 public sealed class EnvironmentsViewModelTests
 {
+    static readonly ApiEnvironment _dev = new("Dev", []) { Id = Guid.NewGuid() };
+    static readonly ApiEnvironment _prod = new("Prod", []) { Id = Guid.NewGuid() };
+
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
     [Fact]
@@ -9,7 +12,7 @@ public sealed class EnvironmentsViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.EnvironmentStore.SaveAsync([new("Dev", []), new("Prod", [])], Cancellation);
+        await harness.EnvironmentStore.SaveAsync([_dev, _prod], Cancellation);
         await harness.Environments.LoadAsync(Cancellation);
         var restarted = harness.Restarted();
 
@@ -28,18 +31,19 @@ public sealed class EnvironmentsViewModelTests
     public async Task ChooseAsync_WhenTheSessionHasNoSelectedSavedTab_ThenRemembersTheLastEnvironment(string? name)
     {
         using var harness = new Harness();
-        await harness.EnvironmentStore.SaveAsync([new("Dev", []), new("Prod", [])], Cancellation);
+        await harness.EnvironmentStore.SaveAsync([_dev, _prod], Cancellation);
         await harness.SettingsStore.UpdateAsync(settings => settings with { Session = new(["Request"], null) }, Cancellation);
         await harness.Environments.LoadAsync(Cancellation);
         await harness.Environments.ChooseAsync(harness.Environments.Items[1]);
 
-        await harness.Environments.ChooseAsync(harness.Environments.Items.FirstOrDefault(environment => environment.Name == name));
+        var chosen = harness.Environments.Items.FirstOrDefault(environment => environment.Name == name);
+        await harness.Environments.ChooseAsync(chosen);
         await harness.SettingsStore.UpdateAsync(settings => settings with { Layout = new(1200, 800, false, 340), Session = new(["Request"], null) }, Cancellation);
         var restarted = harness.Restarted();
         await restarted.LoadAsync(Cancellation);
 
         Assert.Equal(name, restarted.Selected?.Name);
-        Assert.Equal(name, (await harness.SettingsStore.LoadAsync(Cancellation)).EnvironmentName);
+        Assert.Equal(chosen?.Id, (await harness.SettingsStore.LoadAsync(Cancellation)).EnvironmentId);
         Assert.Equal(["Request"], (await harness.SettingsStore.LoadAsync(Cancellation)).Session!.Requests);
     }
 
@@ -48,7 +52,7 @@ public sealed class EnvironmentsViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.EnvironmentStore.SaveAsync([new("Dev", [])], Cancellation);
+        await harness.EnvironmentStore.SaveAsync([_dev], Cancellation);
         await harness.SettingsStore.UpdateAsync(settings => settings with { EnvironmentName = "Gone" }, Cancellation);
 
         // Act
@@ -59,11 +63,44 @@ public sealed class EnvironmentsViewModelTests
     }
 
     [Fact]
+    public async Task LoadAsync_WhenSettingsHoldOnlyTheLegacyName_ThenChoosesByNameAndSavesTheId()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.EnvironmentStore.SaveAsync([_dev, _prod], Cancellation);
+        await harness.SettingsStore.UpdateAsync(settings => settings with { EnvironmentName = "Prod" }, Cancellation);
+
+        // Act
+        await harness.Environments.LoadAsync(Cancellation);
+
+        // Assert
+        var settings = await harness.SettingsStore.LoadAsync(Cancellation);
+        Assert.Equal((_prod.Id, _prod.Id, null), (harness.Environments.Selected?.Id, settings.EnvironmentId, settings.EnvironmentName));
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenTheChosenEnvironmentIsRenamedOnDisk_ThenStaysChosen()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.EnvironmentStore.SaveAsync([_dev, _prod], Cancellation);
+        await harness.Environments.LoadAsync(Cancellation);
+        await harness.Environments.ChooseAsync(harness.Environments.Items[0]);
+        await harness.EnvironmentStore.SaveAsync([_dev with { Name = "Development" }, _prod], Cancellation);
+
+        // Act
+        await harness.Environments.LoadAsync(Cancellation);
+
+        // Assert
+        Assert.Equal("Development", harness.Environments.Selected?.Name);
+    }
+
+    [Fact]
     public async Task LoadAsync_WhenTheSettingsCannotBeRead_ThenStillShowsTheEnvironments()
     {
         // Arrange
         using var harness = new Harness();
-        await harness.EnvironmentStore.SaveAsync([new("Dev", [])], Cancellation);
+        await harness.EnvironmentStore.SaveAsync([_dev], Cancellation);
         File.WriteAllText(harness.Folder.Settings, "{");
 
         // Act
@@ -93,7 +130,7 @@ public sealed class EnvironmentsViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.EnvironmentStore.SaveAsync([new("Dev", [])], Cancellation);
+        await harness.EnvironmentStore.SaveAsync([_dev], Cancellation);
         await harness.Environments.LoadAsync(Cancellation);
         File.WriteAllText(harness.Folder.Settings, "{");
 

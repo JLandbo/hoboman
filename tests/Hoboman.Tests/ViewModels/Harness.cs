@@ -15,14 +15,17 @@ public sealed class Harness : IDisposable
         Dialogs = dialogs ?? new FakeDialogs();
         OAuth = oauth ?? new FakeOAuthClient();
         Library = new(Folder, NullLogger<RequestLibrary>.Instance);
-        EnvironmentStore = new(Folder, NullLogger<EnvironmentStore>.Instance);
+        Secrets = new(Folder, NullLogger<SecretStore>.Instance);
+        EnvironmentStore = new(Folder, Secrets, NullLogger<EnvironmentStore>.Instance);
         SettingsStore = new(Folder, NullLogger<SettingsStore>.Instance);
         Environments = Restarted();
         Sender = new(send ?? (() => Task.FromResult(new ApiResponse(200, "OK", 0, 2, [], "{}"))));
         var runner = new RequestRunner(Sender, Library, History(), NullLogger<RequestRunner>.Instance);
-        Secrets = new(Folder, NullLogger<SecretStore>.Instance);
         AuthRefresh = new(OAuth, Library, Secrets);
         Services = new(runner, Secrets, AuthRefresh, Library, new(), Environments, Dialogs, _translator, Clock, NullLogger<RequestTabViewModel>.Instance);
+        WorkflowLibrary = new(Folder, NullLogger<WorkflowLibrary>.Instance);
+        WorkflowServices = new(WorkflowLibrary, new(Library, Secrets, NullLogger<WorkflowCheck>.Instance), new(runner, Folder, NullLogger<WorkflowRunner>.Instance), Library, Environments, AuthRefresh, Secrets,
+            Dialogs, _translator, NullLogger<WorkflowViewModel>.Instance);
     }
 
     public AppFolder Folder { get; }
@@ -52,11 +55,17 @@ public sealed class Harness : IDisposable
 
     public RequestTabServices Services { get; }
 
+    public WorkflowLibrary WorkflowLibrary { get; }
+
+    public WorkflowServices WorkflowServices { get; }
+
     public RequestTabViewModel Tab(ApiRequest? request = null, string? name = null) => new(Services, request ?? ApiRequest.New(), name);
 
     public MainViewModel Main() => new(
         new(Library, Dialogs, _translator, NullLogger<RequestTreeViewModel>.Instance),
         new(History(), _translator, TimeProvider.System, NullLogger<HistoryViewModel>.Instance),
+        new(WorkflowLibrary, NullLogger<WorkflowsViewModel>.Instance),
+        WorkflowServices,
         Environments,
         new(SettingsStore, _translator, NullLogger<SettingsViewModel>.Instance),
         SettingsStore,
@@ -72,7 +81,7 @@ public sealed class Harness : IDisposable
 
     public FolderAuthViewModel FolderAuth() => new(Library, Secrets, AuthRefresh, Environments, _translator, Clock, NullLogger<FolderAuthViewModel>.Instance);
 
-    public EnvironmentEditorViewModel EnvironmentEditor() => new(EnvironmentStore, Environments, AuthRefresh, _translator, NullLogger<EnvironmentEditorViewModel>.Instance);
+    public EnvironmentEditorViewModel EnvironmentEditor() => new(EnvironmentStore, Environments, Secrets, _translator, NullLogger<EnvironmentEditorViewModel>.Instance);
 
     // The environments as they are after the app is started again.
     public EnvironmentsViewModel Restarted() => new(EnvironmentStore, SettingsStore, NullLogger<EnvironmentsViewModel>.Instance);

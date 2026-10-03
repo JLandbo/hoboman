@@ -12,6 +12,7 @@ public sealed class AppFolderWatcher : IDisposable
     readonly Timer _requests;
     readonly Timer _history;
     readonly Timer _environments;
+    readonly Timer _workflows;
     FileSystemWatcher? _watcher;
 
     public AppFolderWatcher(AppFolder folder, ILogger<AppFolderWatcher> logger)
@@ -21,6 +22,7 @@ public sealed class AppFolderWatcher : IDisposable
         _requests = new(_ => RequestsChanged?.Invoke());
         _history = new(_ => HistoryChanged?.Invoke());
         _environments = new(_ => EnvironmentsChanged?.Invoke());
+        _workflows = new(_ => WorkflowsChanged?.Invoke());
     }
 
     public event Action? RequestsChanged;
@@ -28,6 +30,8 @@ public sealed class AppFolderWatcher : IDisposable
     public event Action? HistoryChanged;
 
     public event Action? EnvironmentsChanged;
+
+    public event Action? WorkflowsChanged;
 
     public void Start()
     {
@@ -57,6 +61,7 @@ public sealed class AppFolderWatcher : IDisposable
         _requests.Dispose();
         _history.Dispose();
         _environments.Dispose();
+        _workflows.Dispose();
     }
 
     // Changes can be lost when the buffer overflows, and the watcher stops after other errors, so everything is reloaded and the watcher restarted.
@@ -74,7 +79,7 @@ public sealed class AppFolderWatcher : IDisposable
                 _logger.LogError(exception, "Could not watch {Folder} again", _folder.Root);
             }
         }
-        foreach (var timer in new[] { _requests, _history, _environments })
+        foreach (var timer in new[] { _requests, _history, _environments, _workflows })
         {
             timer.Change(_settle, Timeout.InfiniteTimeSpan);
         }
@@ -85,6 +90,7 @@ public sealed class AppFolderWatcher : IDisposable
         var timer = IsIn(path, _folder.Requests) || path.StartsWith(_folder.RequestOrder, StringComparison.OrdinalIgnoreCase) ? _requests
             : IsIn(path, _folder.History) ? _history
             : path.StartsWith(_folder.Environments, StringComparison.OrdinalIgnoreCase) ? _environments
+            : IsIn(path, _folder.Workflows) ? _workflows
             : null;
         timer?.Change(_settle, Timeout.InfiniteTimeSpan);
     }

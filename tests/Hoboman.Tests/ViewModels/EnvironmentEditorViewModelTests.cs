@@ -2,16 +2,19 @@ namespace Hoboman.Tests.ViewModels;
 
 public sealed class EnvironmentEditorViewModelTests
 {
+    static readonly ApiEnvironment _dev = new("Dev", []) { Id = Guid.NewGuid() };
+    static readonly ApiEnvironment _prod = new("Prod", []) { Id = Guid.NewGuid() };
+
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
     [Fact]
-    public async Task SaveAsync_WhenAnEnvironmentIsRenamed_ThenItsTokensFollow()
+    public async Task SaveAsync_WhenAnEnvironmentIsRenamed_ThenKeepsItsTokens()
     {
         // Arrange
         using var harness = new Harness();
-        await harness.EnvironmentStore.SaveAsync([new("Dev", [])], Cancellation);
+        await harness.EnvironmentStore.SaveAsync([_dev], Cancellation);
         var id = Guid.NewGuid();
-        await harness.Secrets.SaveAsync(id, SecretKind.OAuthToken, "Dev", "token", Cancellation);
+        await harness.Secrets.SaveAsync(id, SecretKind.OAuthToken, _dev.Id, "token", Cancellation);
         var editor = harness.EnvironmentEditor();
         await editor.LoadAsync(Cancellation);
         editor.Selected!.Name = "Development";
@@ -20,7 +23,7 @@ public sealed class EnvironmentEditorViewModelTests
         await editor.SaveAsync();
 
         // Assert
-        Assert.Equal("token", await harness.Secrets.OfAsync(id, SecretKind.OAuthToken, "Development", Cancellation));
+        Assert.Equal("token", await harness.Secrets.OfAsync(id, SecretKind.OAuthToken, _dev.Id, Cancellation));
     }
 
     [Fact]
@@ -28,9 +31,9 @@ public sealed class EnvironmentEditorViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.EnvironmentStore.SaveAsync([new("Dev", [])], Cancellation);
+        await harness.EnvironmentStore.SaveAsync([_dev], Cancellation);
         var id = Guid.NewGuid();
-        await harness.Secrets.SaveAsync(id, SecretKind.OAuthToken, "Dev", "token", Cancellation);
+        await harness.Secrets.SaveAsync(id, SecretKind.OAuthToken, _dev.Id, "token", Cancellation);
         var editor = harness.EnvironmentEditor();
         await editor.LoadAsync(Cancellation);
         editor.Remove();
@@ -39,7 +42,52 @@ public sealed class EnvironmentEditorViewModelTests
         await editor.SaveAsync();
 
         // Assert
-        Assert.Null(await harness.Secrets.OfAsync(id, SecretKind.OAuthToken, "Dev", Cancellation));
+        Assert.Null(await harness.Secrets.OfAsync(id, SecretKind.OAuthToken, _dev.Id, Cancellation));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenTwoEnvironmentsSwapNames_ThenTheChoiceAndTokensStayWithTheirEnvironment()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.EnvironmentStore.SaveAsync([_dev, _prod], Cancellation);
+        var id = Guid.NewGuid();
+        await harness.Secrets.SaveAsync(id, SecretKind.OAuthToken, _dev.Id, "dev token", Cancellation);
+        await harness.Environments.LoadAsync(Cancellation);
+        await harness.Environments.ChooseAsync(harness.Environments.Items[0]);
+        var editor = harness.EnvironmentEditor();
+        await editor.LoadAsync(Cancellation);
+        (editor.Environments[0].Name, editor.Environments[1].Name) = ("Prod", "Dev");
+
+        // Act
+        await editor.SaveAsync();
+
+        // Assert
+        Assert.Equal((_dev.Id, "Prod", "dev token"), (harness.Environments.Selected?.Id, harness.Environments.Selected?.Name, await harness.Secrets.OfAsync(id, SecretKind.OAuthToken, _dev.Id, Cancellation)));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenAnEnvironmentIsRemovedAndOneWithItsNameAdded_ThenTheNewOneIsNotChosenAndHasNoToken()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.EnvironmentStore.SaveAsync([_dev], Cancellation);
+        var id = Guid.NewGuid();
+        await harness.Secrets.SaveAsync(id, SecretKind.OAuthToken, _dev.Id, "token", Cancellation);
+        await harness.Environments.LoadAsync(Cancellation);
+        await harness.Environments.ChooseAsync(harness.Environments.Items.Single());
+        var editor = harness.EnvironmentEditor();
+        await editor.LoadAsync(Cancellation);
+        editor.Remove();
+        editor.Add();
+        editor.Selected!.Name = "Dev";
+
+        // Act
+        await editor.SaveAsync();
+
+        // Assert
+        Assert.Null(harness.Environments.Selected);
+        Assert.Null(await harness.Secrets.OfAsync(id, SecretKind.OAuthToken, editor.Selected.Id, Cancellation));
     }
 
     [Fact]
@@ -85,7 +133,7 @@ public sealed class EnvironmentEditorViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.EnvironmentStore.SaveAsync([new("Dev", [])], Cancellation);
+        await harness.EnvironmentStore.SaveAsync([_dev], Cancellation);
         var editor = harness.EnvironmentEditor();
         await editor.LoadAsync(Cancellation);
         editor.Add();
@@ -103,7 +151,7 @@ public sealed class EnvironmentEditorViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.EnvironmentStore.SaveAsync([new("Dev", [])], Cancellation);
+        await harness.EnvironmentStore.SaveAsync([_dev], Cancellation);
         var editor = harness.EnvironmentEditor();
         await editor.LoadAsync(Cancellation);
         editor.Add();
@@ -121,7 +169,7 @@ public sealed class EnvironmentEditorViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.EnvironmentStore.SaveAsync([new("Dev", [])], Cancellation);
+        await harness.EnvironmentStore.SaveAsync([_dev], Cancellation);
         var editor = harness.EnvironmentEditor();
         await editor.LoadAsync(Cancellation);
         using (new FileStream(harness.Folder.Environments, FileMode.Open, FileAccess.Read, FileShare.None))
@@ -142,10 +190,10 @@ public sealed class EnvironmentEditorViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.EnvironmentStore.SaveAsync([new("Dev", [])], Cancellation);
+        await harness.EnvironmentStore.SaveAsync([_dev], Cancellation);
         var editor = harness.EnvironmentEditor();
         await editor.LoadAsync(Cancellation);
-        await harness.EnvironmentStore.SaveAsync([new("Dev", []), new("Agent", [])], Cancellation);
+        await harness.EnvironmentStore.SaveAsync([_dev, new("Agent", []) { Id = Guid.NewGuid() }], Cancellation);
         editor.Add();
 
         // Act
@@ -160,7 +208,7 @@ public sealed class EnvironmentEditorViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.EnvironmentStore.SaveAsync([new("Dev", [])], Cancellation);
+        await harness.EnvironmentStore.SaveAsync([_dev], Cancellation);
         await harness.Environments.LoadAsync(Cancellation);
         await harness.Environments.ChooseAsync(harness.Environments.Items.Single());
         var editor = harness.EnvironmentEditor();
@@ -179,7 +227,7 @@ public sealed class EnvironmentEditorViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.EnvironmentStore.SaveAsync([new("Dev", [])], Cancellation);
+        await harness.EnvironmentStore.SaveAsync([_dev], Cancellation);
         await harness.Environments.LoadAsync(Cancellation);
         await harness.Environments.ChooseAsync(harness.Environments.Items.Single());
         var editor = harness.EnvironmentEditor();
@@ -200,7 +248,7 @@ public sealed class EnvironmentEditorViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.EnvironmentStore.SaveAsync([new("Dev", []), new("Prod", [])], Cancellation);
+        await harness.EnvironmentStore.SaveAsync([_dev, _prod], Cancellation);
         var editor = harness.EnvironmentEditor();
         await editor.LoadAsync(Cancellation);
 
@@ -216,7 +264,7 @@ public sealed class EnvironmentEditorViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.EnvironmentStore.SaveAsync([new("Dev", []), new("Prod", [])], Cancellation);
+        await harness.EnvironmentStore.SaveAsync([_dev, _prod], Cancellation);
         var editor = harness.EnvironmentEditor();
         await editor.LoadAsync(Cancellation);
 
@@ -232,7 +280,7 @@ public sealed class EnvironmentEditorViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.EnvironmentStore.SaveAsync([new("Dev", [])], Cancellation);
+        await harness.EnvironmentStore.SaveAsync([_dev], Cancellation);
         var editor = harness.EnvironmentEditor();
         await editor.LoadAsync(Cancellation);
         using var locked = new FileStream(harness.Folder.Environments, FileMode.Open, FileAccess.Read, FileShare.None);

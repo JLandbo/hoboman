@@ -5,8 +5,10 @@ namespace Hoboman.Core.Environments;
 
 public sealed partial record ApiEnvironment(string Name, IReadOnlyList<KeyValue> Variables)
 {
-    // Without a chosen environment nothing is resolved, and secrets kept per environment go under the empty name.
+    // Without a chosen environment nothing is resolved, and secrets kept per environment go under the empty id.
     public static ApiEnvironment None { get; } = new("", []);
+
+    public Guid Id { get; init; }
 
     public static MatchCollection VariablesIn(string text) => Variable().Matches(text);
 
@@ -20,7 +22,7 @@ public sealed partial record ApiEnvironment(string Name, IReadOnlyList<KeyValue>
     public string Resolve(string text) =>
         Variable().Replace(text, match => Variables.FirstOrDefault(variable => variable.Enabled && variable.Name == match.Groups[1].Value)?.Value ?? match.Value);
 
-    public ApiEnvironment WithVariables(IReadOnlyList<KeyValue> variables) => new(Name, [.. variables, .. Variables]);
+    public ApiEnvironment WithVariables(IReadOnlyList<KeyValue> variables) => this with { Variables = [.. variables, .. Variables] };
 
     [GeneratedRegex(_variable)]
     private static partial Regex Variable();

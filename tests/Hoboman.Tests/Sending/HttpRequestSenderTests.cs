@@ -420,25 +420,26 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
     {
         // Arrange
         var request = Request() with { Auth = new(AuthKind.OAuth2) };
-        await Secrets().SaveAsync(request.Id, SecretKind.OAuthToken, "Dev", new OAuthToken("dev access", "Bearer", null, null).ToJson(), Cancellation);
+        var environment = new ApiEnvironment("Dev", []) { Id = Guid.NewGuid() };
+        await Secrets().SaveAsync(request.Id, SecretKind.OAuthToken, environment.Id, new OAuthToken("dev access", "Bearer", null, null).ToJson(), Cancellation);
 
         // Act
-        var echo = await SendAndEchoAsync(request, new ApiEnvironment("Dev", []));
+        var echo = await SendAndEchoAsync(request, environment);
 
         // Assert
         Assert.Equal("Bearer dev access", echo.Headers["Authorization"]);
     }
 
     [Fact]
-    public async Task SendAsync_WhenTheOAuthTokenIsForAnotherEnvironment_ThenThrows()
+    public async Task SendAsync_WhenTheOAuthTokenIsForAnotherEnvironmentWithTheSameName_ThenThrows()
     {
         // Arrange
         var request = Request() with { Auth = new(AuthKind.OAuth2) };
-        await Secrets().SaveAsync(request.Id, SecretKind.OAuthToken, "Dev", new OAuthToken("dev access", "Bearer", null, null).ToJson(), Cancellation);
+        await Secrets().SaveAsync(request.Id, SecretKind.OAuthToken, Guid.NewGuid(), new OAuthToken("dev access", "Bearer", null, null).ToJson(), Cancellation);
         var sender = await SenderAsync();
 
         // Act
-        var sending = sender.SendAsync(request, OwnAuth(request), new ApiEnvironment("Prod", []), Cancellation);
+        var sending = sender.SendAsync(request, OwnAuth(request), new ApiEnvironment("Dev", []) { Id = Guid.NewGuid() }, Cancellation);
 
         // Assert
         Assert.Equal(SecretKind.OAuthToken, (await Assert.ThrowsAsync<MissingSecretException>(() => sending)).Kind);

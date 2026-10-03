@@ -119,6 +119,7 @@ public sealed class CollectionInteractionTests
             Assert.Equal(Visibility.Collapsed, marker.Visibility);
             Ui.Drag(tree, source, middle, DragDrop.DragOverEvent);
             Ui.Drag(tree, source, middle, DragDrop.DragLeaveEvent);
+            await Ui.IdleAsync();
             Assert.Equal(Visibility.Collapsed, marker.Visibility);
             Ui.Drag(tree, source, middle, DragDrop.DropEvent);
             await Ui.UntilAsync(() => !main.IsChangingCollection && RequestTreeViewModel.Flatten(main.Tree.Nodes).Any(node => node.Path == "Target/Folder/Child"));
@@ -160,8 +161,10 @@ public sealed class CollectionInteractionTests
     public async Task Window_WhenClosed_ThenSavesOnlyRealRequestTabsInTheirCurrentOrder()
     {
         using var harness = new Harness(new FakeDialogs(accept: true));
-        await harness.Library.SaveAsync("A", ApiRequest.New(), Cancellation);
-        await harness.Library.SaveAsync("B", ApiRequest.New(), Cancellation);
+        var a = ApiRequest.New();
+        var b = ApiRequest.New();
+        await harness.Library.SaveAsync("A", a, Cancellation);
+        await harness.Library.SaveAsync("B", b, Cancellation);
         await Ui.RunAsync(async () =>
         {
             var main = harness.Main();
@@ -176,8 +179,8 @@ public sealed class CollectionInteractionTests
             var window = await Ui.ShowAsync(harness, main);
             window.Close();
             var session = (await harness.SettingsStore.LoadAsync(Cancellation)).Session!;
-            Assert.Equal(["B", "A"], session.Requests);
-            Assert.Equal("B", session.Selected);
+            Assert.Equal([$"{b.Id}", $"{a.Id}"], session.Requests);
+            Assert.Equal($"{b.Id}", session.Selected);
         });
     }
 

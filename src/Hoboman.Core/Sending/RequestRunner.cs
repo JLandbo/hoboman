@@ -66,7 +66,7 @@ public sealed class RequestRunner(IRequestSender sender, RequestLibrary library,
         }
     }
 
-    static string AddressOf(ApiRequest request, ApiEnvironment? environment)
+    public static string AddressOf(ApiRequest request, ApiEnvironment? environment)
     {
         var url = environment?.Resolve(request.Url) ?? request.Url;
         return Uri.TryCreate(url, UriKind.Absolute, out var address) ? SafeAddress.Of(address) : url;

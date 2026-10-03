@@ -91,6 +91,8 @@ public partial class MainWindow : Window
 
     async void NewFolder_Click(object sender, RoutedEventArgs e) => await _viewModel.NewFolderAsync();
 
+    async void NewWorkflow_Click(object sender, RoutedEventArgs e) => await _viewModel.NewWorkflowAsync();
+
     void Tabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (e.AddedItems is [var tab, ..])

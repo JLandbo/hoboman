@@ -33,6 +33,16 @@ public sealed class RequestLibrary(AppFolder folder, ILogger<RequestLibrary> log
     // These are async, so an invalid name fails the returned task instead of throwing before there is one.
     public async Task<ApiRequest?> LoadAsync(string name, CancellationToken cancellationToken) => await FileOf(name).LoadAsync(cancellationToken).ConfigureAwait(false);
 
+    // A file that cannot be read is given without a request, so one broken file does not stop the use of the rest.
+    public async Task<IReadOnlyList<(string Name, ApiRequest? Request)>> LoadAllAsync(CancellationToken cancellationToken)
+    {
+        var names = await NamesAsync(cancellationToken).ConfigureAwait(false);
+        var requests = new ApiRequest?[names.Count];
+        await Parallel.ForEachAsync(Enumerable.Range(0, names.Count), cancellationToken, async (index, token) => requests[index] = await TryLoadAsync(names[index], token).ConfigureAwait(false))
+            .ConfigureAwait(false);
+        return [.. names.Zip(requests)];
+    }
+
     public async Task SaveAsync(string name, ApiRequest request, CancellationToken cancellationToken)
     {
         await FileOf(name).SaveAsync(request, cancellationToken).ConfigureAwait(false);
@@ -150,6 +160,19 @@ public sealed class RequestLibrary(AppFolder folder, ILogger<RequestLibrary> log
             }
         }
         return false;
+    }
+
+    async Task<ApiRequest?> TryLoadAsync(string name, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await LoadAsync(name, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            logger.LogWarning(exception, "Could not read {Name}", name);
+            return null;
+        }
     }
 
     JsonFile<ApiRequest?> FileOf(string name) => new(PathOf(name), null, logger);

@@ -385,6 +385,40 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public async Task OpenAsync_WhenTheHistoryRequestWasMoved_ThenUsesItsCurrentPath()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var request = ApiRequest.New();
+        await harness.Library.SaveAsync("Admin/Get", request, Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        var item = new HistoryItemViewModel(new("call.json", new(DateTimeOffset.Now, HistorySource.App, "dev.local", request, "Users/Get")), "Today");
+
+        // Act
+        await main.OpenAsync(item);
+
+        // Assert
+        Assert.Equal("Admin/Get", main.SelectedTab!.SuggestedName);
+    }
+
+    [Fact]
+    public async Task OpenAsync_WhenTheHistoryRequestIsGone_ThenUsesTheRecordedName()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var main = harness.Main();
+        await main.LoadAsync();
+        var item = new HistoryItemViewModel(new("call.json", new(DateTimeOffset.Now, HistorySource.App, "dev.local", ApiRequest.New(), "Users/Get")), "Today");
+
+        // Act
+        await main.OpenAsync(item);
+
+        // Assert
+        Assert.Equal("Users/Get", main.SelectedTab!.SuggestedName);
+    }
+
+    [Fact]
     public async Task Close_WhenATokenIsBeingFetched_ThenStopsTheLogin()
     {
         // Arrange
@@ -1815,6 +1849,63 @@ public sealed class MainViewModelTests
 
         // Assert
         Assert.True(changed);
+    }
+
+    [Fact]
+    public async Task RenameAsync_WhenThePathIsLongerThanAnId_ThenKeepsItsPlace()
+    {
+        // Arrange
+        const string name = "A request whose name is longer than an id";
+        using var harness = new Harness(new FakeDialogs(answer: "Renamed"));
+        await harness.Library.SaveAsync("A", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAsync(name, ApiRequest.New(), Cancellation);
+        await harness.Library.SaveOrderAsync([name, "A"], Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+
+        // Act
+        await main.RenameAsync(NodeOf(main, name));
+
+        // Assert
+        Assert.Equal(["Renamed", "A"], main.Tree.Nodes.Select(node => node.Path));
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenASessionRequestWasRenamedOnDiskWhileClosed_ThenReopensItsTab()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("A", ApiRequest.New(), Cancellation);
+        var closed = harness.Main();
+        await closed.LoadAsync();
+        await closed.OpenAsync(NodeOf(closed, "A"));
+        await harness.SettingsStore.UpdateAsync(settings => settings with { Session = closed.Session }, Cancellation);
+        await harness.Library.RenameAsync("A", "B", Cancellation);
+        var main = harness.Main();
+
+        // Act
+        await main.LoadAsync();
+
+        // Assert
+        Assert.Equal("B", Assert.Single(main.Tabs).Name);
+        Assert.Same(main.Tabs[0], main.SelectedTab);
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenASessionRequestHasNoId_ThenReopensItByPath()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("A", ApiRequest.New() with { Id = Guid.Empty }, Cancellation);
+        await harness.SettingsStore.UpdateAsync(settings => settings with { Session = new(["A"], "A") }, Cancellation);
+        var main = harness.Main();
+
+        // Act
+        await main.LoadAsync();
+
+        // Assert
+        Assert.Equal("A", Assert.Single(main.Tabs).Name);
+        Assert.Same(main.Tabs[0], main.SelectedTab);
     }
 
     // "a.json" is a call to https://a.local.

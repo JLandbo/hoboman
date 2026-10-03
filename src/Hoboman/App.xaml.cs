@@ -12,6 +12,7 @@ using Hoboman.Core.Requests;
 using Hoboman.Core.Sending;
 using Hoboman.Core.Settings;
 using Hoboman.Core.Storage;
+using Hoboman.Core.Workflows;
 using Hoboman.Desktop;
 using Hoboman.Services;
 using Hoboman.ViewModels;
@@ -45,7 +46,6 @@ public partial class App : Application
         };
         logger.LogInformation("Hoboman started in {Folder}", AppContext.BaseDirectory);
         var main = _services.GetRequiredService<MainViewModel>();
-        _services.GetRequiredService<AuthRefreshService>().EnvironmentsChanged += _services.GetRequiredService<FolderAuthViewModel>().Auth.FollowEnvironments;
         Use(translator.Current);
         translator.Changed += () =>
         {
@@ -57,6 +57,7 @@ public partial class App : Application
         watcher.RequestsChanged += () => OnUi(main.RequestsChangedAsync);
         watcher.HistoryChanged += () => OnUi(main.HistoryChangedAsync);
         watcher.EnvironmentsChanged += () => OnUi(main.EnvironmentsChangedAsync);
+        watcher.WorkflowsChanged += () => OnUi(main.WorkflowsChangedAsync);
         main.History.DayChanged += () => OnUi(main.HistoryChangedAsync);
         main.Environments.PropertyChanged += (_, args) =>
         {
@@ -111,6 +112,9 @@ public partial class App : Application
         services.AddSingleton<IRequestSender, HttpRequestSender>();
         services.AddSingleton<HistoryStore>();
         services.AddSingleton<RequestRunner>();
+        services.AddSingleton<WorkflowLibrary>();
+        services.AddSingleton<WorkflowCheck>();
+        services.AddSingleton<WorkflowRunner>();
         services.AddSingleton<IBrowser, ShellBrowser>();
         services.AddSingleton<IOAuthClient, OAuthClient>();
         services.AddSingleton<AuthRefreshService>();
@@ -123,6 +127,8 @@ public partial class App : Application
         services.AddSingleton<FolderAuthViewModel>();
         services.AddSingleton<RequestTreeViewModel>();
         services.AddSingleton<HistoryViewModel>();
+        services.AddSingleton<WorkflowsViewModel>();
+        services.AddSingleton<WorkflowServices>();
         services.AddSingleton<RequestTabServices>();
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();

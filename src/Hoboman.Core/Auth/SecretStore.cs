@@ -1,19 +1,18 @@
 using System.Security.Cryptography;
 using System.Text;
-using Hoboman.Core.Environments;
 using Hoboman.Core.Storage;
 using Microsoft.Extensions.Logging;
 
 namespace Hoboman.Core.Auth;
 
-// A secret can belong to an environment, such as an OAuth token fetched with its addresses; "" is without an environment.
+// A secret can belong to an environment, such as an OAuth token fetched with its addresses; Guid.Empty is without an environment.
 public sealed class SecretStore(AppFolder folder, ILogger<SecretStore> logger)
 {
     readonly JsonFile<IReadOnlyDictionary<string, string>> _file = new(folder.Secrets, new Dictionary<string, string>(), logger);
 
-    public Task<string?> OfAsync(Guid id, SecretKind kind, CancellationToken cancellationToken) => OfAsync(id, kind, "", cancellationToken);
+    public Task<string?> OfAsync(Guid id, SecretKind kind, CancellationToken cancellationToken) => OfAsync(id, kind, Guid.Empty, cancellationToken);
 
-    public async Task<string?> OfAsync(Guid id, SecretKind kind, string environment, CancellationToken cancellationToken)
+    public async Task<string?> OfAsync(Guid id, SecretKind kind, Guid environment, CancellationToken cancellationToken)
     {
         if ((await _file.LoadAsync(cancellationToken).ConfigureAwait(false)).GetValueOrDefault(KeyOf(id, kind, environment)) is not { } secret)
         {
@@ -23,25 +22,25 @@ public sealed class SecretStore(AppFolder folder, ILogger<SecretStore> logger)
         return Decrypted(secret, id, kind);
     }
 
-    public async Task<IReadOnlyDictionary<string, string>> OfEachEnvironmentAsync(Guid id, SecretKind kind, CancellationToken cancellationToken)
+    public async Task<IReadOnlyDictionary<Guid, string>> OfEachEnvironmentAsync(Guid id, SecretKind kind, CancellationToken cancellationToken)
     {
-        var key = KeyOf(id, kind, "");
-        var secrets = new Dictionary<string, string>();
+        var key = KeyOf(id, kind, Guid.Empty);
+        var secrets = new Dictionary<Guid, string>();
         foreach (var (saved, secret) in await _file.LoadAsync(cancellationToken).ConfigureAwait(false))
         {
-            var environment = saved == key ? "" : saved.StartsWith($"{key}/", StringComparison.Ordinal) ? saved[(key.Length + 1)..] : null;
+            Guid? environment = saved == key ? Guid.Empty : saved.StartsWith($"{key}/", StringComparison.Ordinal) && Guid.TryParse(saved[(key.Length + 1)..], out var parsed) ? parsed : null;
             // A hand-edited file can hold a null, which the dictionary type does not show.
-            if (environment is not null && secret is not null && Decrypted(secret, id, kind) is { } decrypted)
+            if (environment is { } found && secret is not null && Decrypted(secret, id, kind) is { } decrypted)
             {
-                secrets[environment] = decrypted;
+                secrets[found] = decrypted;
             }
         }
         return secrets;
     }
 
-    public Task SaveAsync(Guid id, SecretKind kind, string secret, CancellationToken cancellationToken) => SaveAsync(id, kind, "", secret, cancellationToken);
+    public Task SaveAsync(Guid id, SecretKind kind, string secret, CancellationToken cancellationToken) => SaveAsync(id, kind, Guid.Empty, secret, cancellationToken);
 
-    public async Task SaveAsync(Guid id, SecretKind kind, string environment, string secret, CancellationToken cancellationToken)
+    public async Task SaveAsync(Guid id, SecretKind kind, Guid environment, string secret, CancellationToken cancellationToken)
     {
         // Requests without an id would otherwise share one secret.
         ArgumentOutOfRangeException.ThrowIfEqual(id, Guid.Empty);
@@ -51,27 +50,18 @@ public sealed class SecretStore(AppFolder folder, ILogger<SecretStore> logger)
         logger.LogInformation("Saved the {Kind} for {Id} in {Environment}", kind, id, environment);
     }
 
-    // A renamed environment keeps its secrets under the new name, and a removed one loses them.
-    public async Task FollowEnvironmentsAsync(IReadOnlyDictionary<string, string?> changes, CancellationToken cancellationToken)
+    public async Task ForgetEnvironmentsAsync(IReadOnlySet<Guid> environments, CancellationToken cancellationToken)
     {
-        if (changes.Count == 0)
+        if (environments.Count == 0)
         {
             return;
         }
-        await _file.UpdateAsync(secrets =>
-        {
-            var followed = new Dictionary<string, string>();
-            foreach (var (key, secret) in secrets)
-            {
-                if (KeyAfter(key, changes) is { } kept)
-                {
-                    followed[kept] = secret;
-                }
-            }
-            return followed;
-        }, cancellationToken).ConfigureAwait(false);
-        logger.LogInformation("The secrets followed {Count} renamed or removed environments", changes.Count);
+        await ForgetAsync(environment => Guid.TryParse(environment, out var id) && environments.Contains(id), cancellationToken).ConfigureAwait(false);
+        logger.LogInformation("Deleted the secrets of {Count} removed environments", environments.Count);
     }
+
+    // Secrets were saved under the environment's name before environments had ids, and nothing reads them now.
+    public Task ForgetEnvironmentNamesAsync(CancellationToken cancellationToken) => ForgetAsync(environment => !Guid.TryParse(environment, out _), cancellationToken);
 
     public Task DeleteAsync(Guid id, CancellationToken cancellationToken) => DeleteAsync(new HashSet<Guid> { id }, cancellationToken);
 
@@ -116,17 +106,16 @@ public sealed class SecretStore(AppFolder folder, ILogger<SecretStore> logger)
         }
     }
 
-    static string KeyOf(Guid id, SecretKind kind, string environment) => environment.Length == 0 ? $"{id}/{kind}" : $"{id}/{kind}/{environment}";
+    Task ForgetAsync(Func<string, bool> forget, CancellationToken cancellationToken) =>
+        _file.UpdateAsync(secrets => secrets.Where(secret => EnvironmentOf(secret.Key) is not { } environment || !forget(environment)).ToDictionary(), cancellationToken);
 
-    // The environment is everything after the id and the kind, so a name with a slash in it is still one name.
-    static string? KeyAfter(string key, IReadOnlyDictionary<string, string?> changes)
+    static string KeyOf(Guid id, SecretKind kind, Guid environment) => environment == Guid.Empty ? $"{id}/{kind}" : $"{id}/{kind}/{environment}";
+
+    // The environment is everything after the id and the kind, so an old name with a slash in it is still one name.
+    static string? EnvironmentOf(string key)
     {
         var kind = key.IndexOf('/');
         var environment = kind < 0 ? -1 : key.IndexOf('/', kind + 1);
-        if (environment < 0)
-        {
-            return key;
-        }
-        return changes.NameAfter(key[(environment + 1)..]) is { } name ? $"{key[..environment]}/{name}" : null;
+        return environment < 0 ? null : key[(environment + 1)..];
     }
 }

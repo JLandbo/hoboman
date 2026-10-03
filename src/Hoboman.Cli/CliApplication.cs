@@ -6,10 +6,12 @@ using Hoboman.Core.Requests;
 using Hoboman.Core.Sending;
 using Hoboman.Core.Settings;
 using Hoboman.Core.Storage;
+using Hoboman.Core.Workflows;
 
 namespace Hoboman.Cli;
 
-sealed class CliApplication(RequestLibrary library, SettingsStore settings, EnvironmentStore environments, RequestRunner runner, UnaskedTokens tokens, CliOutput output, VariableInput variables)
+sealed class CliApplication(RequestLibrary library, SettingsStore settings, EnvironmentStore environments, RequestRunner runner, WorkflowLibrary workflows, WorkflowCheck check,
+    WorkflowRunner workflowRunner, UnaskedTokens tokens, CliOutput output, VariableInput variables)
 {
     public async Task<int> RunAsync(string[] arguments, CancellationToken cancellationToken)
     {
@@ -24,11 +26,15 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
             {
                 return output.WriteStandardText(input.StandardOutput);
             }
+            if (input.Run is not null)
+            {
+                return await RunWorkflowAsync(input.Run, cancellationToken);
+            }
             return input.IsList ? await ListAsync(cancellationToken) : await SendAsync(input.Send!, cancellationToken);
         }
         catch (Exception exception)
         {
-            return await output.WriteErrorAsync(ProblemOf(exception, cancellationToken));
+            return await output.WriteErrorAsync(RequestProblem.Of(exception, cancellationToken));
         }
     }
 
@@ -64,19 +70,10 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         {
             return await output.WriteErrorAsync("Saved request could not be loaded.");
         }
-        ApiEnvironment? environment;
-        try
-        {
-            var environmentName = input.EnvironmentName ?? (await settings.LoadAsync(cancellationToken)).EnvironmentName;
-            environment = environmentName is null ? ApiEnvironment.None : await environments.FindAsync(environmentName, cancellationToken);
-        }
-        catch (Exception exception) when (FileProblem.Is(exception))
-        {
-            return await output.WriteErrorAsync("Environment settings could not be read.");
-        }
+        var (environment, problem) = await EnvironmentAsync(input.EnvironmentName, cancellationToken);
         if (environment is null)
         {
-            return await output.WriteErrorAsync("Selected environment was not found.");
+            return await output.WriteErrorAsync(problem!);
         }
         // The temporary values only live in this call, and a token is saved for the environment, so it is fetched without them.
         var used = overrides.Count > 0 ? environment.WithVariables(overrides) : environment;
@@ -84,17 +81,68 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         return await output.WriteResponseAsync(response, cancellationToken);
     }
 
-    // Told by the kind of problem and never copied from the exception, as its message can hold values such as a token in an address.
-    static string ProblemOf(Exception exception, CancellationToken cancellationToken) => exception switch
+    // Everything is read and checked before the run starts, so a run that cannot start writes to stderr only and leaves no run log.
+    async Task<int> RunWorkflowAsync(RunInput input, CancellationToken cancellationToken)
     {
-        OperationCanceledException => cancellationToken.IsCancellationRequested ? "Request was cancelled." : "Request timed out.",
-        MissingSecretException { Kind: SecretKind.OAuthToken } or ExpiredTokenException => "Fetch a new OAuth token in Hoboman before sending this request.",
-        MissingSecretException => "Required authentication secret is missing.",
-        UriFormatException => "Invalid request URL.",
-        HttpRequestException => "Network request failed.",
-        InvalidMethodException or InvalidHeaderException or FormatException or ArgumentException => "Invalid request input.",
-        InvalidBase64RequestBodyException => "Request body could not be encoded.",
-        IOException or UnauthorizedAccessException => "Input could not be read.",
-        _ => "Request failed.",
-    };
+        IReadOnlyDictionary<string, JsonElement> parameters;
+        try
+        {
+            parameters = await variables.ReadAsync(input, cancellationToken);
+        }
+        catch (Exception exception) when (exception is JsonException or FormatException)
+        {
+            return await output.WriteErrorAsync("Invalid parameter input.");
+        }
+        Workflow? workflow;
+        try
+        {
+            workflow = await workflows.LoadAsync(input.Workflow, cancellationToken);
+        }
+        catch (InvalidFileException exception) when (exception.InnerException is JsonException invalid)
+        {
+            // Only where the file is wrong is told, as the message of the exception can quote a value from it.
+            return await output.WriteErrorAsync(new { error = "Workflow file is not valid.", file = exception.FilePath, path = invalid.Path, line = invalid.LineNumber + 1 });
+        }
+        catch (Exception exception) when (FileProblem.Is(exception) || exception is ArgumentException)
+        {
+            workflow = null;
+        }
+        if (workflow is null)
+        {
+            return await output.WriteErrorAsync("Workflow could not be loaded.");
+        }
+        var (environment, problem) = await EnvironmentAsync(input.EnvironmentName, cancellationToken);
+        if (environment is null)
+        {
+            return await output.WriteErrorAsync(problem!);
+        }
+        var checkedWorkflow = await check.CheckAsync(input.Workflow, workflow, environment, parameters, cancellationToken);
+        if (checkedWorkflow.Problems.Count > 0)
+        {
+            return await output.WriteErrorAsync(new { error = "Workflow cannot run.", problems = checkedWorkflow.Problems });
+        }
+        // As for send, a token is saved for the environment, so it is fetched without the values of the run.
+        var outcome = await workflowRunner.RunAsync(checkedWorkflow, environment, HistorySource.Cli, auth => tokens.FetchAsync(auth, environment, cancellationToken), output.WriteEventAsync, cancellationToken);
+        return outcome == RunOutcome.Succeeded ? 0 : 1;
+    }
+
+    // --env wins over the environment selected in the app, which is used without reading the environments when there is none.
+    async Task<(ApiEnvironment? Environment, string? Problem)> EnvironmentAsync(string? name, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var chosen = name is null ? await settings.LoadAsync(cancellationToken) : null;
+            var environment = chosen switch
+            {
+                null => await environments.FindAsync(name, cancellationToken),
+                { EnvironmentId: null, EnvironmentName: null } => ApiEnvironment.None,
+                _ => chosen.EnvironmentIn(await environments.AllAsync(cancellationToken)),
+            };
+            return environment is null ? (null, "Selected environment was not found.") : (environment, null);
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            return (null, "Environment settings could not be read.");
+        }
+    }
 }

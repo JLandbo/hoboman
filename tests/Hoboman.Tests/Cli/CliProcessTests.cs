@@ -1,3 +1,6 @@
+using System.Text.Json;
+using Hoboman.Tests.Sending;
+
 namespace Hoboman.Tests.Cli;
 
 // What only shows when the CLI runs as a program of its own: where it finds its data, its streams, its exit code and what it writes.
@@ -12,6 +15,16 @@ public sealed class CliProcessTests(CliTestServer server) : IClassFixture<CliTes
     SecretStore Secrets => new(_process.Folder, NullLogger<SecretStore>.Instance);
 
     ApiRequest Request => ApiRequest.New() with { Url = $"{server.Http}", Auth = AuthSettings.None };
+
+    WorkflowLibrary Workflows => new(_process.Folder, NullLogger<WorkflowLibrary>.Instance);
+
+    Task SaveWorkflowAsync(params WorkflowStep[] steps) => Workflows.SaveAsync("Flow", new Workflow { Id = Guid.NewGuid(), Variables = [new("target")], Steps = steps }, Cancellation);
+
+    async Task<WorkflowStep> StepAsync(string name, ApiRequest request, params WorkflowSave[] saves)
+    {
+        await Library.SaveAsync(name, request, Cancellation);
+        return new() { Request = request.Id, Saves = saves };
+    }
 
     public void Dispose() => _process.Dispose();
 
@@ -35,13 +48,13 @@ public sealed class CliProcessTests(CliTestServer server) : IClassFixture<CliTes
     {
         // Arrange
         await Library.SaveAsync("Send", Request, Cancellation);
-        var original = _process.Snapshot(includeHistory: true);
+        var original = _process.Snapshot(includeOutput: true);
 
         // Act
         await _process.RunAsync(["list"]);
 
         // Assert
-        _process.AssertUnchanged(original, includeHistory: true);
+        _process.AssertUnchanged(original, includeOutput: true);
     }
 
     [Fact]
@@ -125,5 +138,64 @@ public sealed class CliProcessTests(CliTestServer server) : IClassFixture<CliTes
 
         // Assert
         Assert.Equal("Bearer fetched", result.Echo().Headers["Authorization"]);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAWorkflowRuns_ThenGivesTheSavedValueToTheNextStepAndExitsZero()
+    {
+        // Arrange
+        await SaveWorkflowAsync(
+            await StepAsync("First", Request with { Url = $"{server.Http}first" }, new WorkflowSave("target", "$.target")),
+            await StepAsync("Second", Request with { Headers = [new("X", "{{target}}")] }));
+
+        // Act
+        var result = await _process.RunAsync(["run", "Flow"]);
+
+        // Assert
+        var lastStep = JsonSerializer.Deserialize<JsonElement>(result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)[^2]);
+        var echo = JsonSerializer.Deserialize<Echo>(lastStep.GetProperty("body").GetString()!, JsonSerializerOptions.Web)!;
+        Assert.Equal((0, "/first"), (result.ExitCode, echo.Headers["X"]));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAWorkflowRuns_ThenChangesNoFilesButTheHistoryAndTheRuns()
+    {
+        // Arrange
+        await SaveWorkflowAsync(await StepAsync("Send", Request));
+        var original = _process.Snapshot();
+
+        // Act
+        await _process.RunAsync(["run", "Flow"]);
+
+        // Assert
+        _process.AssertUnchanged(original);
+        Assert.Single(Directory.EnumerateFiles(_process.Folder.Runs, "*.jsonl", SearchOption.AllDirectories));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAStepOfAWorkflowFails_ThenEndsWithRunFinishedAndExitsOne()
+    {
+        // Arrange
+        await SaveWorkflowAsync(await StepAsync("Abort", Request with { Url = $"{server.Http}abort" }), await StepAsync("Send", Request));
+
+        // Act
+        var result = await _process.RunAsync(["run", "Flow"]);
+
+        // Assert
+        Assert.Equal((1, true), (result.ExitCode, result.Output.TrimEnd('\n').Split('\n')[^1].StartsWith("""{"type":"run.finished","outcome":"Failed",""", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAWorkflowCannotRun_ThenExitsTwoWithoutSendingOrARunFile()
+    {
+        // Arrange
+        await SaveWorkflowAsync(new WorkflowStep { Request = Guid.NewGuid() });
+        var requestCount = server.RequestCount;
+
+        // Act
+        var result = await _process.RunAsync(["run", "Flow"]);
+
+        // Assert
+        Assert.Equal((2, "Workflow cannot run.", "", false, requestCount), (result.ExitCode, result.Problem(), result.Output, Directory.Exists(_process.Folder.Runs), server.RequestCount));
     }
 }

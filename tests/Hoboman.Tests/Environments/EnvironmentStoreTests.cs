@@ -1,12 +1,16 @@
+using System.Text.Json;
+
 namespace Hoboman.Tests.Environments;
 
 public sealed class EnvironmentStoreTests : IDisposable
 {
     readonly TemporaryFolder _temporary = new();
 
+    AppFolder Folder => new(_temporary.Path);
+
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
-    EnvironmentStore Store() => new(new AppFolder(_temporary.Path), NullLogger<EnvironmentStore>.Instance);
+    EnvironmentStore Store() => new(Folder, new(Folder, NullLogger<SecretStore>.Instance), NullLogger<EnvironmentStore>.Instance);
 
     public void Dispose() => _temporary.Dispose();
 
@@ -48,5 +52,67 @@ public sealed class EnvironmentStoreTests : IDisposable
 
         // Assert
         await Assert.ThrowsAsync<InvalidFileException>(() => loading);
+    }
+
+    [Fact]
+    public async Task AllAsync_WhenAnEnvironmentHasNoId_ThenGivesItOneAndKeepsItOnTheNextLoad()
+    {
+        // Arrange
+        await Store().SaveAsync([new("Dev", [])], Cancellation);
+
+        // Act
+        var first = (await Store().AllAsync(Cancellation)).Single();
+        var next = (await Store().AllAsync(Cancellation)).Single();
+
+        // Assert
+        Assert.NotEqual(Guid.Empty, first.Id);
+        Assert.Equal(first.Id, next.Id);
+    }
+
+    [Fact]
+    public async Task AllAsync_WhenEveryEnvironmentHasAnId_ThenWritesNothing()
+    {
+        // Arrange
+        await Store().SaveAsync([new("Dev", []) { Id = Guid.NewGuid() }], Cancellation);
+        var written = new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(Folder.Environments, written);
+
+        // Act
+        await Store().AllAsync(Cancellation);
+
+        // Assert
+        Assert.Equal(written, File.GetLastWriteTimeUtc(Folder.Environments));
+        Assert.False(File.Exists(Folder.Secrets));
+    }
+
+    [Fact]
+    public async Task AllAsync_WhenTwoEnvironmentsShareAnId_ThenGivesTheLaterOneANewId()
+    {
+        // Arrange
+        var id = Guid.NewGuid();
+        await Store().SaveAsync([new("Dev", []) { Id = id }, new("Copy", []) { Id = id }], Cancellation);
+
+        // Act
+        var environments = await Store().AllAsync(Cancellation);
+
+        // Assert
+        Assert.Equal(id, environments[0].Id);
+        Assert.DoesNotContain(environments[1].Id, new[] { id, Guid.Empty });
+    }
+
+    [Fact]
+    public async Task AllAsync_WhenIdsAreAssigned_ThenRemovesTokensSavedUnderNames()
+    {
+        // Arrange
+        var owner = Guid.NewGuid();
+        var environment = Guid.NewGuid();
+        await Store().SaveAsync([new("Dev", [])], Cancellation);
+        File.WriteAllText(Folder.Secrets, $$"""{"{{owner}}/OAuthToken/Dev": "named token", "{{owner}}/OAuthToken/{{environment}}": "token"}""");
+
+        // Act
+        await Store().AllAsync(Cancellation);
+
+        // Assert
+        Assert.Equal([$"{owner}/OAuthToken/{environment}"], JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(Folder.Secrets))!.Keys);
     }
 }

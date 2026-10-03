@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Hoboman.Tests.Base64;
 
 public sealed class JsonPathTests
@@ -68,5 +70,67 @@ public sealed class JsonPathTests
 
         // Assert
         Assert.Equal(expected, inside);
+    }
+
+    [Fact]
+    public void TrySelect_WhenThePathHasAnIndex_ThenSelectsTheElement()
+    {
+        // Arrange
+        using var json = JsonDocument.Parse("""{"items": [{"id": 1}, {"id": 2}]}""");
+
+        // Act
+        var found = JsonPath.TrySelect(json.RootElement, "$.items[1].id", out var value);
+
+        // Assert
+        Assert.Equal((true, "2"), (found, value.GetRawText()));
+    }
+
+    [Fact]
+    public void TrySelect_WhenTheValueIsNull_ThenFindsNull()
+    {
+        // Arrange
+        using var json = JsonDocument.Parse("""{"id": null}""");
+
+        // Act
+        var found = JsonPath.TrySelect(json.RootElement, "$.id", out var value);
+
+        // Assert
+        Assert.Equal((true, JsonValueKind.Null), (found, value.ValueKind));
+    }
+
+    [Theory]
+    [InlineData("$", """{"a":{"it's":[7]}}""")]
+    [InlineData("$.a", """{"it's":[7]}""")]
+    [InlineData(@"$.a['it\'s'][0]", "7")]
+    public void TrySelect_WhenGivenAPath_ThenSelectsItsValue(string path, string expected)
+    {
+        // Arrange
+        using var json = JsonDocument.Parse("""{"a":{"it's":[7]}}""");
+
+        // Act
+        JsonPath.TrySelect(json.RootElement, path, out var value);
+
+        // Assert
+        Assert.Equal(expected, value.GetRawText());
+    }
+
+    [Theory]
+    [InlineData("$.missing")]
+    [InlineData("$.items[2]")]
+    [InlineData("$.items.id")]
+    [InlineData("$.items[0].id.more")]
+    [InlineData("$.items[*]")]
+    [InlineData("$.items[-1]")]
+    [InlineData("items")]
+    public void TrySelect_WhenThePathLeadsNowhere_ThenFindsNothing(string path)
+    {
+        // Arrange
+        using var json = JsonDocument.Parse("""{"items": [{"id": 1}, {"id": 2}]}""");
+
+        // Act
+        var found = JsonPath.TrySelect(json.RootElement, path, out _);
+
+        // Assert
+        Assert.False(found);
     }
 }

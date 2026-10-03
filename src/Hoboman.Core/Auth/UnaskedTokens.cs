@@ -20,7 +20,7 @@ public sealed class UnaskedTokens(IOAuthClient oauth, SecretStore secrets, ILogg
         {
             var clientSecret = await secrets.OfAsync(auth.SecretsId, SecretKind.ClientSecret, cancellationToken).ConfigureAwait(false) ?? "";
             var token = await oauth.GetTokenAsync(auth.Settings.OAuth ?? new(), clientSecret, environment, cancellationToken).ConfigureAwait(false);
-            await secrets.SaveAsync(auth.SecretsId, SecretKind.OAuthToken, environment.Name, token.ToJson(), cancellationToken).ConfigureAwait(false);
+            await secrets.SaveAsync(auth.SecretsId, SecretKind.OAuthToken, environment.Id, token.ToJson(), cancellationToken).ConfigureAwait(false);
             return true;
         }
         catch (Exception exception) when (!(exception is OperationCanceledException && cancellationToken.IsCancellationRequested))

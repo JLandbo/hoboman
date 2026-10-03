@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Shapes;
 using Hoboman.Tests.ViewModels;
 
@@ -77,6 +78,117 @@ public sealed class MainWindowTests
             draft.Body = "edit";
             await Ui.IdleAsync();
             Assert.Equal(Visibility.Visible, dot.Visibility);
+        });
+    }
+
+    [Fact]
+    public async Task Workflows_WhenOpenedFromTheirSegment_ThenShowTheirButtonAndEditorUntilATabIsChosen()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var ping = ApiRequest.New() with { Url = "https://dev.local" };
+        await harness.Library.SaveAsync("Ping", ping, Cancellation);
+        await harness.WorkflowLibrary.SaveAsync("Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = ping.Id }] }, Cancellation);
+        await Ui.RunAsync(async () =>
+        {
+            var main = harness.Main();
+            await main.LoadAsync();
+            var window = await Ui.ShowAsync(harness, main);
+
+            // Act
+            Ui.Select(Ui.Named<RadioButton>(window, "WorkflowsSection"));
+            await Ui.IdleAsync();
+            var buttons = Ui.Descendants<Button>(window).Where(button => button.IsVisible).Select(button => button.ToolTip).ToList();
+            Ui.Press(Ui.Descendants<TextBlock>(Ui.Descendants<WorkflowsView>(window).Single()).Single(text => text.Text == "Flow"));
+            await Ui.UntilAsync(() => Ui.Descendants<WorkflowView>(window).Any());
+            var shown = Ui.Descendants<TextBlock>(Ui.Descendants<WorkflowView>(window).Single()).Any(text => text.Text == "Ping" && text.IsVisible);
+            main.SelectedTab = main.Tabs.Single();
+            await Ui.IdleAsync();
+
+            // Assert
+            Assert.Contains(harness.Translator.Of("Sidebar.NewWorkflow"), buttons);
+            Assert.DoesNotContain(harness.Translator.Of("Sidebar.NewFolder"), buttons);
+            Assert.True(shown);
+            Assert.Empty(Ui.Descendants<WorkflowView>(window));
+            Assert.Single(Ui.Descendants<RequestEditorView>(window));
+        });
+    }
+
+    [Fact]
+    public async Task RemoveStep_WhenTheChosenStepIsRemovedInTheEditor_ThenChoosesTheNextStep()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var ping = ApiRequest.New() with { Url = "https://dev.local" };
+        await harness.Library.SaveAsync("Ping", ping, Cancellation);
+        await harness.WorkflowLibrary.SaveAsync("Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = ping.Id }, new() { Request = ping.Id }, new() { Request = ping.Id }] }, Cancellation);
+        await Ui.RunAsync(async () =>
+        {
+            var main = harness.Main();
+            await main.LoadAsync();
+            await main.OpenWorkflowAsync("Flow");
+            var workflow = main.Workflow!;
+            workflow.SelectedStep = workflow.Steps[1];
+            var next = workflow.Steps[2];
+            var window = await Ui.ShowAsync(harness, main);
+
+            // Act
+            Ui.Click(Ui.Descendants<Button>(window).Single(button => Equals(button.ToolTip, harness.Translator.Of("Workflow.RemoveStep"))));
+            await Ui.IdleAsync();
+
+            // Assert
+            Assert.Same(next, workflow.SelectedStep);
+        });
+    }
+
+    [Fact]
+    public async Task InputBindings_WhenAWorkflowIsShown_ThenCtrlSSavesAndCtrlEnterRunsIt()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.WorkflowLibrary.SaveAsync("Flow", new() { Id = Guid.NewGuid() }, Cancellation);
+        await Ui.RunAsync(async () =>
+        {
+            var main = harness.Main();
+            await main.LoadAsync();
+            await main.OpenWorkflowAsync("Flow");
+
+            // Act
+            var window = await Ui.ShowAsync(harness, main);
+            var bindings = window.InputBindings.OfType<KeyBinding>().ToDictionary(binding => binding.Key, binding => binding.Command);
+
+            // Assert
+            Assert.Equal(((ICommand)main.Workflow!.Save, (ICommand)main.Workflow.Send), (bindings[Key.S], bindings[Key.Enter]));
+        });
+    }
+
+    [Fact]
+    public async Task StepDetail_WhenTheWheelTurnsOverTheStepsValues_ThenScrollsTheStep()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var ping = ApiRequest.New() with { Url = "https://dev.local" };
+        await harness.Library.SaveAsync("Ping", ping, Cancellation);
+        await harness.WorkflowLibrary.SaveAsync("Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = ping.Id, With = [.. Enumerable.Range(0, 40).Select(index => new KeyValue($"name{index}"))] }] },
+            Cancellation);
+        await Ui.RunAsync(async () =>
+        {
+            var main = harness.Main();
+            await main.LoadAsync();
+            await main.OpenWorkflowAsync("Flow");
+            var window = await Ui.ShowAsync(harness, main);
+            var detail = Ui.Named<ScrollViewer>(window, "StepDetail");
+            var value = Ui.Descendants<TextBox>(detail).First();
+            var wheel = new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, -120) { RoutedEvent = UIElement.PreviewMouseWheelEvent };
+
+            // Act
+            value.RaiseEvent(wheel);
+            wheel.RoutedEvent = UIElement.MouseWheelEvent;
+            value.RaiseEvent(wheel);
+            await Ui.IdleAsync();
+
+            // Assert
+            Assert.True(detail.VerticalOffset > 0);
         });
     }
 }

@@ -19,7 +19,7 @@ public sealed class EnvironmentsViewModel(EnvironmentStore store, SettingsStore 
         logger.LogInformation("Environment changed to {Environment}", environment?.Name);
         try
         {
-            await settings.UpdateAsync(saved => saved with { EnvironmentName = environment?.Name }, CancellationToken.None);
+            await settings.UpdateAsync(saved => saved with { EnvironmentId = environment?.Id, EnvironmentName = null }, CancellationToken.None);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
@@ -27,20 +27,24 @@ public sealed class EnvironmentsViewModel(EnvironmentStore store, SettingsStore 
         }
     }
 
-    public Task RenamedAsync(string name, string newName) => Selected?.Name == name ? ChooseAsync(Selected with { Name = newName }) : Task.CompletedTask;
-
     public async Task LoadAsync(CancellationToken cancellationToken)
     {
         try
         {
             var environments = await store.AllAsync(cancellationToken);
-            var name = Selected?.Name ?? await ChosenNameAsync(cancellationToken);
+            var id = Selected?.Id;
+            var saved = id is null ? await SavedAsync(cancellationToken) : null;
             Items.Clear();
             foreach (var environment in environments)
             {
                 Items.Add(environment);
             }
-            Selected = Items.FirstOrDefault(environment => environment.Name == name);
+            Selected = saved is null ? Items.FirstOrDefault(environment => environment.Id == id) : saved.EnvironmentIn(Items);
+            // Settings from before environments had ids hold the name, and are saved with the id from now on.
+            if (saved is { EnvironmentId: null, EnvironmentName: not null } && Selected is { } chosen)
+            {
+                await ChooseAsync(chosen);
+            }
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
@@ -49,16 +53,16 @@ public sealed class EnvironmentsViewModel(EnvironmentStore store, SettingsStore 
     }
 
     // Unreadable settings only lose the choice, not the environments.
-    async Task<string?> ChosenNameAsync(CancellationToken cancellationToken)
+    async Task<AppSettings> SavedAsync(CancellationToken cancellationToken)
     {
         try
         {
-            return (await settings.LoadAsync(cancellationToken)).EnvironmentName;
+            return await settings.LoadAsync(cancellationToken);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
             logger.LogError(exception, "Could not read the chosen environment");
-            return null;
+            return AppSettings.Default;
         }
     }
 }

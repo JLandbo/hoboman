@@ -59,6 +59,16 @@ public sealed class VariableInputTests
     }
 
     [Fact]
+    public async Task ReadAsync_WhenReadingParameters_ThenTheOptionWinsAsTextAndTheJsonKeepsItsTypes()
+    {
+        // Act
+        var parameters = await new VariableInput(new StringReader("""{"a":"json","b":42}"""), true).ReadAsync(new RunInput("Flow", null, ["a=1"], "-"), Cancellation);
+
+        // Assert
+        Assert.Equal("""{"a":"1","b":42}""", JsonSerializer.Serialize(parameters));
+    }
+
+    [Fact]
     public async Task ReadAsync_WhenReadingAUtf8File_ThenKeepsTheText()
     {
         // Arrange

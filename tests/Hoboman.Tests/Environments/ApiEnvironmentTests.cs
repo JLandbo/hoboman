@@ -62,6 +62,19 @@ public sealed class ApiEnvironmentTests
     }
 
     [Fact]
+    public void WithVariables_WhenCalled_ThenKeepsTheId()
+    {
+        // Arrange
+        var original = new ApiEnvironment("Dev", []) { Id = Guid.NewGuid() };
+
+        // Act
+        var environment = original.WithVariables([new("name", "temporary")]);
+
+        // Assert
+        Assert.Equal(original.Id, environment.Id);
+    }
+
+    [Fact]
     public void WithVariables_WhenGivenTemporaryValues_ThenLeavesTheOriginalUnchanged()
     {
         // Arrange

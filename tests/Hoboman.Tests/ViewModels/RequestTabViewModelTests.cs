@@ -404,13 +404,13 @@ public sealed class RequestTabViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Environments.ChooseAsync(new("Dev", []));
+        await harness.Environments.ChooseAsync(new("Dev", []) { Id = Guid.NewGuid() });
         var tab = harness.Tab();
         tab.Auth.Password = "hemmelig";
         var sending = tab.SendAsync();
 
         // Act
-        await harness.Environments.ChooseAsync(new("Prod", []));
+        await harness.Environments.ChooseAsync(new("Prod", []) { Id = Guid.NewGuid() });
         await sending;
 
         // Assert

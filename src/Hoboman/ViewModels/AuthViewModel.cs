@@ -17,8 +17,8 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
     string _savedPassword = "";
     string _savedToken = "";
     string _savedClientSecret = "";
-    Dictionary<string, OAuthToken> _tokens = [];
-    Dictionary<string, OAuthToken> _savedTokens = [];
+    Dictionary<Guid, OAuthToken> _tokens = [];
+    Dictionary<Guid, OAuthToken> _savedTokens = [];
     CancellationTokenSource? _fetching;
     bool _loading;
 
@@ -101,7 +101,7 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
         string? password = null;
         string? token = null;
         string? clientSecret = null;
-        IReadOnlyDictionary<string, string> tokens = new Dictionary<string, string>();
+        IReadOnlyDictionary<Guid, string> tokens = new Dictionary<Guid, string>();
         try
         {
             if (id != Guid.Empty)
@@ -200,13 +200,13 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
         var source = new AuthSource(_secretsId, settings with { OAuth = EditedOAuth() }, _folder);
         try
         {
-            return await refreshes.FetchAsync(source, clientSecret, environment, async (token, environmentName, _) =>
+            return await refreshes.FetchAsync(source, clientSecret, environment, async (token, environmentId, _) =>
             {
                 if (_secretsId != source.SecretsId || _folder != source.Folder || ToSettings() != settings || ClientSecret != clientSecret || fetching.IsCancellationRequested)
                 {
                     return false;
                 }
-                _tokens[environmentName] = token;
+                _tokens[environmentId] = token;
                 Relabel();
                 Changed?.Invoke();
                 if (saveSecrets)
@@ -246,18 +246,6 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
         _folder = folder;
     }
 
-    // A renamed environment keeps its tokens and a removed one loses them.
-    // Only the shown tokens move, so a renamed one is saved again under the new name, whether or not the saved ones could be moved.
-    public void FollowEnvironments(IReadOnlyDictionary<string, string?> changes)
-    {
-        if (changes.Count == 0)
-        {
-            return;
-        }
-        _tokens = Followed(_tokens, changes);
-        Relabel();
-    }
-
     // The texts follow the language, and the token follows the chosen environment.
     public void Relabel()
     {
@@ -265,20 +253,7 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
         OnPropertyChanged(nameof(TokenStatus));
     }
 
-    static Dictionary<string, OAuthToken> Followed(Dictionary<string, OAuthToken> tokens, IReadOnlyDictionary<string, string?> changes)
-    {
-        var followed = new Dictionary<string, OAuthToken>();
-        foreach (var (environment, token) in tokens)
-        {
-            if (changes.NameAfter(environment) is { } name)
-            {
-                followed[name] = token;
-            }
-        }
-        return followed;
-    }
-
-    string ChosenEnvironment => (environments.Selected ?? ApiEnvironment.None).Name;
+    Guid ChosenEnvironment => (environments.Selected ?? ApiEnvironment.None).Id;
 
     OAuthSettings EditedOAuth() => new()
     {

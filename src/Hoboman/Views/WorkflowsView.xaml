@@ -1,0 +1,34 @@
+<UserControl x:Class="Hoboman.Views.WorkflowsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <ContextMenu x:Key="WorkflowMenu" x:Shared="False" Style="{StaticResource PopupMenu}">
+            <MenuItem Header="{DynamicResource Tree.Rename}" Click="Rename_Click" />
+            <MenuItem Header="{DynamicResource Tree.Delete}" Click="Delete_Click" />
+        </ContextMenu>
+    </UserControl.Resources>
+    <Grid>
+        <ListBox x:Name="Names" ItemsSource="{Binding Workflows.Names}" Style="{StaticResource SideList}" MouseLeftButtonUp="Names_MouseLeftButtonUp" KeyDown="Names_KeyDown">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <DockPanel ContextMenu="{StaticResource WorkflowMenu}" Background="Transparent">
+                        <TextBlock DockPanel.Dock="Left" Width="24" Text="&#xE8AB;" FontFamily="{StaticResource IconFont}" FontSize="11" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    </DockPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+        <TextBlock Text="{DynamicResource Workflows.Empty}" Foreground="{DynamicResource Muted}" Margin="8,4,0,0" IsHitTestVisible="False">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Workflows.Names.Count}" Value="0">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
+    </Grid>
+</UserControl>

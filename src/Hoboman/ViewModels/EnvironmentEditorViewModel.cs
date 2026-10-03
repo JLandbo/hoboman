@@ -1,18 +1,18 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
+using Hoboman.Core.Auth;
 using Hoboman.Core.Environments;
 using Hoboman.Core.Languages;
 using Hoboman.Core.Storage;
 using Hoboman.Mvvm;
-using Hoboman.Services;
 using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
 
-public sealed class EnvironmentEditorViewModel(EnvironmentStore store, EnvironmentsViewModel environments, AuthRefreshService refreshes, Translator translator, ILogger<EnvironmentEditorViewModel> logger) : ObservableObject
+public sealed class EnvironmentEditorViewModel(EnvironmentStore store, EnvironmentsViewModel environments, SecretStore secrets, Translator translator, ILogger<EnvironmentEditorViewModel> logger) : ObservableObject
 {
     string _loadedJson = "";
-    IReadOnlyList<string> _loadedNames = [];
+    IReadOnlySet<Guid> _loadedIds = new HashSet<Guid>();
 
     public ObservableCollection<EnvironmentDraftViewModel> Environments { get; } = [];
 
@@ -32,7 +32,7 @@ public sealed class EnvironmentEditorViewModel(EnvironmentStore store, Environme
         {
             var loaded = await store.AllAsync(cancellationToken);
             _loadedJson = JsonSerializer.Serialize(loaded);
-            _loadedNames = [.. loaded.Select(environment => environment.Name).Distinct()];
+            _loadedIds = loaded.Select(environment => environment.Id).ToHashSet();
             foreach (var environment in loaded)
             {
                 Environments.Add(new(environment));
@@ -49,7 +49,7 @@ public sealed class EnvironmentEditorViewModel(EnvironmentStore store, Environme
 
     public void Add()
     {
-        var draft = new EnvironmentDraftViewModel(new(translator.Of("Environments.NewName"), []), isNew: true);
+        var draft = new EnvironmentDraftViewModel(new(translator.Of("Environments.NewName"), []) { Id = Guid.NewGuid() });
         Environments.Add(draft);
         Selected = draft;
     }
@@ -89,16 +89,12 @@ public sealed class EnvironmentEditorViewModel(EnvironmentStore store, Environme
             logger.LogInformation("Saved {Count} environments", names.Count);
             try
             {
-                await refreshes.FollowEnvironmentsAsync(ChangesOf(), CancellationToken.None);
+                await secrets.ForgetEnvironmentsAsync(_loadedIds.Except(Environments.Select(environment => environment.Id)).ToHashSet(), CancellationToken.None);
             }
             catch (Exception exception) when (FileProblem.Is(exception))
             {
-                // The environments are saved, and a token left behind can be fetched again.
-                logger.LogError(exception, "Could not move the tokens of renamed or removed environments");
-            }
-            foreach (var draft in Environments.Where(draft => draft.OriginalName is not null && draft.OriginalName != draft.Name.Trim()))
-            {
-                await environments.RenamedAsync(draft.OriginalName!, draft.Name.Trim());
+                // The environments are saved, and the id of a removed one is never used again.
+                logger.LogError(exception, "Could not delete the tokens of removed environments");
             }
             await environments.LoadAsync(CancellationToken.None);
             return true;
@@ -109,15 +105,5 @@ public sealed class EnvironmentEditorViewModel(EnvironmentStore store, Environme
             Problem = translator.Format("Environments.SaveFailed", translator.DetailsOf(exception));
             return false;
         }
-    }
-
-    IReadOnlyDictionary<string, string?> ChangesOf()
-    {
-        var now = new Dictionary<string, string>();
-        foreach (var draft in Environments.Where(draft => draft.OriginalName is not null))
-        {
-            now[draft.OriginalName!] = draft.Name.Trim();
-        }
-        return _loadedNames.Where(name => now.GetValueOrDefault(name) != name).ToDictionary(name => name, name => now.GetValueOrDefault(name));
     }
 }

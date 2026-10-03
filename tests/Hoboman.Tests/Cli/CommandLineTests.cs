@@ -47,6 +47,17 @@ public sealed class CommandLineTests
         Assert.Equal(("Dev", "A: 1|A: 2", "{}", "a=1|a=2", "-"), (send.EnvironmentName, string.Join('|', send.Headers), send.JsonBody, string.Join('|', send.Variables), send.VariablesFile));
     }
 
+    [Fact]
+    public void Parse_WhenRunning_ThenKeepsTheWorkflowAndItsOptions()
+    {
+        // Act
+        var input = new CommandLine().Parse(["run", "Ordre-sync", "--env", "Dev", "--param", "a=1", "--param", "a=2", "--params", "-"]);
+
+        // Assert
+        var run = input.Run!;
+        Assert.Equal(("Ordre-sync", "Dev", "a=1|a=2", "-"), (run.Workflow, run.EnvironmentName, string.Join('|', run.Parameters), run.ParametersFile));
+    }
+
     [Theory]
     [InlineData("--json", "@file")]
     [InlineData("--text", "@@literal")]
@@ -91,6 +102,11 @@ public sealed class CommandLineTests
     [InlineData("send", "POST", "https://localhost/", "--env", "a", "--env", "b")]
     [InlineData("send", "GET", "https://localhost/", "-H")]
     [InlineData("send", "GET", "https://localhost/", "--var")]
+    [InlineData("run")]
+    [InlineData("run", "a", "b")]
+    [InlineData("run", "a", "--var", "a=1")]
+    [InlineData("run", "a", "--param")]
+    [InlineData("send", "saved", "--param", "a=1")]
     public void Parse_WhenTheArgumentsAreInvalid_ThenSaysSo(params string[] arguments)
     {
         // Act

@@ -60,7 +60,6 @@ public sealed class RequestTabViewModel : ObservableObject
             }
         };
         services.AuthRefresh.Changed += RefreshAuthHeader;
-        services.AuthRefresh.EnvironmentsChanged += Auth.FollowEnvironments;
         Query.Changed += MarkDirty;
         Headers.Changed += MarkDirty;
         Base64 = new(services.Translator, services.Clock);
@@ -262,7 +261,7 @@ public sealed class RequestTabViewModel : ObservableObject
 
     string AuthOwner => AuthRefreshService.OwnerOf(Auth.Kind == AuthKind.Inherit && _inheritedAuth is { } inherited ? inherited : new(Id, Auth.ToSettings()));
 
-    public bool IsAuthRefreshing => _refreshingAuth is not null || Auth.IsFetching || _services.AuthRefresh.IsRefreshing(AuthOwner, EnvironmentOrNone().Name);
+    public bool IsAuthRefreshing => _refreshingAuth is not null || Auth.IsFetching || _services.AuthRefresh.IsRefreshing(AuthOwner, EnvironmentOrNone().Id);
 
     public bool CanRefreshAuth => !_closed && HasOAuth && !IsAuthRefreshing;
 
@@ -299,7 +298,6 @@ public sealed class RequestTabViewModel : ObservableObject
         }
         var environment = EnvironmentOrNone();
         using var refreshing = _refreshingAuth = new CancellationTokenSource();
-        _services.AuthRefresh.EnvironmentsChanged += FollowEnvironment;
         Auth.SetTokenProblem(null);
         RefreshAuthHeader();
         try
@@ -332,19 +330,8 @@ public sealed class RequestTabViewModel : ObservableObject
         }
         finally
         {
-            _services.AuthRefresh.EnvironmentsChanged -= FollowEnvironment;
             _refreshingAuth = null;
             RefreshAuthHeader();
-        }
-
-        void FollowEnvironment(IReadOnlyDictionary<string, string?> changes)
-        {
-            if (changes.NameAfter(environment.Name) is not { } name)
-            {
-                refreshing.Cancel();
-                return;
-            }
-            environment = environment with { Name = name };
         }
     }
 
@@ -528,7 +515,6 @@ public sealed class RequestTabViewModel : ObservableObject
         _refreshingAuth?.Cancel();
         Auth.CancelFetch();
         _services.AuthRefresh.Changed -= RefreshAuthHeader;
-        _services.AuthRefresh.EnvironmentsChanged -= Auth.FollowEnvironments;
     }
 
     public void Pin()

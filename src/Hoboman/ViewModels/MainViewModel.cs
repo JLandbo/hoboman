@@ -3,6 +3,7 @@ using Hoboman.Core.Languages;
 using Hoboman.Core.Requests;
 using Hoboman.Core.Settings;
 using Hoboman.Core.Storage;
+using Hoboman.Core.Workflows;
 using Hoboman.Mvvm;
 using Microsoft.Extensions.Logging;
 
@@ -11,6 +12,8 @@ namespace Hoboman.ViewModels;
 public sealed class MainViewModel(
     RequestTreeViewModel tree,
     HistoryViewModel history,
+    WorkflowsViewModel workflows,
+    WorkflowServices workflowServices,
     EnvironmentsViewModel environments,
     SettingsViewModel settings,
     SettingsStore settingsStore,
@@ -33,17 +36,21 @@ public sealed class MainViewModel(
 
     Coalescer EnvironmentsReload => field ??= new(() => environments.LoadAsync(CancellationToken.None));
 
+    Coalescer WorkflowsReload => field ??= new(ReloadWorkflowsAsync);
+
     public RequestTreeViewModel Tree => tree;
 
     public HistoryViewModel History => history;
 
     public EnvironmentsViewModel Environments => environments;
 
+    public WorkflowsViewModel Workflows => workflows;
+
     public ClipboardViewModel Clipboard => clipboard;
 
     public ObservableCollection<RequestTabViewModel> Tabs { get; } = tree.Follow([]);
 
-    public TabSession Session => new([.. Tabs.Where(tab => tab.Name is { } name && library.Exists(name)).Select(tab => tab.Name!)], SelectedTab?.Name);
+    public TabSession Session => new([.. Tabs.Where(tab => tab.Name is { } name && library.Exists(name)).Select(tab => tree.KeyOf(tab.Name!))], SelectedTab?.Name is { } selected ? tree.KeyOf(selected) : null);
 
     public bool IsChangingCollection => tabServices.CollectionChanges.IsRunning;
 
@@ -68,9 +75,25 @@ public sealed class MainViewModel(
             if (Set(ref field, value))
             {
                 tree.Activate(value);
+                OnPropertyChanged(nameof(Content));
             }
         }
     }
+
+    public WorkflowViewModel? Workflow
+    {
+        get;
+        private set
+        {
+            if (Set(ref field, value))
+            {
+                OnPropertyChanged(nameof(Content));
+            }
+        }
+    }
+
+    // A request tab and the open workflow share the main area, and choosing a tab hides the workflow until it is opened again.
+    public object? Content => (object?)SelectedTab ?? Workflow;
 
     public async Task LoadAsync()
     {
@@ -78,18 +101,19 @@ public sealed class MainViewModel(
         await RequestsChangedAsync();
         await HistoryChangedAsync();
         await EnvironmentsChangedAsync();
+        await WorkflowsChangedAsync();
         try
         {
             if ((await settingsStore.LoadAsync(CancellationToken.None)).Session is { } session)
             {
                 foreach (var name in session.Requests.Distinct(StringComparer.OrdinalIgnoreCase))
                 {
-                    if (RequestTreeViewModel.Flatten(tree.Nodes).FirstOrDefault(node => !node.IsFolder && SameName(node.Path, name)) is { } node)
+                    if (RequestTreeViewModel.Flatten(tree.Nodes).FirstOrDefault(node => !node.IsFolder && (SameName(node.OrderKey, name) || SameName(node.Path, name))) is { } node)
                     {
                         await OpenAsync(node);
                     }
                 }
-                SelectedTab = Tabs.FirstOrDefault(tab => SameName(tab.Name, session.Selected)) ?? SelectedTab;
+                SelectedTab = Tabs.FirstOrDefault(tab => tab.Name is { } name && (SameName(tree.KeyOf(name), session.Selected) || SameName(name, session.Selected))) ?? SelectedTab;
             }
         }
         catch (Exception exception) when (FileProblem.Is(exception))
@@ -108,15 +132,22 @@ public sealed class MainViewModel(
 
     public Task EnvironmentsChangedAsync() => EnvironmentsReload.RunAsync();
 
+    public Task WorkflowsChangedAsync() => WorkflowsReload.RunAsync();
+
     public Task LanguageChangedAsync()
     {
         history.Relabel();
         RelabelTabs();
+        Workflow?.Relabel();
         return HistoryChangedAsync();
     }
 
-    // Each environment has its own OAuth tokens, so the tabs show the chosen environment's.
-    public void EnvironmentChosen() => RelabelTabs();
+    // Each environment has its own OAuth tokens, so the tabs show the chosen environment's, and the workflow shows which names it has.
+    public void EnvironmentChosen()
+    {
+        RelabelTabs();
+        Workflow?.Relabel();
+    }
 
     public void NewTab()
     {
@@ -168,7 +199,7 @@ public sealed class MainViewModel(
         }
         logger.LogInformation("Opened the call to {Address} from the history", item.Address);
         var entry = item.File.Entry;
-        var tab = new RequestTabViewModel(tabServices, entry.Request, suggestedName: entry.Name, historyName: item.File.Name) { Number = entry.Name is null ? ++_lastNumber : 0 };
+        var tab = new RequestTabViewModel(tabServices, entry.Request, suggestedName: entry.Name is not null ? tree.PathOf(entry.Request.Id) ?? entry.Name : null, historyName: item.File.Name) { Number = entry.Name is null ? ++_lastNumber : 0 };
         if (Tabs.FirstOrDefault(open => open.IsPreview) is { } preview)
         {
             preview.Close();
@@ -226,6 +257,10 @@ public sealed class MainViewModel(
             return false;
         }
         var unsaved = Tabs.Where(tab => tab.IsDirty).Select(tab => tab.Title).ToList();
+        if (Workflow is { IsDirty: true } workflow)
+        {
+            unsaved.Add(workflow.Name);
+        }
         if (unsaved.Count == 0)
         {
             return true;
@@ -365,7 +400,7 @@ public sealed class MainViewModel(
                 throw;
             }
             await tree.LoadAsync(CancellationToken.None);
-            await tree.PlaceAsync(name, parent, node.OrderKey, DropPosition.After);
+            await tree.PlaceAsync(tree.KeyOf(name), parent, node.OrderKey, DropPosition.After);
             await OpenAsync(new RequestNodeViewModel(name, clone.Method, false));
         }
         catch (Exception exception) when (FileProblem.Is(exception))
@@ -419,7 +454,7 @@ public sealed class MainViewModel(
             {
                 return;
             }
-            await tree.PlaceAsync(node.IsDraft ? node.OrderKey : node.IsFolder ? $"{name}/" : name, folder, position == DropPosition.Inside ? null : target?.OrderKey, position);
+            await tree.PlaceAsync(node.IsDraft ? node.OrderKey : node.IsFolder ? $"{name}/" : tree.KeyOf(name), folder, position == DropPosition.Inside ? null : target?.OrderKey, position);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
@@ -612,6 +647,120 @@ public sealed class MainViewModel(
         }
     }
 
+    public async Task OpenWorkflowAsync(string name)
+    {
+        if (Workflow is { } open && SameName(open.Name, name))
+        {
+            SelectedTab = null;
+            return;
+        }
+        if (Workflow is { IsRunning: true } running && !dialogs.Confirm(translator.Of("Workflow.StopTitle"), translator.Format("Workflow.StopMessage", running.Name), translator.Of("Workflow.Stop"), []))
+        {
+            return;
+        }
+        if (Workflow is { IsDirty: true } unsaved && !dialogs.Confirm(translator.Of("Workflow.CloseTitle"), translator.Format("Workflow.CloseMessage", unsaved.Name), translator.Of("Close.Confirm"), []))
+        {
+            return;
+        }
+        var workflow = new WorkflowViewModel(workflowServices, tree, name);
+        if (!await workflow.LoadAsync())
+        {
+            await WorkflowsChangedAsync();
+            return;
+        }
+        logger.LogInformation("Opened the workflow {Name}", name);
+        Workflow?.Close();
+        Workflow = workflow;
+        SelectedTab = null;
+    }
+
+    public async Task NewWorkflowAsync()
+    {
+        if (dialogs.AskName(translator.Of("Sidebar.NewWorkflow"), "", translator.Of("Folder.Create"), ProblemOfWorkflow) is not { } name)
+        {
+            return;
+        }
+        try
+        {
+            await workflowServices.Library.CreateAsync(name, CancellationToken.None);
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            logger.LogError(exception, "Could not create the workflow {Name}", name);
+            dialogs.Tell(translator.Of("Workflow.CreateFailed"), translator.DetailsOf(exception));
+            return;
+        }
+        await WorkflowsChangedAsync();
+        await OpenWorkflowAsync(name);
+    }
+
+    public async Task RenameWorkflowAsync(string name)
+    {
+        if (dialogs.AskName(translator.Of("Workflow.RenameTitle"), name, translator.Of("Common.Save"), candidate => SameName(candidate, name) ? null : ProblemOfWorkflow(candidate)) is not { } newName || newName == name)
+        {
+            return;
+        }
+        try
+        {
+            await workflowServices.Library.RenameAsync(name, newName, CancellationToken.None);
+            if (Workflow is { } open && SameName(open.Name, name))
+            {
+                open.Rename(newName);
+            }
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            logger.LogError(exception, "Could not rename the workflow {Name} to {NewName}", name, newName);
+            dialogs.Tell(translator.Of("Workflow.RenameFailed"), translator.DetailsOf(exception));
+        }
+        await WorkflowsChangedAsync();
+    }
+
+    public async Task DeleteWorkflowAsync(string name)
+    {
+        if (!dialogs.Confirm(translator.Of("Workflow.DeleteTitle"), translator.Format("Delete.Message", name), translator.Of("Delete.Confirm"), []))
+        {
+            return;
+        }
+        try
+        {
+            await workflowServices.Library.DeleteAsync(name, CancellationToken.None);
+            if (Workflow is { } open && SameName(open.Name, name))
+            {
+                CloseWorkflow();
+            }
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            logger.LogError(exception, "Could not delete the workflow {Name}", name);
+            dialogs.Tell(translator.Of("Workflow.DeleteFailed"), translator.DetailsOf(exception));
+        }
+        await WorkflowsChangedAsync();
+    }
+
+    async Task ReloadWorkflowsAsync()
+    {
+        await workflows.LoadAsync(CancellationToken.None);
+        // A workflow that is gone on disk stays open while it has edits, so they are not lost.
+        if (Workflow is { } open && !await open.ReloadAsync() && !open.IsDirty)
+        {
+            logger.LogInformation("The workflow {Name} was removed on disk", open.Name);
+            CloseWorkflow();
+        }
+    }
+
+    void CloseWorkflow()
+    {
+        Workflow?.Close();
+        Workflow = null;
+        SelectedTab ??= Tabs.FirstOrDefault();
+    }
+
+    string? ProblemOfWorkflow(string name) =>
+        !WorkflowLibrary.IsValidName(name) ? translator.Of("Save.Invalid")
+        : workflows.Contains(name) ? translator.Of("Workflow.Exists")
+        : null;
+
     public async Task EditSettingsAsync()
     {
         await settings.LoadAsync(CancellationToken.None);
@@ -647,6 +796,10 @@ public sealed class MainViewModel(
                 logger.LogWarning(exception, "Could not reload {Name}", tab.Name);
                 tab.ShowFileProblem(translator.DetailsOf(exception));
             }
+        }
+        if (Workflow is { } workflow)
+        {
+            await workflow.RefreshRequestsAsync();
         }
     }
 

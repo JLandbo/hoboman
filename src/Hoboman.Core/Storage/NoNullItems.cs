@@ -1,25 +1,23 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace Hoboman.Core.Storage;
 
 // RespectNullableAnnotations does not look inside lists, so a null item in a hand-edited file would get through and break the code that reads it.
-public sealed class NoNullItems : JsonConverterFactory
+// The list is checked after the serializer has read it, so a mistake inside the list is still told with the path and line in the whole file.
+public static class NoNullItems
 {
-    public override bool CanConvert(Type typeToConvert) =>
-        typeToConvert.IsGenericType && typeToConvert.GetGenericTypeDefinition() == typeof(IReadOnlyList<>) && !typeToConvert.GetGenericArguments()[0].IsValueType;
-
-    public override JsonConverter CreateConverter(Type typeToConvert, JsonSerializerOptions options) =>
-        (JsonConverter)Activator.CreateInstance(typeof(ListConverter<>).MakeGenericType(typeToConvert.GetGenericArguments()))!;
-
-    sealed class ListConverter<T> : JsonConverter<IReadOnlyList<T>> where T : class
+    public static void Check(JsonTypeInfo typeInfo)
     {
-        public override IReadOnlyList<T> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        if (typeInfo.Type.IsGenericType && typeInfo.Type.GetGenericTypeDefinition() == typeof(IReadOnlyList<>) && !typeInfo.Type.GetGenericArguments()[0].IsValueType)
         {
-            var items = JsonSerializer.Deserialize<List<T>>(ref reader, options)!;
-            return items.Any(item => item is null) ? throw new JsonException("A list holds an empty item (null).") : items;
+            typeInfo.OnDeserialized = list =>
+            {
+                if (((IEnumerable<object?>)list).Contains(null))
+                {
+                    throw new JsonException("A list holds an empty item (null).");
+                }
+            };
         }
-
-        public override void Write(Utf8JsonWriter writer, IReadOnlyList<T> value, JsonSerializerOptions options) => JsonSerializer.Serialize<IEnumerable<T>>(writer, value, options);
     }
 }

@@ -269,9 +269,11 @@ public sealed class CollectionEditingTests
         await harness.Library.SaveAsync("Folder/Preview", original, Cancellation);
         var developmentToken = new OAuthToken("dev-token", "Bearer", harness.Clock.GetUtcNow().AddHours(1), "scope").ToJson();
         var productionToken = new OAuthToken("prod-token", "Bearer", harness.Clock.GetUtcNow().AddHours(2), "scope").ToJson();
+        var dev = new ApiEnvironment("dev", []) { Id = Guid.NewGuid() };
+        var prod = Guid.NewGuid();
         await harness.Secrets.SaveAsync(original.Id, SecretKind.ClientSecret, "saved-secret", Cancellation);
-        await harness.Secrets.SaveAsync(original.Id, SecretKind.OAuthToken, "dev", developmentToken, Cancellation);
-        await harness.Secrets.SaveAsync(original.Id, SecretKind.OAuthToken, "prod", productionToken, Cancellation);
+        await harness.Secrets.SaveAsync(original.Id, SecretKind.OAuthToken, dev.Id, developmentToken, Cancellation);
+        await harness.Secrets.SaveAsync(original.Id, SecretKind.OAuthToken, prod, productionToken, Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         RequestTabViewModel? source = null;
@@ -281,7 +283,7 @@ public sealed class CollectionEditingTests
             source = main.SelectedTab!;
             source.Body = "{\"value\":\"edited\"}";
             source.Auth.ClientSecret = "edited-secret";
-            Assert.True(await source.Auth.FetchTokenAsync(new("dev", []), saveSecrets: false, Cancellation));
+            Assert.True(await source.Auth.FetchTokenAsync(dev, saveSecrets: false, Cancellation));
         }
 
         await main.CloneAsync(Node(main, "Folder/Preview"));
@@ -290,9 +292,9 @@ public sealed class CollectionEditingTests
         Assert.NotEqual(original.Id, copy.Id);
         Assert.Equivalent((source?.ToRequest() ?? original) with { Id = copy.Id }, copy);
         Assert.Equal(open ? "edited-secret" : "saved-secret", await harness.Secrets.OfAsync(copy.Id, SecretKind.ClientSecret, Cancellation));
-        Assert.Equal(open ? Hoboman.Tests.Auth.FakeOAuthClient.Token.ToJson() : developmentToken, await harness.Secrets.OfAsync(copy.Id, SecretKind.OAuthToken, "dev", Cancellation));
-        Assert.Equal(productionToken, await harness.Secrets.OfAsync(copy.Id, SecretKind.OAuthToken, "prod", Cancellation));
-        Assert.Equal(developmentToken, await harness.Secrets.OfAsync(original.Id, SecretKind.OAuthToken, "dev", Cancellation));
+        Assert.Equal(open ? Hoboman.Tests.Auth.FakeOAuthClient.Token.ToJson() : developmentToken, await harness.Secrets.OfAsync(copy.Id, SecretKind.OAuthToken, dev.Id, Cancellation));
+        Assert.Equal(productionToken, await harness.Secrets.OfAsync(copy.Id, SecretKind.OAuthToken, prod, Cancellation));
+        Assert.Equal(developmentToken, await harness.Secrets.OfAsync(original.Id, SecretKind.OAuthToken, dev.Id, Cancellation));
         Assert.Equivalent(original, await harness.Library.LoadAsync("Folder/Preview", Cancellation));
         Assert.Equal("saved-secret", await harness.Secrets.OfAsync(original.Id, SecretKind.ClientSecret, Cancellation));
         Assert.Equal(["Preview", "Preview (1)"], Node(main, "Folder").Children.Select(node => node.Name));
@@ -349,6 +351,7 @@ public sealed class CollectionEditingTests
         var nested = ApiRequest.New();
         var outside = ApiRequest.New();
         var owner = Guid.NewGuid();
+        var prod = Guid.NewGuid();
         await harness.Library.SaveFolderAsync("Folder/Nested", new() { Id = owner, Auth = new(AuthKind.Bearer) }, Cancellation);
         await harness.Library.SaveAsync("Folder/Request", request, Cancellation);
         await harness.Library.SaveAsync("Folder/Nested/Child", nested, Cancellation);
@@ -357,7 +360,7 @@ public sealed class CollectionEditingTests
         {
             await harness.Secrets.SaveAsync(id, SecretKind.Token, "token", Cancellation);
             await harness.Secrets.SaveAsync(id, SecretKind.ClientSecret, "secret", Cancellation);
-            await harness.Secrets.SaveAsync(id, SecretKind.OAuthToken, "Prod", "oauth-token", Cancellation);
+            await harness.Secrets.SaveAsync(id, SecretKind.OAuthToken, prod, "oauth-token", Cancellation);
         }
         var main = harness.Main();
         await main.LoadAsync();
@@ -378,7 +381,7 @@ public sealed class CollectionEditingTests
         {
             Assert.Null(await harness.Secrets.OfAsync(id, SecretKind.Token, Cancellation));
             Assert.Null(await harness.Secrets.OfAsync(id, SecretKind.ClientSecret, Cancellation));
-            Assert.Null(await harness.Secrets.OfAsync(id, SecretKind.OAuthToken, "Prod", Cancellation));
+            Assert.Null(await harness.Secrets.OfAsync(id, SecretKind.OAuthToken, prod, Cancellation));
         }
         Assert.Equal("token", await harness.Secrets.OfAsync(outside.Id, SecretKind.Token, Cancellation));
         if (!folder)
@@ -564,7 +567,7 @@ public sealed class CollectionEditingTests
         Assert.NotEqual(request.Id, main.SelectedTab.Id);
         Assert.Equivalent(request, await harness.Library.LoadAsync(original, Cancellation));
         Assert.Equivalent(request with { Id = main.SelectedTab.Id }, await harness.Library.LoadAsync(renamed, Cancellation));
-        Assert.Equal([renamed], main.Session.Requests);
+        Assert.Equal([$"{main.SelectedTab.Id}"], main.Session.Requests);
         Assert.Equal(1, harness.Dialogs.Asked);
     }
 

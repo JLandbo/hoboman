@@ -121,7 +121,7 @@ public sealed class HttpRequestSender(SecretStore secrets, HttpClients clients, 
     // Each environment has its own token, and a missing or expired one stops the request, so it is never sent without the auth it was set up with.
     async Task<OAuthToken> OAuthTokenOfAsync(AuthSource auth, ApiEnvironment environment, CancellationToken cancellationToken)
     {
-        var saved = await secrets.OfAsync(auth.SecretsId, SecretKind.OAuthToken, environment.Name, cancellationToken).ConfigureAwait(false);
+        var saved = await secrets.OfAsync(auth.SecretsId, SecretKind.OAuthToken, environment.Id, cancellationToken).ConfigureAwait(false);
         var token = (saved is null ? null : OAuthToken.FromJson(saved)) ?? throw new MissingSecretException(SecretKind.OAuthToken);
         return token.HasExpired(clock.GetUtcNow()) ? throw new ExpiredTokenException(token.ExpiresAt!.Value) : token;
     }

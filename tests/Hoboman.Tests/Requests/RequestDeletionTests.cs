@@ -24,13 +24,14 @@ public sealed class RequestDeletionTests : IDisposable
         var request = ApiRequest.New();
         var owner = new FolderSettings { Id = Guid.NewGuid() };
         var outside = ApiRequest.New();
+        var prod = Guid.NewGuid();
         await Library.SaveAsync("Folder/Request", request, Cancellation);
         await Library.SaveFolderAsync("Folder", owner, Cancellation);
         await Library.SaveAsync("Outside", outside, Cancellation);
         foreach (var id in new[] { request.Id, owner.Id, outside.Id })
         {
             await Secrets.SaveAsync(id, SecretKind.Token, "secret", Cancellation);
-            await Secrets.SaveAsync(id, SecretKind.OAuthToken, "Prod", "oauth-secret", Cancellation);
+            await Secrets.SaveAsync(id, SecretKind.OAuthToken, prod, "oauth-secret", Cancellation);
         }
         using (var locked = new FileStream(Folder.Secrets, FileMode.Open, FileAccess.Read, FileShare.Read))
         {
@@ -43,7 +44,7 @@ public sealed class RequestDeletionTests : IDisposable
         await Service().CleanupAsync(Cancellation);
 
         Assert.Null(await Secrets.OfAsync(request.Id, SecretKind.Token, Cancellation));
-        Assert.Null(await Secrets.OfAsync(request.Id, SecretKind.OAuthToken, "Prod", Cancellation));
+        Assert.Null(await Secrets.OfAsync(request.Id, SecretKind.OAuthToken, prod, Cancellation));
         Assert.Equal(folder ? null : "secret", await Secrets.OfAsync(owner.Id, SecretKind.Token, Cancellation));
         Assert.Equal("secret", await Secrets.OfAsync(outside.Id, SecretKind.Token, Cancellation));
         await Service().CleanupAsync(Cancellation);

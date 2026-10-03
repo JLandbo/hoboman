@@ -12,6 +12,10 @@ public sealed class AppFolder(string root)
 
     public string Logs => Path.Combine(root, "logs");
 
+    public string Workflows => Path.Combine(root, "workflows");
+
+    public string Runs => Path.Combine(root, "runs");
+
     public string Secrets => Path.Combine(root, "secrets.json");
 
     public string Settings => Path.Combine(root, "settings.json");

@@ -1,14 +1,14 @@
 using System.CommandLine;
 using System.Text;
-using System.Text.Encodings.Web;
 using System.Text.Json;
 using Hoboman.Core.Sending;
+using Hoboman.Core.Text;
+using Hoboman.Core.Workflows;
 
 namespace Hoboman.Cli;
 
 sealed class CliOutput(Stream output, Stream error)
 {
-    static readonly JsonSerializerOptions _json = new(JsonSerializerOptions.Web) { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
     static readonly byte[] _newLine = Encoding.UTF8.GetBytes(Environment.NewLine);
 
     public int WriteStandardText(ParseResult parsed)
@@ -33,17 +33,27 @@ sealed class CliOutput(Stream output, Stream error)
         return response.IsSuccess ? 0 : 1;
     }
 
-    // Written even when the call was cancelled, so the caller learns why it stopped.
-    public async Task<int> WriteErrorAsync(string problem)
+    // The same bytes as in the run log, written in one go and flushed, so a reader sees each event as it happens.
+    // Written even when the run was cancelled, so its last line tells how it ended.
+    public async Task WriteEventAsync(WorkflowEvent workflowEvent)
     {
-        await WriteJsonAsync(error, new { error = problem }, CancellationToken.None);
+        await output.WriteAsync(RunLog.LineOf(workflowEvent), CancellationToken.None);
+        await output.FlushAsync(CancellationToken.None);
+    }
+
+    public Task<int> WriteErrorAsync(string problem) => WriteErrorAsync(new { error = problem });
+
+    // Written even when the call was cancelled, so the caller learns why it stopped.
+    public async Task<int> WriteErrorAsync<T>(T problem)
+    {
+        await WriteJsonAsync(error, problem, CancellationToken.None);
         return 2;
     }
 
     // Serialized straight into the stream, so a large body is not copied into one more string first.
     static async Task WriteJsonAsync<T>(Stream stream, T value, CancellationToken cancellationToken)
     {
-        await JsonSerializer.SerializeAsync(stream, value, _json, cancellationToken);
+        await JsonSerializer.SerializeAsync(stream, value, CompactJson.Options, cancellationToken);
         await stream.WriteAsync(_newLine, cancellationToken);
     }
 

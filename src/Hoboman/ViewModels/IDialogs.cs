@@ -8,6 +8,9 @@ public interface IDialogs
 
     void Tell(string title, string message);
 
+    // One text for each name, or null when the user cancels.
+    IReadOnlyDictionary<string, string>? AskValues(string title, IReadOnlyList<string> names, string confirm);
+
     void EditSettings(SettingsViewModel settings);
 
     void EditEnvironments(EnvironmentEditorViewModel editor);

@@ -104,6 +104,48 @@ public sealed class AppFolderWatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task WorkflowsChanged_WhenAWorkflowIsSaved_ThenFires()
+    {
+        // Arrange
+        var folder = new AppFolder(_temporary.Path);
+        using var watcher = new AppFolderWatcher(folder, NullLogger<AppFolderWatcher>.Instance);
+        var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        watcher.WorkflowsChanged += () => changed.TrySetResult();
+        watcher.Start();
+
+        // Act
+        await new WorkflowLibrary(folder, NullLogger<WorkflowLibrary>.Instance).CreateAsync("Flow", Cancellation);
+
+        // Assert
+        await changed.Task.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+    }
+
+    [Fact]
+    public async Task Changed_WhenARunIsLogged_ThenTellsNobody()
+    {
+        // Arrange
+        var folder = new AppFolder(_temporary.Path);
+        Directory.CreateDirectory(folder.Runs);
+        using var watcher = new AppFolderWatcher(folder, NullLogger<AppFolderWatcher>.Instance);
+        var changes = 0;
+        watcher.RequestsChanged += () => Interlocked.Increment(ref changes);
+        watcher.HistoryChanged += () => Interlocked.Increment(ref changes);
+        watcher.EnvironmentsChanged += () => Interlocked.Increment(ref changes);
+        watcher.WorkflowsChanged += () => Interlocked.Increment(ref changes);
+        watcher.Start();
+
+        // Act
+        await using (var log = RunLog.Create(folder, Guid.NewGuid(), NullLogger.Instance))
+        {
+            await log.AddAsync(new StepSkipped(0));
+        }
+        await Task.Delay(TimeSpan.FromSeconds(1), Cancellation);
+
+        // Assert
+        Assert.Equal(0, changes);
+    }
+
+    [Fact]
     public async Task EnvironmentsChanged_WhenTheEnvironmentsAreSaved_ThenFires()
     {
         // Arrange
@@ -114,7 +156,7 @@ public sealed class AppFolderWatcherTests : IDisposable
         watcher.Start();
 
         // Act
-        await new EnvironmentStore(folder, NullLogger<EnvironmentStore>.Instance).SaveAsync([new("Dev", [])], Cancellation);
+        await new EnvironmentStore(folder, new(folder, NullLogger<SecretStore>.Instance), NullLogger<EnvironmentStore>.Instance).SaveAsync([new("Dev", [])], Cancellation);
 
         // Assert
         await changed.Task.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);

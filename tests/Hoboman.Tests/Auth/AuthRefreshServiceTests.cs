@@ -5,6 +5,10 @@ namespace Hoboman.Tests.Auth;
 
 public sealed class AuthRefreshServiceTests : IDisposable
 {
+    static readonly ApiEnvironment _dev = new("Dev", []) { Id = Guid.NewGuid() };
+    static readonly ApiEnvironment _prod = new("Prod", []) { Id = Guid.NewGuid() };
+    static readonly ApiEnvironment _staging = new("Staging", []) { Id = Guid.NewGuid() };
+
     readonly TemporaryFolder _temporary = new();
 
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
@@ -24,16 +28,16 @@ public sealed class AuthRefreshServiceTests : IDisposable
         var requestsMade = 0;
         var service = Service(new(cancellationToken => { requestsMade++; return login.Task.WaitAsync(cancellationToken); }));
         var source = new AuthSource(Guid.NewGuid(), new(AuthKind.OAuth2));
-        var fetching = service.FetchAsync(source, "secret", new("Dev", []), (_, _, _) => Task.FromResult(true), Cancellation);
+        var fetching = service.FetchAsync(source, "secret", _dev, (_, _, _) => Task.FromResult(true), Cancellation);
 
-        var duplicate = await service.FetchAsync(source, "secret", new("Dev", []), (_, _, _) => Task.FromResult(true), Cancellation);
+        var duplicate = await service.FetchAsync(source, "secret", _dev, (_, _, _) => Task.FromResult(true), Cancellation);
         login.SetResult(FakeOAuthClient.Token);
         var fetched = await fetching;
 
         Assert.False(duplicate);
         Assert.True(fetched);
         Assert.Equal(1, requestsMade);
-        Assert.False(service.IsRefreshing(AuthRefreshService.OwnerOf(source), "Dev"));
+        Assert.False(service.IsRefreshing(AuthRefreshService.OwnerOf(source), _dev.Id));
     }
 
     [Fact]
@@ -48,7 +52,7 @@ public sealed class AuthRefreshServiceTests : IDisposable
         cancellation.Cancel();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fetching);
-        Assert.False(service.IsRefreshing(AuthRefreshService.OwnerOf(source), ""));
+        Assert.False(service.IsRefreshing(AuthRefreshService.OwnerOf(source), Guid.Empty));
     }
 
     [Fact]
@@ -59,7 +63,7 @@ public sealed class AuthRefreshServiceTests : IDisposable
 
         await Assert.ThrowsAsync<HttpRequestException>(() => service.FetchAsync(source, "secret", ApiEnvironment.None, (_, _, _) => Task.FromResult(true), Cancellation));
 
-        Assert.False(service.IsRefreshing(AuthRefreshService.OwnerOf(source), ""));
+        Assert.False(service.IsRefreshing(AuthRefreshService.OwnerOf(source), Guid.Empty));
     }
 
     [Fact]
@@ -70,11 +74,11 @@ public sealed class AuthRefreshServiceTests : IDisposable
         await Secrets.SaveAsync(settings.Id, SecretKind.ClientSecret, "secret", Cancellation);
         var oauth = new FakeOAuthClient();
 
-        var refreshed = await Service(oauth).RefreshFolderAsync(new(settings.Id, settings.Auth, "Users"), new("Dev", []), Cancellation);
+        var refreshed = await Service(oauth).RefreshFolderAsync(new(settings.Id, settings.Auth, "Users"), _dev, Cancellation);
 
         Assert.True(refreshed);
         Assert.Equal(settings, await Library.LoadFolderAsync("Users", Cancellation));
-        Assert.Equal(FakeOAuthClient.Token.ToJson(), await Secrets.OfAsync(settings.Id, SecretKind.OAuthToken, "Dev", Cancellation));
+        Assert.Equal(FakeOAuthClient.Token.ToJson(), await Secrets.OfAsync(settings.Id, SecretKind.OAuthToken, _dev.Id, Cancellation));
         Assert.Equal("secret", oauth.Asked!.Value.ClientSecret);
     }
 
@@ -106,24 +110,24 @@ public sealed class AuthRefreshServiceTests : IDisposable
             return login;
         }));
         var source = new AuthSource(settings.Id, settings.Auth, "Users");
-        var development = service.RefreshFolderAsync(source, new("Dev", []), Cancellation);
+        var development = service.RefreshFolderAsync(source, _dev, Cancellation);
         await loginStarted.WaitAsync(Cancellation);
-        var production = service.RefreshFolderAsync(source, new("Prod", []), Cancellation);
+        var production = service.RefreshFolderAsync(source, _prod, Cancellation);
         await loginStarted.WaitAsync(Cancellation);
 
         developmentLogin.SetResult(FakeOAuthClient.Token);
         Assert.True(await development);
         var saved = (await Library.LoadFolderAsync("Users", Cancellation))!;
         Assert.NotEqual(settings.Id, saved.Id);
-        Assert.True(service.IsRefreshing(AuthRefreshService.OwnerOf(source), "Prod"));
-        Assert.True(service.IsRefreshing(AuthRefreshService.OwnerOf(source with { SecretsId = saved.Id }), "Prod"));
-        Assert.False(await service.RefreshFolderAsync(source with { SecretsId = saved.Id }, new("Prod", []), Cancellation));
+        Assert.True(service.IsRefreshing(AuthRefreshService.OwnerOf(source), _prod.Id));
+        Assert.True(service.IsRefreshing(AuthRefreshService.OwnerOf(source with { SecretsId = saved.Id }), _prod.Id));
+        Assert.False(await service.RefreshFolderAsync(source with { SecretsId = saved.Id }, _prod, Cancellation));
         Assert.Equal(2, requestsMade);
-        Assert.True(await service.RefreshFolderAsync(source, new("Staging", []), Cancellation));
+        Assert.True(await service.RefreshFolderAsync(source, _staging, Cancellation));
         productionLogin.SetResult(FakeOAuthClient.Token);
 
         Assert.True(await production);
-        Assert.Equal(["Dev", "Prod", "Staging"], (await Secrets.OfEachEnvironmentAsync(saved.Id, SecretKind.OAuthToken, Cancellation)).Keys.Order());
+        Assert.Equal(new[] { _dev.Id, _prod.Id, _staging.Id }.Order(), (await Secrets.OfEachEnvironmentAsync(saved.Id, SecretKind.OAuthToken, Cancellation)).Keys.Order());
         if (sharedId)
         {
             Assert.Equal("secret", await Secrets.OfAsync(saved.Id, SecretKind.ClientSecret, Cancellation));
@@ -162,38 +166,6 @@ public sealed class AuthRefreshServiceTests : IDisposable
 
         Assert.False(await fetching);
         Assert.Null(await Secrets.OfAsync(settings.Id, SecretKind.OAuthToken, Cancellation));
-    }
-
-    [Fact]
-    public async Task FetchAsync_WhenTheEnvironmentIsRenamedDuringLogin_ThenAcceptsTheNewName()
-    {
-        var login = new TaskCompletionSource<OAuthToken>();
-        var service = Service(new(cancellationToken => login.Task.WaitAsync(cancellationToken)));
-        var source = new AuthSource(Guid.NewGuid(), new(AuthKind.OAuth2));
-        string? acceptedEnvironment = null;
-        var fetching = service.FetchAsync(source, "secret", new("Dev", []), (_, environment, _) => { acceptedEnvironment = environment; return Task.FromResult(true); }, Cancellation);
-
-        await service.FollowEnvironmentsAsync(new Dictionary<string, string?> { ["Dev"] = "Development" }, Cancellation);
-        login.SetResult(FakeOAuthClient.Token);
-
-        Assert.True(await fetching);
-        Assert.Equal("Development", acceptedEnvironment);
-    }
-
-    [Fact]
-    public async Task FetchAsync_WhenTheEnvironmentIsRemovedDuringLogin_ThenDoesNotAcceptTheToken()
-    {
-        var login = new TaskCompletionSource<OAuthToken>();
-        var service = Service(new(cancellationToken => login.Task.WaitAsync(cancellationToken)));
-        var source = new AuthSource(Guid.NewGuid(), new(AuthKind.OAuth2));
-        var accepted = false;
-        var fetching = service.FetchAsync(source, "secret", new("Dev", []), (_, _, _) => { accepted = true; return Task.FromResult(true); }, Cancellation);
-
-        await service.FollowEnvironmentsAsync(new Dictionary<string, string?> { ["Dev"] = null }, Cancellation);
-        login.SetResult(FakeOAuthClient.Token);
-
-        Assert.False(await fetching);
-        Assert.False(accepted);
     }
 
     [Fact]

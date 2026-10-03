@@ -325,46 +325,6 @@ public sealed class CollectionSafetyTests
     }
 
     [Theory]
-    [InlineData(null, false)]
-    [InlineData(null, true)]
-    [InlineData("Production", false)]
-    [InlineData("Production", true)]
-    public async Task CloneAsync_WhenAnEnvironmentChangesAheadOfTheQueuedCopy_ThenNeverRestoresTheOldEnvironment(string? renamed, bool unsavedToken)
-    {
-        using var harness = new Harness();
-        var request = ApiRequest.New() with { Auth = new(AuthKind.OAuth2) };
-        var token = new OAuthToken("saved-token", "Bearer", null, null).ToJson();
-        await harness.Library.SaveAsync("Request", request, Cancellation);
-        await harness.Secrets.SaveAsync(request.Id, SecretKind.OAuthToken, "Dev", token, Cancellation);
-        await harness.Secrets.SaveAsync(request.Id, SecretKind.OAuthToken, "Unchanged", token, Cancellation);
-        var main = harness.Main();
-        await main.LoadAsync();
-        await main.OpenAsync(Node(main, "Request"));
-        if (unsavedToken)
-        {
-            Assert.True(await main.SelectedTab!.Auth.FetchTokenAsync(new("Dev", []), saveSecrets: false, Cancellation));
-        }
-        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var blocked = harness.AuthRefresh.SaveAsync(() => release.Task, Cancellation);
-        var changing = harness.AuthRefresh.FollowEnvironmentsAsync(new Dictionary<string, string?> { ["Dev"] = renamed }, Cancellation);
-        var cloning = main.CloneAsync(Node(main, "Request"));
-        release.SetResult();
-        await Task.WhenAll(blocked, changing, cloning).WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
-
-        var clone = (await harness.Library.LoadAsync("Request (1)", Cancellation))!;
-        var copied = await harness.Secrets.OfEachEnvironmentAsync(clone.Id, SecretKind.OAuthToken, Cancellation);
-        Assert.DoesNotContain("Dev", copied.Keys);
-        Assert.Equal(token, copied["Unchanged"]);
-        Assert.Equal(renamed is null ? 1 : 2, copied.Count);
-        Assert.Null(await harness.Secrets.OfAsync(request.Id, SecretKind.OAuthToken, "Dev", Cancellation));
-        if (renamed is not null)
-        {
-            Assert.Equal(unsavedToken ? Hoboman.Tests.Auth.FakeOAuthClient.Token.ToJson() : token, copied[renamed]);
-            Assert.Equal(token, await harness.Secrets.OfAsync(request.Id, SecretKind.OAuthToken, renamed, Cancellation));
-        }
-    }
-
-    [Theory]
     [InlineData(FileShare.Read)]
     [InlineData(FileShare.None)]
     public async Task CloneAsync_WhenOnlyTheOrderCannotBeSaved_ThenOpensTheCompleteCopyAndReportsOnlyTheOrderFailure(FileShare sharing)

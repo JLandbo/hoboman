@@ -8,8 +8,8 @@
         Background="{DynamicResource Input}" Foreground="{DynamicResource Text}"
         FontFamily="{StaticResource UiFont}" FontSize="13" Closing="Window_Closing">
     <Window.InputBindings>
-        <KeyBinding Key="S" Modifiers="Control" Command="{Binding SelectedTab.Save}" />
-        <KeyBinding Key="Enter" Modifiers="Control" Command="{Binding SelectedTab.Send}" />
+        <KeyBinding Key="S" Modifiers="Control" Command="{Binding Content.Save}" />
+        <KeyBinding Key="Enter" Modifiers="Control" Command="{Binding Content.Send}" />
     </Window.InputBindings>
     <Window.Resources>
         <Style x:Key="MenuCheck" TargetType="TextBlock">
@@ -63,6 +63,16 @@
                 <local:ResponseView Grid.Row="2" />
             </Grid>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type viewModels:WorkflowViewModel}">
+            <local:WorkflowView />
+        </DataTemplate>
+        <Style x:Key="CollectionButton" TargetType="Button" BasedOn="{StaticResource SmallIconButton}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsChecked, ElementName=WorkflowsSection}" Value="True">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
     <Grid Margin="12">
         <Grid.ColumnDefinitions>
@@ -97,12 +107,15 @@
             <Border Style="{StaticResource Panel}">
                 <DockPanel>
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
-                        <Button DockPanel.Dock="Right" Content="&#xE710;" ToolTip="{DynamicResource Sidebar.NewRequest}" Click="NewRequest_Click" Style="{StaticResource SmallIconButton}" FontSize="13" />
-                        <Button DockPanel.Dock="Right" Content="&#xE8F4;" ToolTip="{DynamicResource Sidebar.NewFolder}" Click="NewFolder_Click" Style="{StaticResource SmallIconButton}" FontSize="13" Margin="0,0,4,0" />
+                        <Button DockPanel.Dock="Right" Content="&#xE710;" ToolTip="{DynamicResource Sidebar.NewWorkflow}" Click="NewWorkflow_Click" Style="{StaticResource SmallIconButton}" FontSize="13"
+                                Visibility="{Binding IsChecked, ElementName=WorkflowsSection, Converter={StaticResource VisibleWhenTrue}}" />
+                        <Button DockPanel.Dock="Right" Content="&#xE710;" ToolTip="{DynamicResource Sidebar.NewRequest}" Click="NewRequest_Click" Style="{StaticResource CollectionButton}" FontSize="13" />
+                        <Button DockPanel.Dock="Right" Content="&#xE8F4;" ToolTip="{DynamicResource Sidebar.NewFolder}" Click="NewFolder_Click" Style="{StaticResource CollectionButton}" FontSize="13" Margin="0,0,4,0" />
                         <Border Style="{StaticResource SegmentGroup}">
                             <StackPanel Orientation="Horizontal">
                                 <RadioButton x:Name="CollectionsSection" Content="{DynamicResource Sidebar.Collections}" GroupName="Sidebar" IsChecked="True" Style="{StaticResource Segment}" />
                                 <RadioButton x:Name="HistorySection" Content="{DynamicResource Sidebar.History}" GroupName="Sidebar" Style="{StaticResource Segment}" />
+                                <RadioButton x:Name="WorkflowsSection" Content="{DynamicResource Sidebar.Workflows}" GroupName="Sidebar" Style="{StaticResource Segment}" />
                             </StackPanel>
                         </Border>
                     </DockPanel>
@@ -115,6 +128,7 @@
                             </TextBlock>
                             <local:HistoryView />
                         </DockPanel>
+                        <local:WorkflowsView Visibility="{Binding IsChecked, ElementName=WorkflowsSection, Converter={StaticResource VisibleWhenTrue}}" />
                     </Grid>
                 </DockPanel>
             </Border>
@@ -228,7 +242,7 @@
                     </ListBox>
                 </DockPanel>
             </DockPanel>
-            <ContentControl Grid.Row="1" Content="{Binding SelectedTab}" Focusable="False" />
+            <ContentControl Grid.Row="1" Content="{Binding Content}" Focusable="False" />
         </Grid>
     </Grid>
 </Window>

@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.Logging;
 
 namespace Hoboman.Core.Storage;
@@ -22,7 +23,8 @@ public sealed class JsonFile<T>(string path, T empty, ILogger logger)
         RespectNullableAnnotations = true,
         // A misspelled name would otherwise be ignored without a word and dropped on the next save.
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
-        Converters = { new JsonStringEnumConverter(), new NoNullItems() },
+        Converters = { new JsonStringEnumConverter() },
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver { Modifiers = { NoNullItems.Check } },
     };
 
     readonly SemaphoreSlim _writing = new(1, 1);

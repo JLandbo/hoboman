@@ -5,6 +5,9 @@ namespace Hoboman.Tests.ViewModels;
 
 public sealed class AuthViewModelTests
 {
+    static readonly ApiEnvironment _dev = new("Dev", []) { Id = Guid.NewGuid() };
+    static readonly ApiEnvironment _prod = new("Prod", []) { Id = Guid.NewGuid() };
+
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
     [Fact]
@@ -13,7 +16,7 @@ public sealed class AuthViewModelTests
         // Arrange
         using var harness = new Harness();
         var auth = harness.Tab().Auth;
-        await harness.Environments.ChooseAsync(new("Dev", []));
+        await harness.Environments.ChooseAsync(_dev);
 
         // Act
         await auth.FetchTokenAsync();
@@ -28,28 +31,27 @@ public sealed class AuthViewModelTests
         // Arrange
         using var harness = new Harness();
         var auth = harness.Tab().Auth;
-        await harness.Environments.ChooseAsync(new("Dev", []));
+        await harness.Environments.ChooseAsync(_dev);
         await auth.FetchTokenAsync();
 
         // Act
-        await harness.Environments.ChooseAsync(new("Prod", []));
+        await harness.Environments.ChooseAsync(_prod);
 
         // Assert
         Assert.Null(auth.AccessToken);
     }
 
     [Fact]
-    public async Task FollowEnvironments_WhenTheChosenEnvironmentIsRenamed_ThenStillShowsItsToken()
+    public async Task FetchTokenAsync_WhenTheChosenEnvironmentIsRenamedAfter_ThenStillShowsItsToken()
     {
         // Arrange
         using var harness = new Harness();
         var auth = harness.Tab().Auth;
-        await harness.Environments.ChooseAsync(new("Dev", []));
+        await harness.Environments.ChooseAsync(_dev);
         await auth.FetchTokenAsync();
-        await harness.Environments.ChooseAsync(new("Development", []));
 
         // Act
-        auth.FollowEnvironments(new Dictionary<string, string?> { ["Dev"] = "Development" });
+        await harness.Environments.ChooseAsync(_dev with { Name = "Development" });
 
         // Assert
         Assert.Equal(FakeOAuthClient.Token, auth.AccessToken);
@@ -61,7 +63,7 @@ public sealed class AuthViewModelTests
         // Arrange
         using var harness = new Harness();
         var auth = harness.Tab().Auth;
-        await harness.Environments.ChooseAsync(new("Dev", []));
+        await harness.Environments.ChooseAsync(_dev);
         await auth.FetchTokenAsync();
         var id = Guid.NewGuid();
 
@@ -69,7 +71,7 @@ public sealed class AuthViewModelTests
         await auth.SaveSecretsAsync(id, Cancellation);
 
         // Assert
-        Assert.NotNull(await harness.Secrets.OfAsync(id, SecretKind.OAuthToken, "Dev", Cancellation));
+        Assert.NotNull(await harness.Secrets.OfAsync(id, SecretKind.OAuthToken, _dev.Id, Cancellation));
     }
 
     [Fact]
@@ -126,9 +128,9 @@ public sealed class AuthViewModelTests
         var login = new TaskCompletionSource<OAuthToken>();
         using var harness = new Harness(oauth: new FakeOAuthClient(cancellationToken => login.Task.WaitAsync(cancellationToken)));
         var auth = harness.Tab().Auth;
-        await harness.Environments.ChooseAsync(new("Dev", []));
+        await harness.Environments.ChooseAsync(_dev);
         var fetching = auth.FetchTokenAsync();
-        await harness.Environments.ChooseAsync(new("Prod", []));
+        await harness.Environments.ChooseAsync(_prod);
         var id = Guid.NewGuid();
 
         // Act
@@ -137,7 +139,7 @@ public sealed class AuthViewModelTests
         await auth.SaveSecretsAsync(id, Cancellation);
 
         // Assert
-        Assert.Equal(["Dev"], (await harness.Secrets.OfEachEnvironmentAsync(id, SecretKind.OAuthToken, Cancellation)).Keys);
+        Assert.Equal([_dev.Id], (await harness.Secrets.OfEachEnvironmentAsync(id, SecretKind.OAuthToken, Cancellation)).Keys);
     }
 
     [Fact]
@@ -147,10 +149,9 @@ public sealed class AuthViewModelTests
         var login = new TaskCompletionSource<OAuthToken>();
         using var harness = new Harness(oauth: new FakeOAuthClient(cancellationToken => login.Task.WaitAsync(cancellationToken)));
         var auth = harness.Tab().Auth;
-        await harness.Environments.ChooseAsync(new("Dev", []));
+        await harness.Environments.ChooseAsync(_dev);
         var fetching = auth.FetchTokenAsync();
-        await harness.AuthRefresh.FollowEnvironmentsAsync(new Dictionary<string, string?> { ["Dev"] = "Development" }, Cancellation);
-        await harness.Environments.ChooseAsync(new("Development", []));
+        await harness.Environments.ChooseAsync(_dev with { Name = "Development" });
 
         // Act
         login.SetResult(FakeOAuthClient.Token);
@@ -158,27 +159,6 @@ public sealed class AuthViewModelTests
 
         // Assert
         Assert.Equal(FakeOAuthClient.Token, auth.AccessToken);
-    }
-
-    [Fact]
-    public async Task FetchTokenAsync_WhenTheEnvironmentIsRemovedDuringTheLogin_ThenKeepsNoToken()
-    {
-        // Arrange
-        var login = new TaskCompletionSource<OAuthToken>();
-        using var harness = new Harness(oauth: new FakeOAuthClient(cancellationToken => login.Task.WaitAsync(cancellationToken)));
-        var auth = harness.Tab().Auth;
-        await harness.Environments.ChooseAsync(new("Dev", []));
-        var fetching = auth.FetchTokenAsync();
-        await harness.AuthRefresh.FollowEnvironmentsAsync(new Dictionary<string, string?> { ["Dev"] = null }, Cancellation);
-        var id = Guid.NewGuid();
-
-        // Act
-        login.SetResult(FakeOAuthClient.Token);
-        await fetching;
-        await auth.SaveSecretsAsync(id, Cancellation);
-
-        // Assert
-        Assert.Empty(await harness.Secrets.OfEachEnvironmentAsync(id, SecretKind.OAuthToken, Cancellation));
     }
 
     [Fact]
@@ -223,25 +203,6 @@ public sealed class AuthViewModelTests
 
         // Assert
         Assert.Equal($"The token expired {FakeOAuthClient.Token.ExpiresAt!.Value.ToLocalTime().ToString("g", Translation.English.Culture)}.", auth.TokenStatus);
-    }
-
-    [Fact]
-    public async Task FollowEnvironments_WhenTheSavedTokensWereNotMoved_ThenSavesThemUnderTheNewNameNextTime()
-    {
-        // Arrange
-        using var harness = new Harness();
-        var auth = harness.Tab().Auth;
-        await harness.Environments.ChooseAsync(new("Dev", []));
-        await auth.FetchTokenAsync();
-        var id = Guid.NewGuid();
-        await auth.SaveSecretsAsync(id, Cancellation);
-        auth.FollowEnvironments(new Dictionary<string, string?> { ["Dev"] = "Development" });
-
-        // Act
-        await auth.SaveSecretsAsync(id, Cancellation);
-
-        // Assert
-        Assert.NotNull(await harness.Secrets.OfAsync(id, SecretKind.OAuthToken, "Development", Cancellation));
     }
 
     [Fact]

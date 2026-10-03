@@ -4,13 +4,22 @@ using Hoboman.Core.Requests;
 
 namespace Hoboman.Cli;
 
-// A --var wins over --vars wherever they stand, and the last of a name wins.
+// A --var wins over --vars wherever they stand, and the last of a name wins. --param and --params follow the same rule.
 sealed class VariableInput(TextReader input, bool inputRedirected)
 {
-    public async Task<IReadOnlyList<KeyValue>> ReadAsync(SendInput command, CancellationToken cancellationToken)
+    // A value that is not text, such as a number from a response, is put in as its JSON.
+    public async Task<IReadOnlyList<KeyValue>> ReadAsync(SendInput command, CancellationToken cancellationToken) =>
+        [.. (await ReadAsync(command.Variables, command.VariablesFile, cancellationToken)).Select(variable =>
+            new KeyValue(variable.Key, variable.Value.ValueKind == JsonValueKind.String ? variable.Value.GetString()! : variable.Value.GetRawText()))];
+
+    // A parameter keeps its JSON type, so a number from --params is a number in the run.
+    public Task<IReadOnlyDictionary<string, JsonElement>> ReadAsync(RunInput command, CancellationToken cancellationToken) =>
+        ReadAsync(command.Parameters, command.ParametersFile, cancellationToken);
+
+    async Task<IReadOnlyDictionary<string, JsonElement>> ReadAsync(string[] options, string? file, CancellationToken cancellationToken)
     {
-        var variables = new Dictionary<string, string>();
-        if (command.VariablesFile is { } path)
+        var values = new Dictionary<string, JsonElement>();
+        if (file is { } path)
         {
             // Without redirected input, it would wait for someone to type the JSON.
             if (path == "-" && !inputRedirected)
@@ -24,21 +33,20 @@ sealed class VariableInput(TextReader input, bool inputRedirected)
             {
                 throw new FormatException();
             }
-            // A value that is not text, such as a number from a response, is put in as its JSON.
             foreach (var property in document.RootElement.EnumerateObject())
             {
-                variables[property.Name] = property.Value.ValueKind == JsonValueKind.String ? property.Value.GetString()! : property.Value.GetRawText();
+                values[property.Name] = property.Value.Clone();
             }
         }
-        foreach (var variable in command.Variables)
+        foreach (var option in options)
         {
-            var separator = variable.IndexOf('=');
+            var separator = option.IndexOf('=');
             if (separator < 0)
             {
                 throw new FormatException();
             }
-            variables[variable[..separator]] = variable[(separator + 1)..];
+            values[option[..separator]] = JsonSerializer.SerializeToElement(option[(separator + 1)..]);
         }
-        return [.. variables.Select(variable => new KeyValue(variable.Key, variable.Value))];
+        return values;
     }
 }

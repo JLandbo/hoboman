@@ -16,6 +16,12 @@ public sealed class Dialogs(Translator translator) : IDialogs
 
     public void Tell(string title, string message) => new ConfirmDialog(title, message, translator.Of("Common.Ok"), [], canCancel: false).ShowDialog();
 
+    public IReadOnlyDictionary<string, string>? AskValues(string title, IReadOnlyList<string> names, string confirm)
+    {
+        var dialog = new ValuesDialog(title, names, confirm);
+        return dialog.ShowDialog() == true ? dialog.Values : null;
+    }
+
     public void EditSettings(SettingsViewModel settings) => new SettingsWindow(settings).ShowDialog();
 
     public void EditEnvironments(EnvironmentEditorViewModel editor) => new EnvironmentEditorWindow(editor).ShowDialog();

@@ -14,6 +14,13 @@ public sealed class FakeDialogs(string? answer = null, bool accept = false) : ID
 
     public (string Title, string Message, string Confirm, IReadOnlyList<string> Items)? ConfirmQuestion { get; private set; }
 
+    public IReadOnlyDictionary<string, string>? Values { get; set; }
+
+    public IReadOnlyList<string>? AskedValues { get; private set; }
+
+    // What happens elsewhere while the values are asked for, as the real dialog lets the app go on.
+    public Action? Asking { get; set; }
+
     // Like the real dialog, a name with a problem is never given back.
     public string? AskName(string title, string name, string confirm, Func<string, string?> problemOf)
     {
@@ -33,6 +40,14 @@ public sealed class FakeDialogs(string? answer = null, bool accept = false) : ID
     {
         Asked++;
         Notification = (title, message);
+    }
+
+    public IReadOnlyDictionary<string, string>? AskValues(string title, IReadOnlyList<string> names, string confirm)
+    {
+        Asked++;
+        AskedValues = names;
+        Asking?.Invoke();
+        return Values;
     }
 
     public void EditSettings(SettingsViewModel settings) => Shown = settings;

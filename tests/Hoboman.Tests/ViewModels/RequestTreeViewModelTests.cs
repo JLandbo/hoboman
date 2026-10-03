@@ -362,4 +362,97 @@ public sealed class RequestTreeViewModelTests
         // Assert
         Assert.Null(name);
     }
+
+    [Fact]
+    public async Task LoadAsync_WhenTheOrderFileHoldsPaths_ThenSavesIds()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var a = ApiRequest.New();
+        var b = ApiRequest.New();
+        await harness.Library.SaveAsync("A", a, Cancellation);
+        await harness.Library.SaveAsync("B", b, Cancellation);
+        await harness.Library.SaveOrderAsync(["B", "A"], Cancellation);
+
+        // Act
+        await Tree(harness).LoadAsync(Cancellation);
+
+        // Assert
+        Assert.Equal([$"{b.Id}", $"{a.Id}"], await harness.Library.LoadOrderAsync(Cancellation));
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenTheOrderFileHoldsIds_ThenWritesNothing()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var a = ApiRequest.New();
+        await harness.Library.SaveAsync("A", a, Cancellation);
+        await harness.Library.SaveOrderAsync([$"{a.Id}"], Cancellation);
+        var written = File.GetLastWriteTimeUtc(harness.Folder.RequestOrder);
+
+        // Act
+        await Tree(harness).LoadAsync(Cancellation);
+
+        // Assert
+        Assert.Equal(written, File.GetLastWriteTimeUtc(harness.Folder.RequestOrder));
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenARequestIsRenamedOnDisk_ThenKeepsItsPlace()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("A", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAsync("B", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveOrderAsync(["B", "A"], Cancellation);
+        var tree = Tree(harness);
+        await tree.LoadAsync(Cancellation);
+        await harness.Library.RenameAsync("B", "Z", Cancellation);
+
+        // Act
+        await tree.LoadAsync(Cancellation);
+
+        // Assert
+        Assert.Equal(["Z", "A"], tree.Nodes.Select(node => node.Path));
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenAFolderIsRenamedOnDisk_ThenItsRequestsKeepTheirOrder()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("Folder/A", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAsync("Folder/B", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveOrderAsync(["Folder/", "Folder/B", "Folder/A"], Cancellation);
+        var tree = Tree(harness);
+        await tree.LoadAsync(Cancellation);
+        await harness.Library.RenameFolderAsync("Folder", "Renamed", Cancellation);
+
+        // Act
+        await tree.LoadAsync(Cancellation);
+
+        // Assert
+        Assert.Equal(["Renamed/B", "Renamed/A"], tree.Nodes.Single().Children.Select(node => node.Path));
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenARequestIsCopiedOnDisk_ThenTheOriginalKeepsItsPlace()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var original = ApiRequest.New();
+        await harness.Library.SaveAsync("A", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAsync("B", original, Cancellation);
+        await harness.Library.SaveOrderAsync(["B", "A"], Cancellation);
+        var tree = Tree(harness);
+        await tree.LoadAsync(Cancellation);
+        await harness.Library.SaveAsync("C", original, Cancellation);
+
+        // Act
+        await tree.LoadAsync(Cancellation);
+
+        // Assert
+        Assert.Equal(["B", "C", "A"], tree.Nodes.Select(node => node.Path));
+    }
 }
