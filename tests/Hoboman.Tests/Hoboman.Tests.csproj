@@ -31,8 +31,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Hoboman.Cli\Hoboman.Cli.csproj" />
     <ProjectReference Include="..\..\src\Hoboman.Core\Hoboman.Core.csproj" />
     <ProjectReference Include="..\..\src\Hoboman\Hoboman.csproj" />
   </ItemGroup>
+
+  <!-- The CLI's own build holds all it needs, which the tests' folder does not, as the shared framework of ASP.NET Core leaves some of it out. -->
+  <Target Name="WriteCliBuildFolder" AfterTargets="Build">
+    <MSBuild Projects="..\..\src\Hoboman.Cli\Hoboman.Cli.csproj" Targets="GetTargetPath">
+      <Output TaskParameter="TargetOutputs" PropertyName="CliTargetPath" />
+    </MSBuild>
+    <WriteLinesToFile File="$(OutDir)cli-build.txt" Lines="$([System.IO.Path]::GetDirectoryName($(CliTargetPath)))" Overwrite="true" WriteOnlyWhenDifferent="true" />
+  </Target>
 
 </Project>

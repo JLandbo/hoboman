@@ -347,6 +347,21 @@ public sealed class RequestTabViewModelTests
     }
 
     [Fact]
+    public async Task SendAsync_WhenTheOAuthTokenIsMissingAndCanBeFetchedUnasked_ThenFetchesOneAndSendsAgain()
+    {
+        // Arrange
+        var calls = 0;
+        using var harness = new Harness(send: () => ++calls == 1 ? throw new MissingSecretException(SecretKind.OAuthToken) : Task.FromResult(new ApiResponse(200, "OK", 0, 2, [], "{}")));
+        var tab = harness.Tab(ApiRequest.New() with { Auth = new(AuthKind.OAuth2) });
+
+        // Act
+        await tab.SendAsync();
+
+        // Assert
+        Assert.Equal(("200 OK", 2), (tab.Response?.Status, calls));
+    }
+
+    [Fact]
     public async Task SendAsync_WhenAnOAuthTokenWasFetched_ThenSavesItFirst()
     {
         // Arrange

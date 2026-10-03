@@ -694,7 +694,7 @@ public sealed class RequestTabViewModel : ObservableObject
             await SaveSecretsAsync(sending.Token);
             // Secrets were all that was unsaved if the request itself is unchanged, such as after fetching a token.
             IsDirty = HasUnsavedChanges();
-            var response = await _services.Runner.RunAsync(ToRequest(), Name ?? SuggestedName ?? DraftName, environment, HistorySource.App, sending.Token);
+            var response = await _services.Runner.RunAsync(ToRequest(), Name ?? SuggestedName ?? DraftName, environment, HistorySource.App, _ => RefreshAuthAsync(), sending.Token);
             await ShowAsync(response);
         }
         catch (OperationCanceledException) when (sending.IsCancellationRequested)

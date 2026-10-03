@@ -17,9 +17,10 @@ Hoboman er et skrivebordsværktøj til at bygge, sende og undersøge API-kald. R
 - **Faner og drafts** – se ugemte requests i samlingerne, omdøb faner med dobbeltklik, og træk dem i den ønskede rækkefølge. Gemte faner og deres rækkefølge gendannes ved næste start.
 - **Miljøer og variabler** – brug `{{variabel}}` i URL, parametre, headers og auth-felter. Appen husker det senest valgte miljø.
 - **Auth med nedarvning** – ingen auth, Basic, Bearer og OAuth 2.0. En undermappe kan overtage eller tilsidesætte auth fra sin overmappe.
-- **OAuth uden omveje** – client credentials eller authorization code med PKCE og browser-login. Hent et nyt token direkte ved Auth-fanen; tokens holdes adskilt pr. miljø.
+- **OAuth uden omveje** – client credentials eller authorization code med PKCE og browser-login. Hent et nyt token direkte ved Auth-fanen; ved client credentials hentes det automatisk, når det mangler eller er udløbet. Tokens holdes adskilt pr. miljø.
 - **Base64 efter dit valg** – markér bestemte JSON-felter til encoding ved afsendelse eller decoding i svaret. Hele bodyen kan også vælges.
 - **Små værktøjer i hverdagen** – JSON/XML-formatering, sammenfoldning af JSON, stringify/parse og Base64 til udklipsholderen samt dansk og engelsk brugerflade.
+- **Kommandolinje** – send gemte og direkte requests fra scripts og AI-agenter med `hoboman-cli.exe`. Se [CLI.md](CLI.md).
 
 ## Kom hurtigt i gang
 
@@ -47,7 +48,7 @@ Vælg metode, skriv en URL, tilføj eventuel body og auth, og tryk **Send** elle
 .\install.ps1
 ```
 
-Scriptet publicerer appen til `publish\`, opretter en genvej i Start-menuen og starter `Hoboman.exe`. Hvis den publicerede app allerede kører, beder scriptet dig lukke den først, så ugemte requests ikke bliver lukket ned bag din ryg.
+Scriptet publicerer appen og `hoboman-cli.exe` til `publish\`, opretter en genvej i Start-menuen og starter `Hoboman.exe`. Hvis den publicerede app allerede kører, beder scriptet dig lukke den først, så ugemte requests ikke bliver lukket ned bag din ryg.
 
 ## Arbejd med requests
 
@@ -70,7 +71,7 @@ Opret eksempelvis variablen `host` i et miljø, og brug `https://{{host}}/api/us
 
 Vælg **Arv fra mappe** for at bruge auth fra den nærmeste overmappe, der har en selvstændig auth-indstilling. Egen auth på requesten tilsidesætter mappe-auth; **Ingen** stopper nedarvningen.
 
-Auth-fanen viser den effektive auth-type. Ved arvet OAuth henter refresh-knappen tokenet på den mappe, som ejer indstillingen. Flytning til en anden mappe ændrer den arvede auth. Et manglende eller udløbet OAuth-token skal hentes igen, før requesten kan sendes.
+Auth-fanen viser den effektive auth-type. Ved arvet OAuth henter refresh-knappen tokenet på den mappe, som ejer indstillingen. Flytning til en anden mappe ændrer den arvede auth. Ved client credentials henter Hoboman selv et nyt token og sender igen, når tokenet mangler, er udløbet, eller serveren svarer 401. Ved authorization code skal tokenet hentes med refresh-knappen.
 
 ### Base64 og udklipsholder
 
@@ -85,6 +86,7 @@ Knapperne **Stringify**, **Parse**, **Base64 Encode** og **Base64 Decode** arbej
 ```mermaid
 flowchart LR
     UI["Hoboman · WPF<br/>samlinger · faner · editor"]
+    Cli["hoboman-cli<br/>scripts · agenter"]
     Runner["RequestRunner"]
     Library["RequestLibrary<br/>requests · mapper · arvet auth"]
     Sender["HttpRequestSender<br/>variabler · Base64 · HTTP"]
@@ -93,6 +95,7 @@ flowchart LR
     API["Dit API"]
 
     UI --> Runner
+    Cli --> Runner
     Runner --> Library
     Runner --> Sender
     Sender --> Secrets
@@ -100,9 +103,9 @@ flowchart LR
     Runner --> History
 ```
 
-`App.xaml.cs` registrerer afhængighederne med dependency injection. Views og viewmodels ligger i `Hoboman`, mens HTTP, OAuth, variabler, Base64 og filbaseret lagring ligger i `Hoboman.Core` uden WPF.
+`App.xaml.cs` registrerer afhængighederne med dependency injection. Views og viewmodels ligger i `Hoboman`, mens HTTP, OAuth, variabler, Base64 og filbaseret lagring ligger i `Hoboman.Core` uden WPF. `Hoboman.Cli` er et tyndt konsolprogram oven på den samme core.
 
-`RequestRunner` finder den gældende auth, sender kaldet gennem `HttpRequestSender` og gemmer resultatet i historikken. `AuthRefreshService` samordner tokenhentning, og `CollectionChanges` sørger for, at appens gemning, flytning og sletning ikke udføres oven i hinanden. En filovervåger opdaterer appen, når lokale data ændres udefra.
+`RequestRunner` finder den gældende auth, sender kaldet gennem `HttpRequestSender` og gemmer resultatet i historikken. Mangler et token, som kan hentes uden login, henter den et nyt og sender én gang til. `AuthRefreshService` samordner tokenhentning, og `CollectionChanges` sørger for, at appens gemning, flytning og sletning ikke udføres oven i hinanden. En filovervåger opdaterer appen, når lokale data ændres udefra.
 
 ## Projektet
 
@@ -110,9 +113,10 @@ flowchart LR
 Hoboman/
 ├─ src/Hoboman/          WPF, viewmodels, editor og Windows-integrationer
 ├─ src/Hoboman.Core/     HTTP, OAuth, secrets, variabler, Base64 og lagring
+├─ src/Hoboman.Cli/      Kommandolinjeværktøjet hoboman-cli
 ├─ tests/Hoboman.Tests/  xUnit-tests af core, viewmodels og UI
 ├─ install.ps1          Publish og genvej i Start-menuen
-├─ CLI.md               Plan for et fremtidigt kommandolinjeværktøj
+├─ CLI.md               Brug af kommandolinjeværktøjet
 └─ Hoboman.slnx          Solution
 ```
 
@@ -137,7 +141,7 @@ Testprojektet bruger xUnit og Microsoft.Testing.Platform, valgt i `global.json`.
 
 ## Lokale data og hemmeligheder
 
-Data gemmes ved siden af den kørende app. Efter `install.ps1` er det i `publish\`; ved `dotnet run` er det i projektets build-output, normalt `src\Hoboman\bin\Debug\net10.0-windows\`.
+Data gemmes ved siden af den kørende app. Efter `install.ps1` er det i `publish\`, hvor `hoboman-cli.exe` deler dem; ved `dotnet run` er det i projektets build-output, normalt `src\Hoboman\bin\Debug\net10.0-windows\`.
 
 | Sti | Brug |
 |---|---|
@@ -157,4 +161,4 @@ Auth-hemmeligheder beskyttes med Windows DPAPI for den aktuelle Windows-bruger. 
 
 ## Kommandolinjeværktøj
 
-Et CLI er beskrevet i [CLI.md](CLI.md), men er endnu ikke implementeret. Dokumentet er en plan, ikke en liste over kommandoer, der kan bruges i den nuværende app.
+`hoboman-cli.exe` sender gemte og direkte requests uden GUI'en og skriver svaret som JSON. Kommandoer, variabler, exitkoder, auth og et eksempel på at kæde kald sammen i PowerShell står i [CLI.md](CLI.md).

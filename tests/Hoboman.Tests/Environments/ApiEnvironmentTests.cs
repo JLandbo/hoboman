@@ -40,4 +40,37 @@ public sealed class ApiEnvironmentTests
         // Assert
         Assert.Equal("{{base}}/users", text);
     }
+
+    [Fact]
+    public void WithVariables_WhenANameIsSaved_ThenTheTemporaryValueWins()
+    {
+        // Act
+        var environment = new ApiEnvironment("Dev", [new("name", "saved")]).WithVariables([new("name", "temporary")]);
+
+        // Assert
+        Assert.Equal("temporary", environment.Resolve("{{name}}"));
+    }
+
+    [Fact]
+    public void WithVariables_WhenTheSavedValueIsDisabled_ThenUsesTheTemporaryValue()
+    {
+        // Act
+        var environment = new ApiEnvironment("Dev", [new("name", "saved", Enabled: false)]).WithVariables([new("name", "temporary")]);
+
+        // Assert
+        Assert.Equal("temporary", environment.Resolve("{{name}}"));
+    }
+
+    [Fact]
+    public void WithVariables_WhenGivenTemporaryValues_ThenLeavesTheOriginalUnchanged()
+    {
+        // Arrange
+        var original = new ApiEnvironment("Dev", [new("name", "saved")]);
+
+        // Act
+        original.WithVariables([new("name", "temporary")]);
+
+        // Assert
+        Assert.Equal("saved", original.Resolve("{{name}}"));
+    }
 }

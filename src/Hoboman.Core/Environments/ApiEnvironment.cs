@@ -20,6 +20,8 @@ public sealed partial record ApiEnvironment(string Name, IReadOnlyList<KeyValue>
     public string Resolve(string text) =>
         Variable().Replace(text, match => Variables.FirstOrDefault(variable => variable.Enabled && variable.Name == match.Groups[1].Value)?.Value ?? match.Value);
 
+    public ApiEnvironment WithVariables(IReadOnlyList<KeyValue> variables) => new(Name, [.. variables, .. Variables]);
+
     [GeneratedRegex(_variable)]
     private static partial Regex Variable();
 

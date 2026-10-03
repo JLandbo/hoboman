@@ -1,0 +1,535 @@
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
+using Hoboman.Cli;
+using Hoboman.Tests.Auth;
+using Hoboman.Tests.Sending;
+
+namespace Hoboman.Tests.Cli;
+
+public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoServer>, IDisposable
+{
+    static readonly OAuthToken _fetched = new("fetched", "Bearer", null, null);
+
+    readonly TemporaryFolder _temporary = new();
+    readonly MemoryStream _output = new();
+    readonly MemoryStream _error = new();
+    HttpClients? _clients;
+
+    AppFolder Folder => new(_temporary.Path);
+
+    CancellationToken Cancellation => TestContext.Current.CancellationToken;
+
+    RequestLibrary Library => new(Folder, NullLogger<RequestLibrary>.Instance);
+
+    SettingsStore Settings => new(Folder, NullLogger<SettingsStore>.Instance);
+
+    EnvironmentStore Environments => new(Folder, NullLogger<EnvironmentStore>.Instance);
+
+    SecretStore Secrets => new(Folder, NullLogger<SecretStore>.Instance);
+
+    HistoryStore History => new(Folder, NullLogger<HistoryStore>.Instance);
+
+    ApiRequest Request => ApiRequest.New() with { Url = $"{server.Http}", Auth = AuthSettings.None };
+
+    string Output => Encoding.UTF8.GetString(_output.ToArray());
+
+    string? Problem
+    {
+        get
+        {
+            using var error = JsonDocument.Parse(_error.ToArray());
+            return error.RootElement.GetProperty("error").GetString();
+        }
+    }
+
+    Echo Echo
+    {
+        get
+        {
+            using var response = JsonDocument.Parse(_output.ToArray());
+            return JsonSerializer.Deserialize<Echo>(response.RootElement.GetProperty("body").GetString()!, JsonSerializerOptions.Web)!;
+        }
+    }
+
+    public void Dispose()
+    {
+        _clients?.Dispose();
+        _output.Dispose();
+        _error.Dispose();
+        _temporary.Dispose();
+    }
+
+    // Without a token client, a token cannot be fetched, as when the server refuses.
+    Task<int> RunAsync(string[] arguments, IRequestSender? sender = null, FakeOAuthClient? oauth = null, TextReader? input = null, CancellationToken? cancellationToken = null)
+    {
+        sender ??= new HttpRequestSender(Secrets, _clients ??= new(Settings), TimeProvider.System, NullLogger<HttpRequestSender>.Instance);
+        var runner = new RequestRunner(sender, Library, History, NullLogger<RequestRunner>.Instance);
+        var tokens = new UnaskedTokens(oauth ?? new(_ => throw new OAuthException(OAuthProblem.Denied, "access_denied")), Secrets, NullLogger<UnaskedTokens>.Instance);
+        return new CliApplication(Library, Settings, Environments, runner, tokens, new(_output, _error), new(input ?? TextReader.Null, input is not null)).RunAsync(arguments, cancellationToken ?? Cancellation);
+    }
+
+    async Task<IReadOnlyList<HistoryFile>> CallsAsync() => await History.ReadAsync(await History.LatestAsync(10, Cancellation), Cancellation);
+
+    static FakeSender Answering(int status = 200) => new(() => Task.FromResult(new ApiResponse(status, "OK", 0, 0, [], "")));
+
+    static FakeSender Failing(Exception exception) => new(() => Task.FromException<ApiResponse>(exception));
+
+    [Fact]
+    public async Task RunAsync_WhenListing_ThenWritesTheNamesSorted()
+    {
+        // Arrange
+        await Library.SaveAsync("z-last", Request, Cancellation);
+        await Library.SaveAsync("Nested/b", Request, Cancellation);
+        await Library.SaveAsync("a-first", Request, Cancellation);
+
+        // Act
+        await RunAsync(["list"]);
+
+        // Assert
+        Assert.Equal($"a-first{Environment.NewLine}Nested/b{Environment.NewLine}z-last{Environment.NewLine}", Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenListing_ThenReadsNoOtherData()
+    {
+        // Arrange
+        await Library.SaveAsync("a", Request, Cancellation);
+        foreach (var path in new[] { Folder.Settings, Folder.Environments, Folder.Secrets, Folder.RequestOrder })
+        {
+            await File.WriteAllTextAsync(path, "{", Cancellation);
+        }
+
+        // Act
+        var exitCode = await RunAsync(["list"]);
+
+        // Assert
+        Assert.Equal(0, exitCode);
+    }
+
+    [Theory]
+    [InlineData("list")]
+    [InlineData("--help")]
+    [InlineData("--version")]
+    public async Task RunAsync_WhenNothingIsSent_ThenCreatesNoData(string command)
+    {
+        // Act
+        var exitCode = await RunAsync([command]);
+
+        // Assert
+        Assert.Equal((0, false), (exitCode, Directory.Exists(Folder.Root)));
+    }
+
+    [Theory]
+    [InlineData("--help", "Commands:")]
+    [InlineData("--version", "1.0.0")]
+    public async Task RunAsync_WhenHelpOrVersionIsAsked_ThenWritesItAsText(string option, string expected)
+    {
+        // Act
+        await RunAsync([option]);
+
+        // Assert
+        Assert.Contains(expected, Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAResponseArrives_ThenWritesItAsOneLineOfJson()
+    {
+        // Arrange
+        var sender = new FakeSender(() => Task.FromResult(new ApiResponse(503, "Reason", 12, 42, [new("X", "one"), new("X", "two")], "Ærø")));
+
+        // Act
+        await RunAsync(["send", "GET", "https://localhost/"], sender);
+
+        // Assert
+        Assert.Equal($$"""{"status":503,"reason":"Reason","elapsedMs":12,"size":42,"headers":[{"name":"X","value":"one"},{"name":"X","value":"two"}],"body":"Ærø"}{{Environment.NewLine}}""", Output);
+    }
+
+    [Theory]
+    [InlineData(200, 0)]
+    [InlineData(299, 0)]
+    [InlineData(400, 1)]
+    [InlineData(503, 1)]
+    public async Task RunAsync_WhenAResponseArrives_ThenExitsByItsStatus(int status, int expected)
+    {
+        // Act
+        var exitCode = await RunAsync(["send", "GET", "https://localhost/"], Answering(status));
+
+        // Assert
+        Assert.Equal(expected, exitCode);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenSending_ThenRemembersTheCallAsFromTheCli()
+    {
+        // Act
+        await RunAsync(["send", "GET", "https://localhost/"], Answering());
+
+        // Assert
+        Assert.Equal(HistorySource.Cli, Assert.Single(await CallsAsync()).Entry.Source);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenSendingDirectlyWithoutABody_ThenSendsNone()
+    {
+        // Act
+        await RunAsync(["send", "GET", "https://localhost/"], Answering());
+
+        // Assert
+        Assert.Equal(BodyKind.None, Assert.Single(await CallsAsync()).Entry.Request.BodyKind);
+    }
+
+    [Theory]
+    [InlineData("--json", "application/json; charset=utf-8")]
+    [InlineData("--text", "text/plain; charset=utf-8")]
+    public async Task RunAsync_WhenSendingABody_ThenSendsItAsItsKind(string option, string contentType)
+    {
+        // Act
+        await RunAsync(["send", "POST", $"{server.Http}", option, "{\"city\":\"Ærø\"}"]);
+
+        // Assert
+        Assert.Equal(("{\"city\":\"Ærø\"}", contentType), (Echo.Body, Echo.Headers["Content-Type"]));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheBodyStartsWithTwoAts_ThenSendsOne()
+    {
+        // Act
+        await RunAsync(["send", "POST", $"{server.Http}", "--text", "@@literal"]);
+
+        // Assert
+        Assert.Equal("@literal", Echo.Body);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheBodyIsAFile_ThenSendsItsTextAsItIs()
+    {
+        // Arrange
+        Directory.CreateDirectory(Folder.Root);
+        var path = Path.Combine(Folder.Root, "body.txt");
+        await File.WriteAllTextAsync(path, "@Ærø 🚀", new UTF8Encoding(true), Cancellation);
+
+        // Act
+        await RunAsync(["send", "POST", $"{server.Http}", "--text", $"@{path}"]);
+
+        // Assert
+        Assert.Equal("@Ærø 🚀", Echo.Body);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAHeaderValueHoldsAColon_ThenKeepsIt()
+    {
+        // Act
+        await RunAsync(["send", "GET", $"{server.Http}", "-H", " X : a:b "]);
+
+        // Assert
+        Assert.Equal("a:b", Echo.Headers["X"]);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAHeaderIsRepeated_ThenSendsBoth()
+    {
+        // Act
+        await RunAsync(["send", "GET", $"{server.Http}", "-H", "X: one", "-H", "X: two"]);
+
+        // Assert
+        Assert.Equal("one, two", Echo.Headers["X"]);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenSendingDirectly_ThenSendsNoAuth()
+    {
+        // Act
+        await RunAsync(["send", "GET", $"{server.Http}"]);
+
+        // Assert
+        Assert.False(Echo.Headers.ContainsKey("Authorization"));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenSendingASavedRequest_ThenRemembersItByName()
+    {
+        // Arrange
+        await Library.SaveAsync("Folder/Send", Request, Cancellation);
+
+        // Act
+        await RunAsync(["send", "Folder/Send"]);
+
+        // Assert
+        Assert.Equal("Folder/Send", Assert.Single(await CallsAsync()).Entry.Name);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenNoEnvironmentIsGiven_ThenUsesTheSelectedOne()
+    {
+        // Arrange
+        await Settings.UpdateAsync(_ => new(EnvironmentName: "Selected"), Cancellation);
+        await Environments.SaveAsync([new("Selected", []), new("Other", [])], Cancellation);
+        var sender = Answering();
+
+        // Act
+        await RunAsync(["send", "GET", "https://localhost/"], sender);
+
+        // Assert
+        Assert.Equal("Selected", sender.Environment?.Name);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAnEnvironmentIsGiven_ThenUsesIt()
+    {
+        // Arrange
+        await Settings.UpdateAsync(_ => new(EnvironmentName: "Selected"), Cancellation);
+        await Environments.SaveAsync([new("Selected", []), new("Other", [])], Cancellation);
+        var sender = Answering();
+
+        // Act
+        await RunAsync(["send", "GET", "https://localhost/", "--env", "Other"], sender);
+
+        // Assert
+        Assert.Equal("Other", sender.Environment?.Name);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenNoEnvironmentIsSelected_ThenUsesNoneWithoutReadingTheEnvironments()
+    {
+        // Arrange
+        Directory.CreateDirectory(Folder.Root);
+        await File.WriteAllTextAsync(Folder.Environments, "{", Cancellation);
+        var sender = Answering();
+
+        // Act
+        await RunAsync(["send", "GET", "https://localhost/"], sender);
+
+        // Assert
+        Assert.Same(ApiEnvironment.None, sender.Environment);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RunAsync_WhenTheEnvironmentIsUnknown_ThenFailsBeforeSending(bool selected)
+    {
+        // Arrange
+        await Environments.SaveAsync([new("Dev", [])], Cancellation);
+        await Settings.UpdateAsync(_ => new(EnvironmentName: selected ? "dev" : null), Cancellation);
+        string[] options = selected ? [] : ["--env", "dev"];
+        var sender = Answering();
+
+        // Act
+        var exitCode = await RunAsync(["send", "GET", "https://localhost/", .. options], sender);
+
+        // Assert
+        Assert.Equal((2, "Selected environment was not found.", true), (exitCode, Problem, sender.Request is null));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RunAsync_WhenVariablesComeFromEverySource_ThenOptionsWinOverTheFileOverTheEnvironment(bool fileFirst)
+    {
+        // Arrange
+        await Environments.SaveAsync([new("Dev", [new("a", "saved"), new("b", "saved"), new("c", "saved")])], Cancellation);
+        Directory.CreateDirectory(Folder.Root);
+        var path = Path.Combine(Folder.Root, "variables.json");
+        await File.WriteAllTextAsync(path, """{"a":"file","b":"file"}""", Cancellation);
+        string[] options = fileFirst ? ["--vars", path, "--var", "a=option"] : ["--var", "a=option", "--vars", path];
+
+        // Act
+        await RunAsync(["send", "GET", $"{server.Http}", "--env", "Dev", "-H", "X: {{a}}/{{b}}/{{c}}", .. options]);
+
+        // Assert
+        Assert.Equal("option/file/saved", Echo.Headers["X"]);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAValueFromAResponseIsGivenToTheNextCall_ThenSendsIt()
+    {
+        // Arrange
+        await Library.SaveAsync("Create", Request with { Method = "POST", BodyKind = BodyKind.Json, Body = """{"id":42}""" }, Cancellation);
+        await Library.SaveAsync("Next", Request with { Url = $"{server.Http}items/{{{{id}}}}" }, Cancellation);
+        await RunAsync(["send", "Create"]);
+        using var input = new StringReader(Echo.Body);
+        _output.SetLength(0);
+
+        // Act
+        await RunAsync(["send", "Next", "--vars", "-"], input: input);
+
+        // Assert
+        Assert.Equal("/items/42", Echo.Target);
+    }
+
+    [Theory]
+    [InlineData(new[] { "--var", "missing-equals" }, null)]
+    [InlineData(new[] { "--vars", "-" }, null)]
+    [InlineData(new[] { "--vars", "-" }, "{")]
+    [InlineData(new[] { "--vars", "-" }, "[]")]
+    public async Task RunAsync_WhenTheVariablesAreInvalid_ThenFailsBeforeSending(string[] options, string? json)
+    {
+        // Arrange
+        using var input = json is null ? null : new StringReader(json);
+
+        // Act
+        var exitCode = await RunAsync(["send", "GET", "https://localhost/", .. options], Answering(), input: input);
+
+        // Assert
+        Assert.Equal((2, "Invalid variable input.", 0), (exitCode, Problem, (await CallsAsync()).Count));
+    }
+
+    [Theory]
+    [InlineData(new[] { "send", "missing" }, "Saved request could not be loaded.")]
+    [InlineData(new[] { "send", "../outside" }, "Saved request could not be loaded.")]
+    [InlineData(new[] { "send", "POST", "https://localhost/", "--text", "@missing" }, "Input could not be read.")]
+    [InlineData(new[] { "send", "GET", "https://localhost/", "--vars", "missing" }, "Input could not be read.")]
+    [InlineData(new[] { "send", "GET", "https://localhost/", "-H", "missing-colon" }, "Invalid request input.")]
+    [InlineData(new[] { "send", "GET", "https://localhost/", "-H", ": value" }, "Invalid request input.")]
+    [InlineData(new[] { "send", "GET", "https://localhost/", "-H", "X: a\r\nY: b" }, "Invalid request input.")]
+    [InlineData(new[] { "send", "GET", "https://localhost/", "--unknown", "value" }, "Invalid command arguments. Use --help for usage.")]
+    public async Task RunAsync_WhenTheInputIsInvalid_ThenFailsBeforeSending(string[] arguments, string problem)
+    {
+        // Act
+        var exitCode = await RunAsync(arguments, Answering());
+
+        // Assert
+        Assert.Equal((2, problem, 0), (exitCode, Problem, (await CallsAsync()).Count));
+    }
+
+    [Theory]
+    [InlineData(false, "Saved request could not be loaded.")]
+    [InlineData(true, "Environment settings could not be read.")]
+    public async Task RunAsync_WhenAFileIsCorrupt_ThenFailsBeforeSending(bool environments, string problem)
+    {
+        // Arrange
+        await Library.SaveAsync("Send", Request, Cancellation);
+        await File.WriteAllTextAsync(environments ? Folder.Environments : Path.Combine(Folder.Requests, "Send.json"), "{", Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["send", "Send", "--env", "Dev"]);
+
+        // Assert
+        Assert.Equal((2, problem, 0), (exitCode, Problem, (await CallsAsync()).Count));
+    }
+
+    [Theory]
+    [InlineData("-url")]
+    [InlineData("not-a-url")]
+    public async Task RunAsync_WhenTheUrlIsInvalid_ThenSaysSoAndRemembersTheAttempt(string url)
+    {
+        // Act
+        await RunAsync(["send", "--", "GET", url]);
+
+        // Assert
+        Assert.Equal(("Invalid request URL.", 1), (Problem, (await CallsAsync()).Count));
+    }
+
+    [Theory]
+    [InlineData(true, "Network request failed.")]
+    [InlineData(false, "Request failed.")]
+    public async Task RunAsync_WhenSendingFails_ThenSaysSoWithoutTheDetails(bool network, string problem)
+    {
+        // Arrange
+        var sender = Failing(network ? new HttpRequestException("secret") : new InvalidOperationException("secret"));
+
+        // Act
+        var exitCode = await RunAsync(["send", "GET", "https://localhost/"], sender);
+
+        // Assert
+        Assert.Equal((2, problem), (exitCode, Problem));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheCallTimesOut_ThenSaysSo()
+    {
+        // Act
+        await RunAsync(["send", "GET", "https://localhost/"], Failing(new TaskCanceledException()));
+
+        // Assert
+        Assert.Equal("Request timed out.", Problem);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheCallerCancels_ThenSaysSoAndRemembersNothing()
+    {
+        // Arrange
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(Cancellation);
+        var sending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sender = new FakeSender(() =>
+        {
+            sending.SetResult();
+            return new TaskCompletionSource<ApiResponse>().Task;
+        });
+        var running = RunAsync(["send", "GET", "https://localhost/"], sender, cancellationToken: cancellation.Token);
+        await sending.Task.WaitAsync(Cancellation);
+
+        // Act
+        await cancellation.CancelAsync();
+        await running;
+
+        // Assert
+        Assert.Equal(("Request was cancelled.", 0), (Problem, (await CallsAsync()).Count));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenCancelledWhileReadingVariables_ThenSaysSo()
+    {
+        // Arrange
+        var input = new PendingReader();
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(Cancellation);
+        var running = RunAsync(["send", "GET", "https://localhost/", "--vars", "-"], Answering(), input: input, cancellationToken: cancellation.Token);
+        await input.Started.Task.WaitAsync(Cancellation);
+
+        // Act
+        await cancellation.CancelAsync();
+        await running;
+
+        // Assert
+        Assert.Equal("Request was cancelled.", Problem);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RunAsync_WhenTheOAuthTokenIsMissingOrExpired_ThenFetchesOneAndSends(bool expired)
+    {
+        // Arrange
+        var request = Request with { Auth = new(AuthKind.OAuth2) };
+        await Library.SaveAsync("Send", request, Cancellation);
+        if (expired)
+        {
+            await Secrets.SaveAsync(request.Id, SecretKind.OAuthToken, new OAuthToken("expired", "Bearer", DateTimeOffset.UtcNow.AddMinutes(-1), null).ToJson(), Cancellation);
+        }
+
+        // Act
+        await RunAsync(["send", "Send"], oauth: new(_ => Task.FromResult(_fetched)));
+
+        // Assert
+        Assert.Equal("Bearer fetched", Echo.Headers["Authorization"]);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenATokenIsFetched_ThenFetchesItWithTheSavedEnvironment()
+    {
+        // Arrange
+        var oauth = new FakeOAuthClient(_ => Task.FromResult(_fetched));
+        await Library.SaveAsync("Send", Request with { Auth = new(AuthKind.OAuth2) }, Cancellation);
+        await Environments.SaveAsync([new("Dev", [new("clientId", "saved")])], Cancellation);
+
+        // Act
+        await RunAsync(["send", "Send", "--env", "Dev", "--var", "clientId=temporary"], oauth: oauth);
+
+        // Assert
+        Assert.Equal("saved", oauth.Asked?.Environment?.Resolve("{{clientId}}"));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenNoTokenCanBeFetched_ThenAsksForItToBeFetchedInHoboman()
+    {
+        // Arrange
+        await Library.SaveAsync("Send", Request with { Auth = new(AuthKind.OAuth2) }, Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["send", "Send"]);
+
+        // Assert
+        Assert.Equal((2, "Fetch a new OAuth token in Hoboman before sending this request."), (exitCode, Problem));
+    }
+}

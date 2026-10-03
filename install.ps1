@@ -4,8 +4,10 @@ $exe = Join-Path $publish "Hoboman.exe"
 while (Get-Process Hoboman -ErrorAction SilentlyContinue | Where-Object Path -eq $exe) {
     Read-Host "Hoboman kører. Luk Hoboman, og tryk Enter"
 }
-dotnet publish "$PSScriptRoot\src\Hoboman" -c Release -o $publish
-if ($LASTEXITCODE -ne 0) { throw "Publish fejlede." }
+foreach ($project in "Hoboman", "Hoboman.Cli") {
+    dotnet publish "$PSScriptRoot\src\$project" -c Release -o $publish
+    if ($LASTEXITCODE -ne 0) { throw "Publish af $project fejlede." }
+}
 
 $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut("$([Environment]::GetFolderPath('Programs'))\Hoboman.lnk")
 $shortcut.TargetPath = $exe

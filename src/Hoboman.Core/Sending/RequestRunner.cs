@@ -1,3 +1,4 @@
+using Hoboman.Core.Auth;
 using Hoboman.Core.Environments;
 using Hoboman.Core.History;
 using Hoboman.Core.Requests;
@@ -8,21 +9,46 @@ namespace Hoboman.Core.Sending;
 
 public sealed class RequestRunner(IRequestSender sender, RequestLibrary library, HistoryStore history, ILogger<RequestRunner> logger)
 {
-    public async Task<ApiResponse> RunAsync(ApiRequest request, string? name, ApiEnvironment? environment, HistorySource source, CancellationToken cancellationToken)
+    // A call that fails for want of a token that can be fetched unasked gets a new one and is made once more.
+    // The calls are awaited without ConfigureAwait(false), so the token is fetched where the caller called from, such as the UI thread.
+    public async Task<ApiResponse> RunAsync(ApiRequest request, string? name, ApiEnvironment? environment, HistorySource source, Func<AuthSource, Task<bool>> fetchToken, CancellationToken cancellationToken)
     {
-        ApiResponse response;
+        AuthSource? auth = null;
         try
         {
-            var auth = await library.AuthOfAsync(name, request, cancellationToken).ConfigureAwait(false);
-            response = await sender.SendAsync(request, auth, environment, cancellationToken).ConfigureAwait(false);
+            var response = await RunOnceAsync();
+            if (response.StatusCode != 401 || !await FetchedAsync())
+            {
+                return response;
+            }
         }
-        catch (Exception exception) when (!(exception is OperationCanceledException && cancellationToken.IsCancellationRequested))
+        catch (Exception exception) when (exception is ExpiredTokenException or MissingSecretException { Kind: SecretKind.OAuthToken })
         {
-            await RememberAsync(EntryOf(null, exception.Message)).ConfigureAwait(false);
-            throw;
+            if (!await FetchedAsync())
+            {
+                throw;
+            }
         }
-        await RememberAsync(EntryOf(response, null)).ConfigureAwait(false);
-        return response;
+        return await RunOnceAsync();
+
+        async Task<ApiResponse> RunOnceAsync()
+        {
+            ApiResponse response;
+            try
+            {
+                auth = await library.AuthOfAsync(name, request, cancellationToken).ConfigureAwait(false);
+                response = await sender.SendAsync(request, auth, environment, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (!(exception is OperationCanceledException && cancellationToken.IsCancellationRequested))
+            {
+                await RememberAsync(EntryOf(null, exception.Message)).ConfigureAwait(false);
+                throw;
+            }
+            await RememberAsync(EntryOf(response, null)).ConfigureAwait(false);
+            return response;
+        }
+
+        async Task<bool> FetchedAsync() => auth is not null && UnaskedTokens.CanFetch(auth.Settings) && await fetchToken(auth);
 
         HistoryEntry EntryOf(ApiResponse? answer, string? error) =>
             new(DateTimeOffset.Now, source, AddressOf(request, environment), request, name, environment?.Name, answer, error);
