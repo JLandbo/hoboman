@@ -13,8 +13,6 @@ public sealed class WorkflowRunnerTests : IDisposable
 
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
-    RequestLibrary Library => new(Folder, NullLogger<RequestLibrary>.Instance);
-
     static FakeSender Answering(params ApiResponse[] responses)
     {
         var queue = new Queue<ApiResponse>(responses);
@@ -23,21 +21,16 @@ public sealed class WorkflowRunnerTests : IDisposable
 
     static ApiResponse Ok(string body, params ResponseHeader[] headers) => new(200, "OK", 1, body.Length, headers, body);
 
-    static ApiRequest Request(string url) => ApiRequest.New() with { Url = url, Auth = AuthSettings.None };
+    static WorkflowRequest Request(string url) => new() { Url = url };
 
-    async Task<Guid> SaveAsync(string name, ApiRequest request)
-    {
-        await Library.SaveAsync(name, request, Cancellation);
-        return request.Id;
-    }
-
-    async Task<RunOutcome> RunAsync(Workflow workflow, FakeSender sender, Dictionary<string, JsonElement>? parameters = null, CancellationToken? cancellationToken = null, Action<WorkflowEvent>? told = null, ApiEnvironment? environment = null)
+    async Task<RunOutcome> RunAsync(Workflow workflow, FakeSender sender, Dictionary<string, JsonElement>? parameters = null, CancellationToken? cancellationToken = null, Action<WorkflowEvent>? told = null, ApiEnvironment? environment = null,
+        Func<AuthSource, Task<bool>>? fetchToken = null)
     {
         environment ??= ApiEnvironment.None;
-        var check = new WorkflowCheck(Library, new SecretStore(Folder, NullLogger<SecretStore>.Instance), NullLogger<WorkflowCheck>.Instance);
+        var check = new WorkflowCheck(new WorkflowLibrary(Folder, NullLogger<WorkflowLibrary>.Instance), new SecretStore(Folder, NullLogger<SecretStore>.Instance), NullLogger<WorkflowCheck>.Instance);
         var checkedWorkflow = await check.CheckAsync("Ordre-sync", workflow, environment, parameters ?? [], Cancellation);
-        var runner = new WorkflowRunner(new RequestRunner(sender, Library, new HistoryStore(Folder, NullLogger<HistoryStore>.Instance), NullLogger<RequestRunner>.Instance), Folder, NullLogger<WorkflowRunner>.Instance);
-        return await runner.RunAsync(checkedWorkflow, environment, HistorySource.Cli, _ => Task.FromResult(false), workflowEvent =>
+        var runner = new WorkflowRunner(sender, Folder, NullLogger<WorkflowRunner>.Instance);
+        return await runner.RunAsync(checkedWorkflow, environment, fetchToken ?? (_ => Task.FromResult(false)), workflowEvent =>
         {
             _events.Add(workflowEvent);
             told?.Invoke(workflowEvent);
@@ -47,13 +40,98 @@ public sealed class WorkflowRunnerTests : IDisposable
 
     T Single<T>() where T : WorkflowEvent => Assert.Single(_events.OfType<T>());
 
+    async Task ScriptAsync(string name, string code)
+    {
+        Directory.CreateDirectory(Path.Combine(Folder.Workflows, "Ordre-sync"));
+        await new WorkflowLibrary(Folder, NullLogger<WorkflowLibrary>.Instance).CreateScriptAsync("Ordre-sync", name, code, Cancellation);
+    }
+
     public void Dispose() => _temporary.Dispose();
+
+    [Fact]
+    public async Task RunAsync_WhenAScriptMapsAnEarlierResponse_ThenALaterStepSendsItsOutput()
+    {
+        // Arrange
+        var order = Request("https://dev.local/orders/1");
+        var import = Request("https://dev.local/import/{{reference}}");
+        await ScriptAsync("map.js", "return { reference: `${vars.order.id}-${vars.order.lines.length}` };");
+        var workflow = new Workflow
+        {
+            Id = Guid.NewGuid(),
+            Variables = [new("order"), new("reference")],
+            Steps = [new() { Request = order, Saves = [new("order", "$.data")] }, new() { Script = "map.js", Saves = [new("reference", "$.reference")] }, new() { Request = import }],
+        };
+
+        // Act
+        var outcome = await RunAsync(workflow, Answering(Ok("""{"data":{"id":"o-17","lines":[1,2]}}"""), Ok("{}")));
+
+        // Assert
+        Assert.Equal((RunOutcome.Succeeded, "JS", "dev.local/import/o-17-2"), (outcome, _events.OfType<StepStarted>().ElementAt(1).Method, _events.OfType<StepStarted>().Last().Address));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAScriptReadsVars_ThenGetsTheEnvironmentUnlessTheWorkflowHasTheName()
+    {
+        // Arrange
+        var echo = Request("https://dev.local/{{result}}");
+        await ScriptAsync("map.js", "return { result: `${vars.host}-${vars.tenant}` };");
+        var workflow = new Workflow
+        {
+            Id = Guid.NewGuid(),
+            Parameters = [new("tenant") { Default = JsonSerializer.SerializeToElement("from-workflow") }],
+            Variables = [new("result")],
+            Steps = [new() { Script = "map.js", Saves = [new("result", "$.result")] }, new() { Request = echo }],
+        };
+        var environment = new ApiEnvironment("Dev", [new("host", "from-environment"), new("tenant", "ignored")]);
+
+        // Act
+        await RunAsync(workflow, Answering(Ok("{}")), environment: environment);
+
+        // Assert
+        Assert.Equal("dev.local/from-environment-from-workflow", _events.OfType<StepStarted>().Last().Address);
+    }
+
+    [Theory]
+    [InlineData(false, RunOutcome.Succeeded)]
+    [InlineData(true, RunOutcome.Failed)]
+    public async Task RunAsync_WhenAScriptReturnsNothing_ThenFailsOnlyIfItHasSomethingToSave(bool saves, RunOutcome expected)
+    {
+        // Arrange
+        await ScriptAsync("check.js", "if (!vars.order) { throw new Error('No order'); }");
+        var workflow = new Workflow
+        {
+            Id = Guid.NewGuid(),
+            Variables = [new("order") { Default = JsonSerializer.SerializeToElement("o-17") }],
+            Steps = [new() { Script = "check.js", Saves = saves ? [new("order", "$")] : [] }],
+        };
+
+        // Act
+        var outcome = await RunAsync(workflow, Answering());
+
+        // Assert
+        Assert.Equal(expected, outcome);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAScriptFails_ThenTellsItsLineAndSkipsTheRest()
+    {
+        // Arrange
+        var ping = Request("https://dev.local/ping");
+        await ScriptAsync("map.js", "const order = vars;\nthrow new Error('No order');");
+        var workflow = new Workflow { Id = Guid.NewGuid(), Steps = [new() { Script = "map.js" }, new() { Request = ping }] };
+
+        // Act
+        var outcome = await RunAsync(workflow, Answering());
+
+        // Assert
+        Assert.Equal((RunOutcome.Failed, "map.js:2: No order", 1), (outcome, Single<StepFinished>().Error, Single<StepSkipped>().Index));
+    }
 
     [Fact]
     public async Task RunAsync_WhenEveryStepSucceeds_ThenTellsTheEventsInOrder()
     {
         // Arrange
-        var ping = await SaveAsync("Ping", Request("https://dev.local/ping"));
+        var ping = Request("https://dev.local/ping");
 
         // Act
         var outcome = await RunAsync(new() { Id = Guid.NewGuid(), Steps = [new() { Request = ping }] }, Answering(Ok("{}")));
@@ -63,73 +141,11 @@ public sealed class WorkflowRunnerTests : IDisposable
     }
 
     [Fact]
-    public async Task RunAsync_WhenTheRequestIsMoved_ThenStillRunsIt()
-    {
-        // Arrange
-        var login = await SaveAsync("Shop/Login", Request("https://dev.local/login"));
-        await Library.RenameAsync("Shop/Login", "Auth/Login", Cancellation);
-
-        // Act
-        var outcome = await RunAsync(new() { Id = Guid.NewGuid(), Steps = [new() { Request = login }] }, Answering(Ok("{}")));
-
-        // Assert
-        Assert.Equal((RunOutcome.Succeeded, "Auth/Login"), (outcome, Single<StepStarted>().Request));
-    }
-
-    [Fact]
-    public async Task RunAsync_WhenTheSameRequestRunsTwiceWithDifferentWith_ThenEachSendsItsOwnValue()
-    {
-        // Arrange
-        var order = await SaveAsync("Hent ordre", Request("https://dev.local/orders/{{orderId}}"));
-        var workflow = new Workflow
-        {
-            Id = Guid.NewGuid(),
-            Parameters = [new("first"), new("second")],
-            Steps = [new() { Request = order, With = [new("orderId", "{{first}}")] }, new() { Request = order, With = [new("orderId", "{{second}}-b")] }],
-        };
-        var parameters = new Dictionary<string, JsonElement> { ["first"] = JsonSerializer.SerializeToElement("o-17"), ["second"] = JsonSerializer.SerializeToElement("o-18") };
-
-        // Act
-        await RunAsync(workflow, Answering(Ok("{}"), Ok("{}")), parameters);
-
-        // Assert
-        Assert.Equal(["dev.local/orders/o-17", "dev.local/orders/o-18-b"], _events.OfType<StepStarted>().Select(started => started.Address));
-    }
-
-    [Fact]
-    public async Task RunAsync_WhenAWithValueUsesAnotherWithName_ThenUsesTheRunValue()
-    {
-        // Arrange
-        var page = await SaveAsync("Side", Request("https://dev.local/{{a}}/{{b}}"));
-        var workflow = new Workflow { Id = Guid.NewGuid(), Parameters = [new("b")], Steps = [new() { Request = page, With = [new("a", "{{b}}"), new("b", "x")] }] };
-
-        // Act
-        await RunAsync(workflow, Answering(Ok("{}")), new() { ["b"] = JsonSerializer.SerializeToElement("y") });
-
-        // Assert
-        Assert.Equal("dev.local/y/x", Single<StepStarted>().Address);
-    }
-
-    [Fact]
-    public async Task RunAsync_WhenOnlyTheFirstStepHasWith_ThenTheNextStepDoesNotSeeIt()
-    {
-        // Arrange
-        var ping = await SaveAsync("Ping", Request("https://{{host}}/ping"));
-        var workflow = new Workflow { Id = Guid.NewGuid(), Parameters = [new("host")], Steps = [new() { Request = ping, With = [new("host", "step.local")] }, new() { Request = ping }] };
-
-        // Act
-        await RunAsync(workflow, Answering(Ok("{}"), Ok("{}")), new() { ["host"] = JsonSerializer.SerializeToElement("dev.local") });
-
-        // Assert
-        Assert.Equal(["step.local/ping", "dev.local/ping"], _events.OfType<StepStarted>().Select(started => started.Address));
-    }
-
-    [Fact]
     public async Task RunAsync_WhenTheEnvironmentHasTheSavedName_ThenTheSavedValueWinsAndTheRestComesFromTheEnvironment()
     {
         // Arrange
-        var login = await SaveAsync("Login", Request("https://{{host}}/login"));
-        var order = await SaveAsync("Hent ordre", Request("https://{{host}}/{{token}}"));
+        var login = Request("https://{{host}}/login");
+        var order = Request("https://{{host}}/{{token}}");
         var workflow = new Workflow
         {
             Id = Guid.NewGuid(),
@@ -149,8 +165,8 @@ public sealed class WorkflowRunnerTests : IDisposable
     public async Task RunAsync_WhenAStepSavesAToken_ThenTheNextStepSendsIt()
     {
         // Arrange
-        var login = await SaveAsync("Login", Request("https://dev.local/login"));
-        var order = await SaveAsync("Hent ordre", Request("https://dev.local/orders") with { Headers = [new("Authorization", "Bearer {{token}}")] });
+        var login = Request("https://dev.local/login");
+        var order = Request("https://dev.local/orders") with { Headers = [new("Authorization", "Bearer {{token}}")] };
         var workflow = new Workflow
         {
             Id = Guid.NewGuid(),
@@ -167,12 +183,60 @@ public sealed class WorkflowRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task RunAsync_WhenAStepIsSent_ThenSendsItWithItsOwnAuth()
+    {
+        // Arrange
+        var id = Guid.NewGuid();
+        var sender = Answering(Ok("{}"));
+
+        // Act
+        await RunAsync(new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request("https://dev.local/ping") with { Id = id, Auth = new(AuthKind.Bearer) } }] }, sender);
+
+        // Assert
+        Assert.Equal(new AuthSource(id, new(AuthKind.Bearer)), sender.Auth);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAStepHasNoAuth_ThenSendsItWithout()
+    {
+        // Arrange
+        var sender = Answering(Ok("{}"));
+
+        // Act
+        await RunAsync(new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request("https://dev.local/ping") }] }, sender);
+
+        // Assert
+        Assert.Equal(AuthKind.None, sender.Auth!.Settings.Kind);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAClientCredentialsTokenIsMissing_ThenFetchesOneForTheStepAndSendsAgain()
+    {
+        // Arrange
+        var id = Guid.NewGuid();
+        var calls = 0;
+        var sender = new FakeSender(() => ++calls == 1 ? throw new MissingSecretException(SecretKind.OAuthToken) : Task.FromResult(Ok("{}")));
+        AuthSource? fetched = null;
+
+        // Act
+        var outcome = await RunAsync(new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request("https://dev.local/ping") with { Id = id, Auth = new(AuthKind.OAuth2) } }] }, sender,
+            fetchToken: auth =>
+            {
+                fetched = auth;
+                return Task.FromResult(true);
+            });
+
+        // Assert
+        Assert.Equal((RunOutcome.Succeeded, id, 2), (outcome, fetched?.SecretsId, calls));
+    }
+
+    [Fact]
     public async Task RunAsync_WhenAnObjectIsSaved_ThenTheNextBodyIsByteIdentical()
     {
         // Arrange
         const string data = """{"id":"o-17","name":"Ordre æøå \"x\" \\ {{name}}","price":0.10,"lines":[{"sku":"a","qty":2}]}""";
-        var order = await SaveAsync("Hent ordre", Request("https://dev.local/orders/o-17"));
-        var import = await SaveAsync("Importér", Request("https://dev.local/import") with { Method = "POST", Body = """{"order": {{order}}}""", UseEnvironmentVariablesInBody = true });
+        var order = Request("https://dev.local/orders/o-17");
+        var import = Request("https://dev.local/import") with { Method = "POST", Body = """{"order": {{order}}}""", BodyKind = BodyKind.Json };
         var workflow = new Workflow
         {
             Id = Guid.NewGuid(),
@@ -192,8 +256,8 @@ public sealed class WorkflowRunnerTests : IDisposable
     public async Task RunAsync_WhenTheNumberIsBeyondDoublePrecision_ThenKeepsItExactly()
     {
         // Arrange
-        var order = await SaveAsync("Hent ordre", Request("https://dev.local/orders"));
-        var item = await SaveAsync("Hent vare", Request("https://dev.local/items/{{itemId}}"));
+        var order = Request("https://dev.local/orders");
+        var item = Request("https://dev.local/items/{{itemId}}");
         var workflow = new Workflow
         {
             Id = Guid.NewGuid(),
@@ -212,7 +276,7 @@ public sealed class WorkflowRunnerTests : IDisposable
     public async Task RunAsync_WhenASavePathIsMissing_ThenFailsTheStepAndSavesNothing()
     {
         // Arrange
-        var import = await SaveAsync("Importér", Request("https://dev.local/import"));
+        var import = Request("https://dev.local/import");
         var workflow = new Workflow
         {
             Id = Guid.NewGuid(),
@@ -231,7 +295,7 @@ public sealed class WorkflowRunnerTests : IDisposable
     public async Task RunAsync_WhenTheStatusIsNotSuccess_ThenSavesNothing()
     {
         // Arrange
-        var import = await SaveAsync("Importér", Request("https://dev.local/import"));
+        var import = Request("https://dev.local/import");
         var workflow = new Workflow { Id = Guid.NewGuid(), Variables = [new("status")], Steps = [new() { Request = import, Saves = [new("status", "status")] }] };
 
         // Act
@@ -245,7 +309,7 @@ public sealed class WorkflowRunnerTests : IDisposable
     public async Task RunAsync_WhenSavingFromTheHeadersStatusAndATextBody_ThenSavesEach()
     {
         // Arrange
-        var import = await SaveAsync("Importér", Request("https://dev.local/import"));
+        var import = Request("https://dev.local/import");
         var workflow = new Workflow
         {
             Id = Guid.NewGuid(),
@@ -264,7 +328,7 @@ public sealed class WorkflowRunnerTests : IDisposable
     public async Task RunAsync_WhenAStepFails_ThenSkipsTheRest()
     {
         // Arrange
-        var ping = await SaveAsync("Ping", Request("https://dev.local/ping"));
+        var ping = Request("https://dev.local/ping");
         var workflow = new Workflow { Id = Guid.NewGuid(), Steps = [new() { Request = ping }, new() { Request = ping }, new() { Request = ping }] };
 
         // Act
@@ -278,7 +342,7 @@ public sealed class WorkflowRunnerTests : IDisposable
     public async Task RunAsync_WhenTheCallFails_ThenTellsTheKindOfProblemWithoutItsDetails()
     {
         // Arrange
-        var ping = await SaveAsync("Ping", Request("https://dev.local/ping"));
+        var ping = Request("https://dev.local/ping");
 
         // Act
         await RunAsync(new() { Id = Guid.NewGuid(), Steps = [new() { Request = ping }] }, new(() => throw new HttpRequestException("https://dev.local/?key=secret")));
@@ -291,7 +355,7 @@ public sealed class WorkflowRunnerTests : IDisposable
     public async Task RunAsync_WhenTheCallTimesOut_ThenFailsTheStepWithoutCancellingTheRun()
     {
         // Arrange
-        var ping = await SaveAsync("Ping", Request("https://dev.local/ping"));
+        var ping = Request("https://dev.local/ping");
 
         // Act
         var outcome = await RunAsync(new() { Id = Guid.NewGuid(), Steps = [new() { Request = ping }] }, new(() => throw new TaskCanceledException()));
@@ -304,7 +368,7 @@ public sealed class WorkflowRunnerTests : IDisposable
     public async Task RunAsync_WhenCancelled_ThenCancelsTheStepAndSkipsTheRest()
     {
         // Arrange
-        var ping = await SaveAsync("Ping", Request("https://dev.local/ping"));
+        var ping = Request("https://dev.local/ping");
         var workflow = new Workflow { Id = Guid.NewGuid(), Steps = [new() { Request = ping }, new() { Request = ping }] };
         using var cancellation = new CancellationTokenSource();
 
@@ -325,7 +389,7 @@ public sealed class WorkflowRunnerTests : IDisposable
     public async Task RunAsync_WhenTheRunEnds_ThenItsLogHoldsTheSameEvents()
     {
         // Arrange
-        var ping = await SaveAsync("Ping", Request("https://dev.local/ping"));
+        var ping = Request("https://dev.local/ping");
 
         // Act
         await RunAsync(new() { Id = Guid.NewGuid(), Steps = [new() { Request = ping }] }, Answering(Ok("{}")));
@@ -338,7 +402,8 @@ public sealed class WorkflowRunnerTests : IDisposable
     public async Task RunAsync_WhenTheRunLogCannotBeWritten_ThenStillRuns()
     {
         // Arrange
-        var ping = await SaveAsync("Ping", Request("https://dev.local/ping"));
+        var ping = Request("https://dev.local/ping");
+        Directory.CreateDirectory(_temporary.Path);
         File.WriteAllText(Folder.Runs, "");
 
         // Act
@@ -375,27 +440,6 @@ public sealed class WorkflowRunnerTests : IDisposable
     }
 
     [Fact]
-    public async Task RunAsync_WhenARequestFileChangesDuringTheRun_ThenSendsTheRequestAsItWasBeforeTheFirstCall()
-    {
-        // Arrange
-        var ping = await SaveAsync("Ping", Request("https://dev.local/ping"));
-        var order = await SaveAsync("Ordre", Request("https://dev.local/orders"));
-        var workflow = new Workflow { Id = Guid.NewGuid(), Steps = [new() { Request = ping }, new() { Request = order }] };
-
-        // Act
-        await RunAsync(workflow, Answering(Ok("{}"), Ok("{}")), told: workflowEvent =>
-        {
-            if (workflowEvent is StepStarted { Index: 0 })
-            {
-                Library.SaveAsync("Ordre", Request("https://dev.local/changed") with { Id = order }, Cancellation).GetAwaiter().GetResult();
-            }
-        });
-
-        // Assert
-        Assert.Equal("dev.local/orders", _events.OfType<StepStarted>().Last().Address);
-    }
-
-    [Fact]
     public async Task RunAsync_WhenAParameterWithADefaultIsGiven_ThenUsesTheGivenValue()
     {
         // Arrange
@@ -412,7 +456,7 @@ public sealed class WorkflowRunnerTests : IDisposable
     public async Task RunAsync_WhenAVariableHasADefault_ThenSendsTheDefaultInsteadOfTheEnvironmentValue()
     {
         // Arrange
-        var order = await SaveAsync("Hent ordre", Request("https://dev.local/{{token}}"));
+        var order = Request("https://dev.local/{{token}}");
         var workflow = new Workflow { Id = Guid.NewGuid(), Variables = [new("token") { Default = JsonSerializer.SerializeToElement("abc") }], Steps = [new() { Request = order }] };
         var environment = new ApiEnvironment("Dev", [new("token", "old")]);
 

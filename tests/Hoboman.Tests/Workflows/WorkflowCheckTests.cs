@@ -2,43 +2,86 @@ using System.Text.Json;
 
 namespace Hoboman.Tests.Workflows;
 
-public sealed class WorkflowCheckTests : IDisposable
+public sealed class WorkflowCheckTests
 {
-    static readonly Guid _login = Guid.NewGuid();
-    static readonly Guid _order = Guid.NewGuid();
+    static WorkflowRequest Login => new() { Method = "POST", Url = "https://dev.local/login" };
 
-    readonly TemporaryFolder _temporary = new();
+    static WorkflowRequest Order => new() { Url = "https://dev.local/orders/{{orderId}}", Headers = [new("Authorization", "Bearer {{token}}")] };
 
-    CancellationToken Cancellation => TestContext.Current.CancellationToken;
+    static WorkflowStep LoginStep => new() { Request = Login, Saves = [new("token", "$.access_token")] };
 
-    static ApiRequest Login => new() { Id = _login, Method = "POST", Url = "https://dev.local/login" };
-
-    static ApiRequest Order => new() { Id = _order, Url = "https://dev.local/orders/{{orderId}}", Headers = [new("Authorization", "Bearer {{token}}")] };
-
-    static List<(string Name, ApiRequest? Request)> Requests => [("Shop/Login", Login), ("Shop/Hent ordre", Order)];
-
-    static WorkflowStep LoginStep => new() { Request = _login, Saves = [new("token", "$.access_token")] };
-
-    static WorkflowStep OrderStep => new() { Request = _order };
+    static WorkflowStep OrderStep => new() { Name = "Hent ordre", Request = Order };
 
     static Workflow OrderSync(params WorkflowStep[] steps) => new() { Id = Guid.NewGuid(), Parameters = [new("orderId")], Variables = [new("token")], Steps = steps };
 
     static Dictionary<string, JsonElement> Parameters(params string[] names) => names.ToDictionary(name => name, name => JsonSerializer.SerializeToElement("o-17"));
 
-    static CheckedWorkflow Check(Workflow workflow, List<(string Name, ApiRequest? Request)>? requests = null, Dictionary<string, JsonElement>? parameters = null,
-        ApiEnvironment? environment = null, Dictionary<string, IReadOnlyList<string>>? authTexts = null) =>
-        WorkflowCheck.Check("Ordre-sync", workflow, requests ?? Requests, authTexts ?? [], environment ?? ApiEnvironment.None, parameters ?? Parameters("orderId"));
+    static CheckedWorkflow Check(Workflow workflow, Dictionary<string, JsonElement>? parameters = null, ApiEnvironment? environment = null, Dictionary<string, string?>? scripts = null) =>
+        WorkflowCheck.Check("Ordre-sync", workflow, environment ?? ApiEnvironment.None, parameters ?? Parameters("orderId"), scripts);
 
-    public void Dispose() => _temporary.Dispose();
+    [Theory]
+    [InlineData(AuthKind.Basic, SecretKind.Password)]
+    [InlineData(AuthKind.Bearer, SecretKind.Token)]
+    public async Task CheckAsync_WhenTheSecretOfAStepUsesAName_ThenChecksIt(AuthKind kind, SecretKind secret)
+    {
+        // Arrange
+        using var temporary = new TemporaryFolder();
+        var folder = new AppFolder(temporary.Path);
+        var secrets = new SecretStore(folder, NullLogger<SecretStore>.Instance);
+        var id = Guid.NewGuid();
+        await secrets.SaveAsync(id, secret, "{{token}}", TestContext.Current.CancellationToken);
+        var check = new WorkflowCheck(new WorkflowLibrary(folder, NullLogger<WorkflowLibrary>.Instance), secrets, NullLogger<WorkflowCheck>.Instance);
+        var order = new WorkflowStep { Request = Login with { Id = id, Auth = new(kind) } };
+
+        // Act
+        var checkedWorkflow = await check.CheckAsync("Ordre-sync", OrderSync(order, LoginStep), ApiEnvironment.None, Parameters("orderId"), TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal([new(WorkflowProblemKind.UsedBeforeSaved, 0, "token")], checkedWorkflow.Problems);
+    }
 
     [Fact]
-    public void Check_WhenEveryNameHasAValue_ThenFindsNoProblemsAndThePathsOfTheSteps()
+    public void Check_WhenAScriptSavesAVariable_ThenALaterStepCanUseIt()
+    {
+        // Act
+        var checkedWorkflow = Check(OrderSync(new WorkflowStep { Script = "token.js", Saves = [new("token", "$")] }, OrderStep), scripts: new() { ["token.js"] = "return 'abc';" });
+
+        // Assert
+        Assert.Equal((0, "token.js"), (checkedWorkflow.Problems.Count, checkedWorkflow.Steps[0].Title));
+    }
+
+    [Theory]
+    [InlineData(null, WorkflowProblemKind.ScriptNotFound, "map.js")]
+    [InlineData("let a = 1;\nreturn a +;", WorkflowProblemKind.InvalidScript, "Unexpected token ';' (map.js:2:11)")]
+    public void Check_WhenAScriptIsMissingOrInvalid_ThenReportsIt(string? code, WorkflowProblemKind kind, string detail)
+    {
+        // Act
+        var checkedWorkflow = Check(OrderSync(new WorkflowStep { Script = "map.js" }), scripts: new() { ["map.js"] = code });
+
+        // Assert
+        Assert.Equal([new(kind, 0, detail)], checkedWorkflow.Problems);
+    }
+
+    [Fact]
+    public void Check_WhenEveryNameHasAValue_ThenFindsNoProblemsAndTheTitlesOfTheSteps()
     {
         // Act
         var checkedWorkflow = Check(OrderSync(LoginStep, OrderStep));
 
         // Assert
-        Assert.Equal((0, "Shop/Login, Shop/Hent ordre"), (checkedWorkflow.Problems.Count, string.Join(", ", checkedWorkflow.Steps.Select(step => step.Path))));
+        Assert.Equal((0, "POST dev.local/login, Hent ordre"), (checkedWorkflow.Problems.Count, string.Join(", ", checkedWorkflow.Steps.Select(step => step.Title))));
+    }
+
+    [Theory]
+    [InlineData("https://dev.local/login?code=key")]
+    [InlineData("dev.local/login?code=key")]
+    public void Check_WhenAStepHasNoName_ThenItsTitleLeavesOutTheQuery(string url)
+    {
+        // Act
+        var checkedWorkflow = Check(OrderSync(new WorkflowStep { Request = Login with { Url = url } }));
+
+        // Assert
+        Assert.Equal("POST dev.local/login", checkedWorkflow.Steps[0].Title);
     }
 
     [Fact]
@@ -90,11 +133,10 @@ public sealed class WorkflowCheckTests : IDisposable
     public void Check_WhenANameIsNotDeclared_ThenLooksForItInTheEnvironment(bool enabled, int expected)
     {
         // Arrange
-        var ping = new ApiRequest { Id = Guid.NewGuid(), Url = "https://{{host}}/ping" };
-        var workflow = new Workflow { Id = Guid.NewGuid(), Steps = [new() { Request = ping.Id }] };
+        var workflow = new Workflow { Id = Guid.NewGuid(), Steps = [new() { Request = new() { Url = "https://{{host}}/ping" } }] };
 
         // Act
-        var checkedWorkflow = Check(workflow, [("Ping", ping)], [], new ApiEnvironment("Demo", [new("host", "dev.local", enabled)]));
+        var checkedWorkflow = Check(workflow, [], new ApiEnvironment("Demo", [new("host", "dev.local", enabled)]));
 
         // Assert
         Assert.Equal(expected, checkedWorkflow.Problems.Count(problem => problem == new WorkflowProblem(WorkflowProblemKind.UnknownName, 0, "host")));
@@ -122,34 +164,16 @@ public sealed class WorkflowCheckTests : IDisposable
         Assert.Equal([new(WorkflowProblemKind.UnknownParameter, null, name)], checkedWorkflow.Problems);
     }
 
-    [Fact]
-    public void Check_WhenTwoRequestsShareTheId_ThenNamesBoth()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Check_WhenAStepHasNoUrl_ThenReportsIt(bool hasRequest)
     {
         // Act
-        var checkedWorkflow = Check(OrderSync(LoginStep, OrderStep), [.. Requests, ("Shop/Login - kopi", Login)]);
+        var checkedWorkflow = Check(OrderSync(hasRequest ? new WorkflowStep { Request = new() { Url = " " } } : new WorkflowStep()));
 
         // Assert
-        Assert.Equal([new(WorkflowProblemKind.SharedRequestId, 0, "Shop/Login, Shop/Login - kopi")], checkedWorkflow.Problems);
-    }
-
-    [Fact]
-    public void Check_WhenNoRequestHasTheId_ThenReportsItAndTheFilesThatCouldNotBeRead()
-    {
-        // Act
-        var checkedWorkflow = Check(OrderSync(LoginStep), [("Shop/Broken", null)]);
-
-        // Assert
-        Assert.Equal([new(WorkflowProblemKind.RequestNotFound, 0, $"{_login}"), new(WorkflowProblemKind.UnreadableRequests, null, "Shop/Broken")], checkedWorkflow.Problems);
-    }
-
-    [Fact]
-    public void Check_WhenAStepHasNoRequest_ThenReportsIt()
-    {
-        // Act
-        var checkedWorkflow = Check(OrderSync(new WorkflowStep()));
-
-        // Assert
-        Assert.Equal([new(WorkflowProblemKind.MissingRequest, 0, "")], checkedWorkflow.Problems);
+        Assert.Equal([new(WorkflowProblemKind.MissingUrl, 0, "")], checkedWorkflow.Problems);
     }
 
     [Fact]
@@ -172,16 +196,6 @@ public sealed class WorkflowCheckTests : IDisposable
 
         // Assert
         Assert.Equal([new(WorkflowProblemKind.InvalidName, null, name)], checkedWorkflow.Problems);
-    }
-
-    [Fact]
-    public void Check_WhenAWithNameIsInvalid_ThenReportsIt()
-    {
-        // Act
-        var checkedWorkflow = Check(OrderSync(LoginStep, OrderStep with { With = [new("{{orderId}}", "o-18")] }));
-
-        // Assert
-        Assert.Equal([new(WorkflowProblemKind.InvalidName, 1, "{{orderId}}")], checkedWorkflow.Problems);
     }
 
     [Fact]
@@ -219,67 +233,17 @@ public sealed class WorkflowCheckTests : IDisposable
         Assert.Equal([new(WorkflowProblemKind.InvalidSource, 1, from)], checkedWorkflow.Problems);
     }
 
-    [Fact]
-    public void Check_WhenAWithNameIsNotUsedByTheRequest_ThenReportsIt()
-    {
-        // Act
-        var checkedWorkflow = Check(OrderSync(LoginStep, OrderStep with { With = [new("orderID", "o-18")] }));
-
-        // Assert
-        Assert.Equal([new(WorkflowProblemKind.UnusedWithName, 1, "orderID")], checkedWorkflow.Problems);
-    }
-
-    [Fact]
-    public void Check_WhenAWithEntryIsDisabled_ThenIgnoresIt()
-    {
-        // Act
-        var checkedWorkflow = Check(OrderSync(LoginStep, OrderStep with { With = [new("orderID", "{{missing}}", false)] }));
-
-        // Assert
-        Assert.Empty(checkedWorkflow.Problems);
-    }
-
-    [Fact]
-    public void Check_WhenAWithEntryGivesANameThatIsNotSavedYet_ThenTheStepHasIt()
-    {
-        // Act
-        var checkedWorkflow = Check(OrderSync(OrderStep with { With = [new("token", "fixed")] }));
-
-        // Assert
-        Assert.Empty(checkedWorkflow.Problems);
-    }
-
-    [Fact]
-    public void Check_WhenAWithValueUsesAVariableBeforeItIsSaved_ThenReportsIt()
-    {
-        // Act
-        var checkedWorkflow = Check(OrderSync(OrderStep with { With = [new("token", "{{token}}")] }, LoginStep));
-
-        // Assert
-        Assert.Equal([new(WorkflowProblemKind.UsedBeforeSaved, 0, "token")], checkedWorkflow.Problems);
-    }
-
-    [Fact]
-    public void Check_WhenTheAuthUsesAName_ThenChecksIt()
-    {
-        // Act
-        var checkedWorkflow = Check(OrderSync(OrderStep, LoginStep), [("Shop/Login", Login), ("Shop/Hent ordre", Order with { Headers = [] })], authTexts: new() { ["Shop/Hent ordre"] = ["{{token}}"] });
-
-        // Assert
-        Assert.Equal([new(WorkflowProblemKind.UsedBeforeSaved, 0, "token")], checkedWorkflow.Problems);
-    }
-
     [Theory]
-    [InlineData(false, BodyKind.Json, 0)]
-    [InlineData(true, BodyKind.None, 0)]
-    [InlineData(true, BodyKind.Json, 1)]
-    public void Check_WhenTheBodyUsesAName_ThenChecksItOnlyWhenTheBodyIsFilledIn(bool useVariables, BodyKind kind, int expected)
+    [InlineData(BodyKind.None, true, 0)]
+    [InlineData(BodyKind.Json, true, 1)]
+    [InlineData(BodyKind.Json, false, 0)]
+    public void Check_WhenTheBodyUsesAName_ThenChecksItOnlyWhenTheBodyIsFilledIn(BodyKind kind, bool useVariables, int expected)
     {
         // Arrange
-        var login = Login with { Body = "{{missing}}", BodyKind = kind, UseEnvironmentVariablesInBody = useVariables };
+        var login = LoginStep with { Request = Login with { Body = "{{missing}}", BodyKind = kind, UseEnvironmentVariablesInBody = useVariables } };
 
         // Act
-        var checkedWorkflow = Check(OrderSync(LoginStep), [("Shop/Login", login)]);
+        var checkedWorkflow = Check(OrderSync(login));
 
         // Assert
         Assert.Equal(expected, checkedWorkflow.Problems.Count);
@@ -298,70 +262,12 @@ public sealed class WorkflowCheckTests : IDisposable
     {
         // Arrange
         var entry = inName ? new KeyValue("{{missing}}", "x", enabled) : new KeyValue("x", "{{missing}}", enabled);
-        var login = query ? Login with { Query = [entry] } : Login with { Headers = [entry] };
+        var login = LoginStep with { Request = query ? Login with { Query = [entry] } : Login with { Headers = [entry] } };
 
         // Act
-        var checkedWorkflow = Check(OrderSync(LoginStep), [("Shop/Login", login)]);
+        var checkedWorkflow = Check(OrderSync(login));
 
         // Assert
         Assert.Equal(expected, checkedWorkflow.Problems.Count);
-    }
-
-    [Theory]
-    [InlineData(AuthKind.Basic, 1)]
-    [InlineData(AuthKind.Bearer, 0)]
-    public async Task CheckAsync_WhenNoSecretIsSaved_ThenChecksOnlyTheUserNameOfBasic(AuthKind kind, int expected)
-    {
-        // Arrange
-        var folder = new AppFolder(_temporary.Path);
-        var library = new RequestLibrary(folder, NullLogger<RequestLibrary>.Instance);
-        await library.SaveAsync("Shop/Login", Login with { Auth = new(kind, "{{user}}") }, Cancellation);
-        var check = new WorkflowCheck(library, new SecretStore(folder, NullLogger<SecretStore>.Instance), NullLogger<WorkflowCheck>.Instance);
-
-        // Act
-        var checkedWorkflow = await check.CheckAsync("Ordre-sync", OrderSync(LoginStep), ApiEnvironment.None, Parameters("orderId"), Cancellation);
-
-        // Assert
-        Assert.Equal(expected, checkedWorkflow.Problems.Count(problem => problem == new WorkflowProblem(WorkflowProblemKind.UnknownName, 0, "user")));
-    }
-
-    [Theory]
-    [InlineData(AuthKind.Basic, SecretKind.Password)]
-    [InlineData(AuthKind.Bearer, SecretKind.Token)]
-    public async Task CheckAsync_WhenTheSecretOfTheFolderUsesAName_ThenChecksIt(AuthKind kind, SecretKind secret)
-    {
-        // Arrange
-        var folder = new AppFolder(_temporary.Path);
-        var library = new RequestLibrary(folder, NullLogger<RequestLibrary>.Instance);
-        var secrets = new SecretStore(folder, NullLogger<SecretStore>.Instance);
-        var settings = new FolderSettings { Id = Guid.NewGuid(), Auth = new(kind) };
-        await library.SaveFolderAsync("Shop", settings, Cancellation);
-        await secrets.SaveAsync(settings.Id, secret, "{{token}}", Cancellation);
-        await library.SaveAsync("Shop/Login", Login with { Auth = AuthSettings.None }, Cancellation);
-        await library.SaveAsync("Shop/Hent ordre", Order with { Headers = [] }, Cancellation);
-        var check = new WorkflowCheck(library, secrets, NullLogger<WorkflowCheck>.Instance);
-
-        // Act
-        var checkedWorkflow = await check.CheckAsync("Ordre-sync", OrderSync(OrderStep, LoginStep), ApiEnvironment.None, Parameters("orderId"), Cancellation);
-
-        // Assert
-        Assert.Equal([new(WorkflowProblemKind.UsedBeforeSaved, 0, "token")], checkedWorkflow.Problems);
-    }
-
-    [Fact]
-    public async Task CheckAsync_WhenOAuth2UsesANameTheEnvironmentLacks_ThenFindsNoProblem()
-    {
-        // Arrange
-        var folder = new AppFolder(_temporary.Path);
-        var library = new RequestLibrary(folder, NullLogger<RequestLibrary>.Instance);
-        await library.SaveAsync("Shop/Login", Login with { Auth = new(AuthKind.OAuth2, OAuth: new() { ClientId = "{{clientId}}", Scope = "{{scope}}" }) }, Cancellation);
-        await library.SaveAsync("Shop/Hent ordre", Order, Cancellation);
-        var check = new WorkflowCheck(library, new SecretStore(folder, NullLogger<SecretStore>.Instance), NullLogger<WorkflowCheck>.Instance);
-
-        // Act
-        var checkedWorkflow = await check.CheckAsync("Ordre-sync", OrderSync(LoginStep, OrderStep), ApiEnvironment.None, Parameters("orderId"), Cancellation);
-
-        // Assert
-        Assert.Empty(checkedWorkflow.Problems);
     }
 }

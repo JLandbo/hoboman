@@ -57,11 +57,11 @@ public sealed class RequestTabViewModelTests
         Assert.Equal(draft, tab.IsUnsaved);
         Assert.False(tab.IsDirty);
         Assert.Equal(AuthKind.Inherit, tab.Auth.Kind);
-        Assert.Equal("GET", tab.Method);
-        Assert.Equal("", tab.Url);
-        Assert.Equal("", tab.Body);
+        Assert.Equal("GET", tab.Editor.Method);
+        Assert.Equal("", tab.Editor.Url);
+        Assert.Equal("", tab.Editor.Body);
 
-        tab.Body = "content";
+        tab.Editor.Body = "content";
         await tab.SendAsync();
         await tab.UpdateAuthSourceAsync();
 
@@ -133,7 +133,7 @@ public sealed class RequestTabViewModelTests
             await harness.Library.SaveAsync("Saved", ApiRequest.New() with { Body = "root request" }, Cancellation);
         }
         var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: destination) { Number = 3 };
-        tab.Body = "content";
+        tab.Editor.Body = "content";
 
         await tab.SaveAsync();
 
@@ -169,11 +169,11 @@ public sealed class RequestTabViewModelTests
         using var harness = new Harness(new FakeDialogs(answer: answer));
         await harness.Library.SaveAsync("Users/Taken", ApiRequest.New(), Cancellation);
         var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "Users") { Number = 3 };
-        tab.Body = "content";
+        tab.Editor.Body = "content";
 
         await tab.SaveAsync();
 
-        Assert.Equal((true, true, true, "Users", "New request (3)", "content"), (tab.IsDraft, tab.IsDirty, tab.IsUnsaved, tab.Destination, tab.Title, tab.Body));
+        Assert.Equal((true, true, true, "Users", "New request (3)", "content"), (tab.IsDraft, tab.IsDirty, tab.IsUnsaved, tab.Destination, tab.Title, tab.Editor.Body));
         Assert.Null(tab.Name);
         Assert.Equal(["Users/Taken"], await harness.Library.NamesAsync(Cancellation));
         var problemOf = harness.Dialogs.NameQuestion!.Value.ProblemOf;
@@ -189,7 +189,7 @@ public sealed class RequestTabViewModelTests
     {
         using var harness = new Harness(new FakeDialogs(answer: "Saved"));
         var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "Users") { Number = 3 };
-        tab.Body = "content";
+        tab.Editor.Body = "content";
         Directory.CreateDirectory(harness.Folder.Root);
         if (secrets)
         {
@@ -206,7 +206,7 @@ public sealed class RequestTabViewModelTests
 
         Assert.NotNull(tab.Problem);
         Assert.Null(tab.Name);
-        Assert.Equal((true, true, "Users", "New request (3)", "content"), (tab.IsDraft, tab.IsUnsaved, tab.Destination, tab.Title, tab.Body));
+        Assert.Equal((true, true, "Users", "New request (3)", "content"), (tab.IsDraft, tab.IsUnsaved, tab.Destination, tab.Title, tab.Editor.Body));
         Assert.Empty(await harness.Library.NamesAsync(Cancellation));
     }
 
@@ -217,7 +217,7 @@ public sealed class RequestTabViewModelTests
         await harness.Library.SaveFolderAsync("Users", new() { Auth = new(AuthKind.Basic, "user") }, Cancellation);
         var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "Users") { Number = 3 };
         await tab.UpdateAuthSourceAsync();
-        tab.Body = "content";
+        tab.Editor.Body = "content";
 
         tab.Unlink();
         await tab.UpdateAuthSourceAsync();
@@ -228,7 +228,7 @@ public sealed class RequestTabViewModelTests
         Assert.Null(tab.Folder);
         Assert.Null(tab.Destination);
         Assert.False(tab.HasInheritedAuth);
-        Assert.Equal("content", tab.Body);
+        Assert.Equal("content", tab.Editor.Body);
         Assert.Equal("New request (3)", tab.Title);
         Assert.Equal("", harness.Dialogs.NameQuestion!.Value.Name);
     }
@@ -253,17 +253,17 @@ public sealed class RequestTabViewModelTests
     {
         using var harness = new Harness(new FakeDialogs(answer: "Saved"));
         var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "Users");
-        tab.Body = "saved content";
+        tab.Editor.Body = "saved content";
 
         var saving = tab.SaveAsync();
-        tab.Body = "new content";
+        tab.Editor.Body = "new content";
         await saving;
 
         Assert.False(tab.IsDraft);
         Assert.Null(tab.Destination);
         Assert.True(tab.IsDirty);
         Assert.True(tab.IsUnsaved);
-        Assert.Equal("new content", tab.Body);
+        Assert.Equal("new content", tab.Editor.Body);
         Assert.Equal("saved content", (await harness.Library.LoadAsync("Users/Saved", Cancellation))?.Body);
     }
 
@@ -279,13 +279,13 @@ public sealed class RequestTabViewModelTests
             File.WriteAllText(Path.Combine(harness.Folder.Requests, "Users", ".folder.json"), "{");
         }
         var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "Users");
-        tab.Body = "content";
+        tab.Editor.Body = "content";
 
         await tab.SendAsync();
 
         Assert.NotNull(tab.Problem);
         Assert.Contains(invalidFile ? ".folder.json" : "OAuth", tab.Problem.Details);
-        Assert.Equal((true, "Users", "content"), (tab.IsDraft, tab.Destination, tab.Body));
+        Assert.Equal((true, "Users", "content"), (tab.IsDraft, tab.Destination, tab.Editor.Body));
         Assert.Empty(await harness.Library.NamesAsync(Cancellation));
     }
 
@@ -300,7 +300,7 @@ public sealed class RequestTabViewModelTests
         await tab.SendAsync();
 
         // Assert
-        Assert.Equal(("200 OK", "{}"), (tab.Response?.Status, tab.Response?.Body));
+        Assert.Equal(("200 OK", "{}"), (tab.Result.Response?.Status, tab.Result.Response?.Body));
     }
 
     [Fact]
@@ -358,7 +358,7 @@ public sealed class RequestTabViewModelTests
         await tab.SendAsync();
 
         // Assert
-        Assert.Equal(("200 OK", 2), (tab.Response?.Status, calls));
+        Assert.Equal(("200 OK", 2), (tab.Result.Response?.Status, calls));
     }
 
     [Fact]
@@ -473,7 +473,7 @@ public sealed class RequestTabViewModelTests
         var tab = harness.Tab();
 
         // Act
-        tab.Url = "   ";
+        tab.Editor.Url = "   ";
 
         // Assert
         Assert.False(tab.Send.CanExecute(null));
@@ -487,7 +487,7 @@ public sealed class RequestTabViewModelTests
         var tab = harness.Tab();
 
         // Act
-        tab.Url = "{{base}}/users";
+        tab.Editor.Url = "{{base}}/users";
 
         // Assert
         Assert.True(tab.Send.CanExecute(null));
@@ -503,7 +503,7 @@ public sealed class RequestTabViewModelTests
         tab.Send.CanExecuteChanged += (_, _) => told = true;
 
         // Act
-        tab.Url = "https://dev.local";
+        tab.Editor.Url = "https://dev.local";
 
         // Assert
         Assert.True(told);
@@ -517,7 +517,7 @@ public sealed class RequestTabViewModelTests
         var tab = harness.Tab();
 
         // Act
-        tab.Url = "https://dev.local";
+        tab.Editor.Url = "https://dev.local";
 
         // Assert
         Assert.True(tab.IsDirty);
@@ -530,13 +530,13 @@ public sealed class RequestTabViewModelTests
         using var harness = new Harness();
         var request = ApiRequest.New() with { Url = "https://dev.local" };
         var tab = harness.Tab(request, "Ping");
-        tab.Url = "https://edited.local";
+        tab.Editor.Url = "https://edited.local";
 
         // Act
         tab.ReloadIfChanged(request);
 
         // Assert
-        Assert.Equal("https://edited.local", tab.Url);
+        Assert.Equal("https://edited.local", tab.Editor.Url);
     }
 
     [Fact]
@@ -546,7 +546,7 @@ public sealed class RequestTabViewModelTests
         using var harness = new Harness();
         var request = ApiRequest.New() with { Url = "https://dev.local" };
         var tab = harness.Tab(request, "Ping");
-        tab.Url = "https://edited.local";
+        tab.Editor.Url = "https://edited.local";
 
         // Act
         var reloaded = tab.ReloadIfChanged(request);
@@ -562,13 +562,13 @@ public sealed class RequestTabViewModelTests
         using var harness = new Harness();
         var request = ApiRequest.New() with { Url = "https://dev.local" };
         var tab = harness.Tab(request, "Ping");
-        tab.Url = "https://edited.local";
+        tab.Editor.Url = "https://edited.local";
 
         // Act
         tab.ReloadIfChanged(request with { Url = "https://agent.local" });
 
         // Assert
-        Assert.Equal("https://agent.local", tab.Url);
+        Assert.Equal("https://agent.local", tab.Editor.Url);
     }
 
     [Fact]
@@ -578,7 +578,7 @@ public sealed class RequestTabViewModelTests
         using var harness = new Harness();
         var request = ApiRequest.New() with { Url = "https://dev.local" };
         var tab = harness.Tab(request, "Ping");
-        tab.Url = "https://edited.local";
+        tab.Editor.Url = "https://edited.local";
 
         // Act
         tab.ReloadIfChanged(request with { Url = "https://agent.local" });
@@ -594,7 +594,7 @@ public sealed class RequestTabViewModelTests
         using var harness = new Harness();
         var request = ApiRequest.New() with { Url = "https://dev.local" };
         var tab = harness.Tab(request, "Ping");
-        tab.Url = "https://edited.local";
+        tab.Editor.Url = "https://edited.local";
 
         // Act
         var reloaded = tab.ReloadIfChanged(request with { Url = "https://agent.local" });
@@ -760,7 +760,7 @@ public sealed class RequestTabViewModelTests
         // Arrange
         using var harness = new Harness(new FakeDialogs(answer: "Ping"));
         var tab = harness.Tab();
-        tab.Url = "https://dev.local";
+        tab.Editor.Url = "https://dev.local";
 
         // Act
         await tab.SaveAsync();
@@ -775,7 +775,7 @@ public sealed class RequestTabViewModelTests
         // Arrange
         using var harness = new Harness(new FakeDialogs(answer: "Ping"));
         var tab = harness.Tab();
-        tab.Url = "https://dev.local";
+        tab.Editor.Url = "https://dev.local";
 
         // Act
         await tab.SaveAsync();
@@ -790,7 +790,7 @@ public sealed class RequestTabViewModelTests
         // Arrange
         using var harness = new Harness(new FakeDialogs(answer: "Ping"));
         var tab = harness.Tab();
-        tab.Url = "https://dev.local";
+        tab.Editor.Url = "https://dev.local";
 
         // Act
         await tab.SaveAsync();
@@ -805,7 +805,7 @@ public sealed class RequestTabViewModelTests
         // Arrange
         using var harness = new Harness(new FakeDialogs(answer: null));
         var tab = harness.Tab();
-        tab.Url = "https://dev.local";
+        tab.Editor.Url = "https://dev.local";
 
         // Act
         await tab.SaveAsync();
@@ -836,10 +836,10 @@ public sealed class RequestTabViewModelTests
         var tab = harness.Tab(ApiRequest.New() with { BodyKind = BodyKind.Json, Body = "{\"a\": " });
 
         // Act
-        var laidOut = await tab.LaidOutBodyAsync();
+        var laidOut = await tab.Editor.LaidOutBodyAsync();
 
         // Assert
-        Assert.Equal((null, "The body is not valid JSON"), (laidOut, tab.BodyLayoutProblem));
+        Assert.Equal((null, "The body is not valid JSON"), (laidOut, tab.Editor.BodyLayoutProblem));
     }
 
     [Fact]
@@ -849,10 +849,10 @@ public sealed class RequestTabViewModelTests
         using var harness = new Harness();
         var body = $"[{string.Join(",", Enumerable.Repeat("""{"a":1}""", 50_000))}]";
         var tab = harness.Tab(ApiRequest.New() with { BodyKind = BodyKind.Json, Body = body });
-        var first = tab.LaidOutBodyAsync();
+        var first = tab.Editor.LaidOutBodyAsync();
 
         // Act
-        var second = await tab.LaidOutBodyAsync();
+        var second = await tab.Editor.LaidOutBodyAsync();
 
         // Assert
         Assert.Equal((true, true), (second is null, await first is not null));
@@ -867,10 +867,10 @@ public sealed class RequestTabViewModelTests
         var tab = harness.Tab(ApiRequest.New() with { BodyKind = BodyKind.Json, Body = "{\"amount\": 1.{{decimal}}}", UseEnvironmentVariablesInBody = true });
 
         // Act
-        await tab.LaidOutBodyAsync();
+        await tab.Editor.LaidOutBodyAsync();
 
         // Assert
-        Assert.Equal("The body is only valid once its variables are filled in, so it cannot be laid out", tab.BodyLayoutProblem);
+        Assert.Equal("The body is only valid once its variables are filled in, so it cannot be laid out", tab.Editor.BodyLayoutProblem);
     }
 
     [Fact]
@@ -879,14 +879,14 @@ public sealed class RequestTabViewModelTests
         // Arrange
         using var harness = new Harness();
         var tab = harness.Tab(ApiRequest.New() with { BodyKind = BodyKind.Json, Body = "{\"a\": " });
-        await tab.LaidOutBodyAsync();
+        await tab.Editor.LaidOutBodyAsync();
         harness.Translator.Use(Translation.Danish);
 
         // Act
         tab.Relabel();
 
         // Assert
-        Assert.Equal("Bodyen er ikke gyldig JSON", tab.BodyLayoutProblem);
+        Assert.Equal("Bodyen er ikke gyldig JSON", tab.Editor.BodyLayoutProblem);
     }
 
     [Fact]
@@ -895,13 +895,13 @@ public sealed class RequestTabViewModelTests
         // Arrange
         using var harness = new Harness();
         var tab = harness.Tab(ApiRequest.New() with { BodyKind = BodyKind.Json, Body = "{\"a\": " });
-        await tab.LaidOutBodyAsync();
+        await tab.Editor.LaidOutBodyAsync();
 
         // Act
-        tab.Body = "{\"a\": 1}";
+        tab.Editor.Body = "{\"a\": 1}";
 
         // Assert
-        Assert.Null(tab.BodyLayoutProblem);
+        Assert.Null(tab.Editor.BodyLayoutProblem);
     }
 
     [Fact]
@@ -912,7 +912,7 @@ public sealed class RequestTabViewModelTests
         var tab = harness.Tab(ApiRequest.New() with { BodyKind = BodyKind.Json, Body = """{"html": "<p>"}""" }, "Ping");
 
         // Act
-        tab.Base64.ToggleEncode("$.html");
+        tab.Editor.Base64.ToggleEncode("$.html");
 
         // Assert
         Assert.True(tab.IsDirty);
@@ -924,7 +924,7 @@ public sealed class RequestTabViewModelTests
         // Arrange
         using var harness = new Harness();
         var tab = harness.Tab(ApiRequest.New() with { BodyKind = BodyKind.Json, Body = """{"html": "<p>"}""" });
-        tab.Base64.ToggleEncode("$.html");
+        tab.Editor.Base64.ToggleEncode("$.html");
 
         // Act
         await tab.SendAsync();
@@ -957,11 +957,11 @@ public sealed class RequestTabViewModelTests
         await tab.SendAsync();
 
         // Act
-        tab.Base64.ToggleDecode("$.html");
-        await tab.Formatting;
+        tab.Editor.Base64.ToggleDecode("$.html");
+        await tab.Result.Formatting;
 
         // Assert
-        Assert.Equal((Base64MarkState.Decoded, true), (tab.ResponseMarks.Single().State, tab.Response!.Body.Contains("<p>Ærø</p>")));
+        Assert.Equal((Base64MarkState.Decoded, true), (tab.Result.ResponseMarks.Single().State, tab.Result.Response!.Body.Contains("<p>Ærø</p>")));
     }
 
     [Fact]
@@ -1036,14 +1036,14 @@ public sealed class RequestTabViewModelTests
         var request = ApiRequest.New();
         await harness.Library.SaveAsync("Ping", request, Cancellation);
         var tab = harness.Tab(request, "Ping");
-        tab.Url = "https://saved.local";
+        tab.Editor.Url = "https://saved.local";
         Task saving;
 
         // Act
         using (new FileStream(Path.Combine(harness.Folder.Requests, "Ping.json"), FileMode.Open, FileAccess.Read, FileShare.None))
         {
             saving = tab.SaveAsync();
-            tab.Url = "https://edited.local";
+            tab.Editor.Url = "https://edited.local";
         }
         await saving;
 
@@ -1100,7 +1100,7 @@ public sealed class RequestTabViewModelTests
         var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), historyName: "call.json");
 
         // Act
-        tab.Url = "https://changed.local";
+        tab.Editor.Url = "https://changed.local";
 
         // Assert
         Assert.False(tab.FromHistory);
@@ -1207,7 +1207,7 @@ public sealed class RequestTabViewModelTests
         await tab.SendAsync();
 
         // Assert
-        Assert.Equal(BodyFormat.Json, tab.BodyFormat);
+        Assert.Equal(BodyFormat.Json, tab.Result.BodyFormat);
     }
 
     [Fact]
@@ -1219,11 +1219,11 @@ public sealed class RequestTabViewModelTests
         await tab.SendAsync();
 
         // Act
-        tab.BodyFormat = BodyFormat.Json;
-        await tab.Formatting;
+        tab.Result.BodyFormat = BodyFormat.Json;
+        await tab.Result.Formatting;
 
         // Assert
-        Assert.Equal($"{{{Environment.NewLine}\t\"a\": 1{Environment.NewLine}}}", tab.Response?.Body);
+        Assert.Equal($"{{{Environment.NewLine}\t\"a\": 1{Environment.NewLine}}}", tab.Result.Response?.Body);
     }
 
     [Fact]
@@ -1238,10 +1238,10 @@ public sealed class RequestTabViewModelTests
 
         // Act
         tab.ReloadIfChanged(request with { Base64 = new() { Decode = ["$.html"] } });
-        await tab.Formatting;
+        await tab.Result.Formatting;
 
         // Assert
-        Assert.Equal(Base64MarkState.Decoded, tab.ResponseMarks.Single().State);
+        Assert.Equal(Base64MarkState.Decoded, tab.Result.ResponseMarks.Single().State);
     }
 
     [Fact]
@@ -1254,12 +1254,12 @@ public sealed class RequestTabViewModelTests
         await tab.SendAsync();
 
         // Act
-        tab.Base64.DecodesWholeResponse = true;
-        await tab.Formatting;
+        tab.Editor.Base64.DecodesWholeResponse = true;
+        await tab.Result.Formatting;
 
         // Assert
-        Assert.Equal($"{{{Environment.NewLine}\t\"a\": 1{Environment.NewLine}}}", tab.Response?.Body);
-        Assert.Null(tab.ResponseBodyProblem);
+        Assert.Equal($"{{{Environment.NewLine}\t\"a\": 1{Environment.NewLine}}}", tab.Result.Response?.Body);
+        Assert.Null(tab.Result.ResponseBodyProblem);
     }
 
     [Fact]
@@ -1271,11 +1271,11 @@ public sealed class RequestTabViewModelTests
         await tab.SendAsync();
 
         // Act
-        tab.Base64.DecodesWholeResponse = true;
-        await tab.Formatting;
+        tab.Editor.Base64.DecodesWholeResponse = true;
+        await tab.Result.Formatting;
 
         // Assert
-        Assert.Equal("not base64", tab.Response?.Body);
-        Assert.Equal("The response body is not valid Base64.", tab.ResponseBodyProblem);
+        Assert.Equal("not base64", tab.Result.Response?.Body);
+        Assert.Equal("The response body is not valid Base64.", tab.Result.ResponseBodyProblem);
     }
 }

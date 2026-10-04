@@ -20,8 +20,8 @@ public sealed class CollectionEditingTests
             await main.NewDraftAsync(Node(main, "Folder"));
         }
         Assert.Equal(RequestSection.Body, main.SelectedTab!.RequestSection);
-        Assert.Equal(BodyKind.Json, main.SelectedTab.BodyKind);
-        Assert.False(main.SelectedTab.UseEnvironmentVariablesInBody);
+        Assert.Equal(BodyKind.Json, main.SelectedTab.Editor.BodyKind);
+        Assert.False(main.SelectedTab.Editor.UseEnvironmentVariablesInBody);
         Assert.False(main.SelectedTab.IsDirty);
     }
 
@@ -39,17 +39,17 @@ public sealed class CollectionEditingTests
         await main.OpenAsync(Node(main, "Request"));
         var tab = main.SelectedTab!;
         Assert.Equal(RequestSection.Body, tab.RequestSection);
-        Assert.Equal(kind, tab.BodyKind);
+        Assert.Equal(kind, tab.Editor.BodyKind);
         Assert.False(tab.IsDirty);
         tab.RequestSection = RequestSection.Auth;
-        tab.Body = "unsaved";
+        tab.Editor.Body = "unsaved";
 
         await main.OpenAsync(Node(main, "Request"));
 
         Assert.Same(tab, main.SelectedTab);
         Assert.Equal(RequestSection.Body, tab.RequestSection);
-        Assert.Equal(kind, tab.BodyKind);
-        Assert.Equal("unsaved", tab.Body);
+        Assert.Equal(kind, tab.Editor.BodyKind);
+        Assert.Equal("unsaved", tab.Editor.Body);
         Assert.Equal("saved", (await harness.Library.LoadAsync("Request", Cancellation))!.Body);
     }
 
@@ -69,7 +69,7 @@ public sealed class CollectionEditingTests
 
         Assert.Same(tab, main.SelectedTab);
         Assert.Equal(RequestSection.Body, tab.RequestSection);
-        Assert.Equal(BodyKind.Xml, tab.BodyKind);
+        Assert.Equal(BodyKind.Xml, tab.Editor.BodyKind);
         Assert.False(tab.IsDirty);
     }
 
@@ -89,7 +89,7 @@ public sealed class CollectionEditingTests
         await main.LoadAsync();
         await main.OpenAsync(Node(main, "Folder/Request"));
         var tab = main.SelectedTab!;
-        tab.Body = "unsaved";
+        tab.Editor.Body = "unsaved";
         var sending = tab.SendAsync();
         try
         {
@@ -123,7 +123,7 @@ public sealed class CollectionEditingTests
         await main.LoadAsync();
         await main.OpenAsync(Node(main, "Request"));
         var tab = main.SelectedTab!;
-        tab.Body = "unsaved";
+        tab.Editor.Body = "unsaved";
         using var locked = new FileStream(Path.Combine(harness.Folder.Requests, "Request.json"), FileMode.Open, FileAccess.Read, FileShare.Read);
 
         await main.DeleteAsync(Node(main, "Request"));
@@ -131,7 +131,7 @@ public sealed class CollectionEditingTests
         Assert.Contains(tab, main.Tabs);
         Assert.Same(tab, main.SelectedTab);
         Assert.Equal("Request", tab.Name);
-        Assert.Equal("unsaved", tab.Body);
+        Assert.Equal("unsaved", tab.Editor.Body);
         Assert.True(harness.Library.Exists("Request"));
     }
 
@@ -148,14 +148,14 @@ public sealed class CollectionEditingTests
         await main.LoadAsync();
         await main.OpenAsync(Node(main, "A"));
         var open = main.SelectedTab!;
-        open.Body = "unsaved";
+        open.Editor.Body = "unsaved";
         var original = await File.ReadAllTextAsync(Path.Combine(harness.Folder.Requests, "A.json"), Cancellation);
 
         await main.MoveAsync(Node(main, "Folder"), Node(main, "A"), position);
 
         var expected = position == DropPosition.Before ? new[] { "Folder", "A", "B" } : ["A", "Folder", "B"];
         Assert.Equal(expected, main.Tree.Nodes.Select(node => node.Path));
-        Assert.Equal("unsaved", open.Body);
+        Assert.Equal("unsaved", open.Editor.Body);
         Assert.True(open.IsDirty);
         Assert.Equal(original, await File.ReadAllTextAsync(Path.Combine(harness.Folder.Requests, "A.json"), Cancellation));
         var restarted = harness.Main();
@@ -177,18 +177,18 @@ public sealed class CollectionEditingTests
         await main.MoveAsync(Node(main, "Folder/Child/B"), Node(main, "Folder/Child/A"), DropPosition.Before);
         await main.OpenAsync(Node(main, "Folder/Child/A"));
         var open = main.SelectedTab!;
-        open.Body = "unsaved";
+        open.Editor.Body = "unsaved";
         await main.NewDraftAsync(Node(main, "Folder/Child"));
         var draft = main.SelectedTab!;
-        draft.Body = "draft";
+        draft.Editor.Body = "draft";
 
         await main.MoveAsync(Node(main, "Folder"), Node(main, "Parent"));
 
         Assert.False(harness.Library.FolderExists("Folder"));
         Assert.Equal("Parent/Folder/Child/A", open.Name);
-        Assert.Equal("unsaved", open.Body);
+        Assert.Equal("unsaved", open.Editor.Body);
         Assert.Equal("Parent/Folder/Child", draft.Destination);
-        Assert.Equal("draft", draft.Body);
+        Assert.Equal("draft", draft.Editor.Body);
         Assert.Equal(["B", "A", draft.Title], Node(main, "Parent/Folder/Child").Children.Select(node => node.Name));
         Assert.Equal("Parent", open.InheritedAuthFolder);
         Assert.Equal("Parent", draft.InheritedAuthFolder);
@@ -281,7 +281,7 @@ public sealed class CollectionEditingTests
         {
             await main.OpenAsync(Node(main, "Folder/Preview"));
             source = main.SelectedTab!;
-            source.Body = "{\"value\":\"edited\"}";
+            source.Editor.Body = "{\"value\":\"edited\"}";
             source.Auth.ClientSecret = "edited-secret";
             Assert.True(await source.Auth.FetchTokenAsync(dev, saveSecrets: false, Cancellation));
         }
@@ -299,7 +299,7 @@ public sealed class CollectionEditingTests
         Assert.Equal("saved-secret", await harness.Secrets.OfAsync(original.Id, SecretKind.ClientSecret, Cancellation));
         Assert.Equal(["Preview", "Preview (1)"], Node(main, "Folder").Children.Select(node => node.Name));
         Assert.Equal("Folder/Preview (1)", main.SelectedTab!.Name);
-        Assert.Null(main.SelectedTab.Response);
+        Assert.Null(main.SelectedTab.Result.Response);
         if (source is not null)
         {
             Assert.True(source.IsDirty);
@@ -438,10 +438,10 @@ public sealed class CollectionEditingTests
             await main.NewDraftAsync(Node(main, "Folder"));
         }
         var tab = main.SelectedTab!;
-        tab.Body = "unsaved";
+        tab.Editor.Body = "unsaved";
         await main.RenameTabAsync(tab);
         Assert.Equal("Renamed", tab.Title);
-        Assert.Equal("unsaved", tab.Body);
+        Assert.Equal("unsaved", tab.Editor.Body);
         Assert.Equal(saved, tab.IsDirty);
         Assert.Equal("Folder/Renamed", tab.Name);
         Assert.Null(tab.Destination);
@@ -466,11 +466,11 @@ public sealed class CollectionEditingTests
             await main.OpenAsync(Node(main, name));
         }
         var active = main.SelectedTab!;
-        active.Body = "discarded";
+        active.Editor.Body = "discarded";
         main.MoveTab(active, main.Tabs.Single(tab => tab.Name == "A"), after: false);
         Assert.Same(active, main.SelectedTab);
         main.NewTab();
-        main.SelectedTab!.Body = "ungemte data";
+        main.SelectedTab!.Editor.Body = "ungemte data";
         main.NewTab();
         main.SelectedTab = active;
         Assert.True(main.CanClose());
@@ -481,7 +481,7 @@ public sealed class CollectionEditingTests
 
         Assert.Equal(["C", "A", "B"], restarted.Tabs.Select(tab => tab.Name));
         Assert.Equal("C", restarted.SelectedTab!.Name);
-        Assert.Equal("C", restarted.SelectedTab.Body);
+        Assert.Equal("C", restarted.SelectedTab.Editor.Body);
         Assert.All(restarted.Tabs, tab => Assert.False(tab.IsDirty));
     }
 
@@ -578,7 +578,7 @@ public sealed class CollectionEditingTests
         var main = harness.Main();
         await main.LoadAsync();
         var tab = main.SelectedTab!;
-        tab.Body = "body";
+        tab.Editor.Body = "body";
         tab.Auth.Kind = AuthKind.Bearer;
         tab.Auth.Token = "secret";
 
@@ -603,14 +603,14 @@ public sealed class CollectionEditingTests
         await main.LoadAsync();
         await main.NewDraftAsync(Node(main, "Folder"));
         var tab = main.SelectedTab!;
-        tab.Body = "unsaved";
+        tab.Editor.Body = "unsaved";
 
         await main.RenameTabAsync(tab);
 
         Assert.Null(tab.Name);
         Assert.True(tab.IsDraft);
         Assert.Equal("Folder", tab.Destination);
-        Assert.Equal("unsaved", tab.Body);
+        Assert.Equal("unsaved", tab.Editor.Body);
         Assert.Equal(["Folder/Taken"], await harness.Library.NamesAsync(Cancellation));
     }
 
@@ -623,7 +623,7 @@ public sealed class CollectionEditingTests
         await main.LoadAsync();
         await main.NewDraftAsync(Node(main, "Folder"));
         var tab = main.SelectedTab!;
-        tab.Body = "unsaved";
+        tab.Editor.Body = "unsaved";
         Directory.CreateDirectory(Path.Combine(harness.Folder.Requests, "Folder", "Blocked.json"));
 
         await main.RenameTabAsync(tab);
@@ -632,7 +632,7 @@ public sealed class CollectionEditingTests
         Assert.True(tab.IsDraft);
         Assert.True(tab.IsDirty);
         Assert.Equal("Folder", tab.Destination);
-        Assert.Equal("unsaved", tab.Body);
+        Assert.Equal("unsaved", tab.Editor.Body);
         Assert.NotNull(tab.Problem);
         Assert.False(harness.Library.Exists("Folder/Blocked"));
     }
@@ -662,7 +662,7 @@ public sealed class CollectionEditingTests
         var first = main.SelectedTab!;
         main.NewTab();
         var active = main.SelectedTab!;
-        active.Url = "https://example.test";
+        active.Editor.Url = "https://example.test";
         var sending = active.SendAsync();
         try
         {
@@ -677,7 +677,7 @@ public sealed class CollectionEditingTests
             response.SetResult(new(200, "OK", 0, 2, [], "{}"));
             await sending;
         }
-        Assert.NotNull(active.Response);
+        Assert.NotNull(active.Result.Response);
         Assert.False(active.IsSending);
     }
 }

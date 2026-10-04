@@ -83,13 +83,13 @@ public sealed class RunLogTests : IDisposable
     public void LineOf_WhenAStepStarts_ThenWritesTheFieldsInOrder()
     {
         // Arrange
-        var started = new StepStarted(0, "Shop/Login", "POST", "https://dev.local/login");
+        var started = new StepStarted(0, "Login", "POST", "https://dev.local/login");
 
         // Act
         var line = Encoding.UTF8.GetString(RunLog.LineOf(started).Span);
 
         // Assert
-        Assert.Equal("""{"type":"step.started","index":0,"request":"Shop/Login","method":"POST","address":"https://dev.local/login"}""" + "\n", line);
+        Assert.Equal("""{"type":"step.started","index":0,"name":"Login","method":"POST","address":"https://dev.local/login"}""" + "\n", line);
     }
 
     [Fact]

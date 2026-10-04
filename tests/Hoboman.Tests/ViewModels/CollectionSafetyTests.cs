@@ -20,7 +20,7 @@ public sealed class CollectionSafetyTests
         await main.LoadAsync();
         await main.NewDraftAsync(Node(main, "Source"));
         var tab = main.SelectedTab!;
-        tab.Body = "content";
+        tab.Editor.Body = "content";
         if (saved)
         {
             await tab.SaveAsync();
@@ -58,7 +58,7 @@ public sealed class CollectionSafetyTests
         await main.LoadAsync();
         await main.NewDraftAsync(Node(main, "Folder"));
         var draft = main.SelectedTab!;
-        draft.Body = "content";
+        draft.Editor.Body = "content";
         draft.Auth.Token = "token";
         using var locked = new FileStream(harness.Folder.RequestOrder, FileMode.Open, FileAccess.Read, sharing);
 
@@ -86,7 +86,7 @@ public sealed class CollectionSafetyTests
         await main.LoadAsync();
         await main.OpenAsync(Node(main, "Saved"));
         var tab = main.SelectedTab!;
-        tab.Body = "edited";
+        tab.Editor.Body = "edited";
         using var locked = new FileStream(harness.Folder.RequestOrder, FileMode.Open, FileAccess.Read, sharing);
 
         await tab.SaveAsync();
@@ -220,7 +220,7 @@ public sealed class CollectionSafetyTests
             await main.NewDraftAsync(Node(main, "Folder"));
         }
         var first = main.SelectedTab!;
-        first.Body = "first";
+        first.Editor.Body = "first";
         first.Auth.Token = "first-token";
         if (inFolder)
         {
@@ -231,7 +231,7 @@ public sealed class CollectionSafetyTests
             main.NewTab();
         }
         var second = main.SelectedTab!;
-        second.Body = "second";
+        second.Editor.Body = "second";
         second.Auth.Token = "second-token";
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var blocked = harness.Services.CollectionChanges.RunAsync(() => release.Task);
@@ -246,7 +246,7 @@ public sealed class CollectionSafetyTests
         Assert.Equal("first-token", await harness.Secrets.OfAsync(first.Id, SecretKind.Token, Cancellation));
         Assert.Null(second.Name);
         Assert.Equal(inFolder ? "Folder" : null, second.Destination);
-        Assert.Equal("second", second.Body);
+        Assert.Equal("second", second.Editor.Body);
         Assert.True(second.IsDirty);
         Assert.Equal(harness.Translator.Of("Save.Exists"), second.Problem!.Details);
         Assert.Null(await harness.Secrets.OfAsync(second.Id, SecretKind.Token, Cancellation));
@@ -260,7 +260,7 @@ public sealed class CollectionSafetyTests
         var main = harness.Main();
         await main.LoadAsync();
         var draft = main.SelectedTab!;
-        draft.Body = "draft";
+        draft.Editor.Body = "draft";
         draft.Auth.Token = "token";
         var original = ApiRequest.New() with { Body = "other request" };
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -301,7 +301,7 @@ public sealed class CollectionSafetyTests
         await main.LoadAsync();
         await main.NewDraftAsync(Node(main, destination));
         var draft = main.SelectedTab!;
-        draft.Body = "saved content";
+        draft.Editor.Body = "saved content";
         draft.Auth.Token = "token";
         var folder = Node(main, "Folder");
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -371,7 +371,7 @@ public sealed class CollectionSafetyTests
         await main.LoadAsync();
         await main.OpenAsync(Node(main, "Folder/Request"));
         var tab = main.SelectedTab!;
-        tab.Body = "edited";
+        tab.Editor.Body = "edited";
         tab.Auth.Token = "secret";
         var source = Node(main, folder ? "Folder" : "Folder/Request");
         var target = Node(main, "Target");

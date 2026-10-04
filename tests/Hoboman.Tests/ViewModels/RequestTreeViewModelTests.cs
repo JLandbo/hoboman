@@ -120,10 +120,10 @@ public sealed class RequestTreeViewModelTests
         Assert.Equal([null, first, second], folder.Children.Select(node => node.Tab));
         tree.Activate(second);
         Assert.Same(second, Assert.Single(RequestTreeViewModel.Flatten(tree.Nodes), node => node.IsActive).Tab);
-        first.Method = "POST";
+        first.Editor.Method = "POST";
         harness.Translator.Use(Translation.Danish);
         first.Relabel();
-        Assert.Equal("POST", folder.Children[1].Tab?.Method);
+        Assert.Equal("POST", folder.Children[1].Tab?.Editor.Method);
         Assert.Equal("Ny request (1)", folder.Children[1].Tab?.Title);
         tabs.Remove(first);
         Assert.Equal([null, second], folder.Children.Select(node => node.Tab));
@@ -146,7 +146,7 @@ public sealed class RequestTreeViewModelTests
         await tree.LoadAsync(Cancellation);
         var tabs = tree.Follow([]);
         var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "A/B/C") { Number = 3 };
-        tab.Body = "content";
+        tab.Editor.Body = "content";
         tabs.Add(tab);
         tree.Activate(tab);
         foreach (var folder in RequestTreeViewModel.Flatten(tree.Nodes).Where(node => node.IsFolder))
@@ -164,7 +164,7 @@ public sealed class RequestTreeViewModelTests
         await tree.LoadAsync(Cancellation);
 
         Assert.Equal(remaining, tab.Destination);
-        Assert.Equal((true, true, "content", 3), (tab.IsDraft, tab.IsDirty, tab.Body, tab.Number));
+        Assert.Equal((true, true, "content", 3), (tab.IsDraft, tab.IsDirty, tab.Editor.Body, tab.Number));
         var row = Assert.Single(RequestTreeViewModel.Flatten(tree.Nodes), node => node.IsDraft);
         Assert.Equal(remaining, RequestLibrary.ParentOf(row.Path));
         Assert.True(row.IsActive);
@@ -204,7 +204,7 @@ public sealed class RequestTreeViewModelTests
         Assert.Same(tab, row.Tab);
         Assert.Same(row, Assert.Single(reveals));
         Assert.All(RequestTreeViewModel.Flatten(tree.Nodes).Where(node => node.IsFolder && name.StartsWith($"{node.Path}/")), node => Assert.True(node.IsExpanded));
-        tab.Method = "POST";
+        tab.Editor.Method = "POST";
         await tab.SaveAsync();
         await tree.LoadAsync(Cancellation);
         Assert.Single(reveals);
@@ -225,10 +225,10 @@ public sealed class RequestTreeViewModelTests
         tabs.Add(tab);
         tree.Activate(tab);
 
-        tab.Method = "DELETE";
+        tab.Editor.Method = "DELETE";
 
         Assert.Same(row, Assert.Single(Assert.Single(tree.Nodes).Children));
-        Assert.Equal("DELETE", row.Tab?.Method);
+        Assert.Equal("DELETE", row.Tab?.Editor.Method);
         Assert.True(row.Tab?.IsUnsaved);
         Assert.True(row.IsActive);
         tabs.Remove(tab);

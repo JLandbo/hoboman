@@ -429,19 +429,4 @@ public sealed class RequestLibraryTests : IDisposable
         // Assert
         Assert.Equal(["Api v1.2/Get user"], await Library().NamesAsync(Cancellation));
     }
-
-    [Fact]
-    public async Task LoadAllAsync_WhenAFileCannotBeRead_ThenReturnsItWithoutARequest()
-    {
-        // Arrange
-        var request = ApiRequest.New() with { Url = "https://dev.local" };
-        await Library().SaveAsync("Users/Get", request, Cancellation);
-        File.WriteAllText(Path.Combine(RequestsFolder, "Broken.json"), "{");
-
-        // Act
-        var requests = await Library().LoadAllAsync(Cancellation);
-
-        // Assert
-        Assert.Equal([("Broken", null), ("Users/Get", request.Id)], requests.Select(pair => (pair.Name, pair.Request?.Id)).Order());
-    }
 }

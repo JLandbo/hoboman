@@ -32,7 +32,7 @@ public sealed class CollectionInteractionTests
             Assert.Same(base64.Style, variables.Style);
             Assert.False(variables.IsChecked);
             variables.IsChecked = true;
-            Assert.True(main.SelectedTab!.UseEnvironmentVariablesInBody);
+            Assert.True(main.SelectedTab!.Editor.UseEnvironmentVariablesInBody);
             Assert.True(Ui.Bounds(variables, editor).Left < Ui.Bounds(base64, editor).Left);
             Assert.DoesNotContain(Ui.Descendants<TextBlock>(editor), text => text.GetBindingExpression(TextBlock.TextProperty)?.ParentBinding.Path.Path == "Base64.EncodeSummary");
         });
@@ -47,8 +47,8 @@ public sealed class CollectionInteractionTests
         {
             var main = harness.Main();
             await main.LoadAsync();
-            main.SelectedTab!.Headers.Rows[0].Name = "Header";
-            main.SelectedTab.Query.Rows[0].Name = "Param";
+            main.SelectedTab!.Editor.Headers.Rows[0].Name = "Header";
+            main.SelectedTab.Editor.Query.Rows[0].Name = "Param";
             var window = await Ui.ShowAsync(harness, main);
             Ui.Select((RadioButton)window.FindName("HistorySection"));
             main.SelectedTab.RequestSection = RequestSection.Params;
@@ -77,13 +77,13 @@ public sealed class CollectionInteractionTests
             var main = harness.Main();
             await main.LoadAsync();
             await main.OpenAsync(Node(main, "Original"));
-            main.SelectedTab!.Body = "unsaved";
+            main.SelectedTab!.Editor.Body = "unsaved";
             var window = await Ui.ShowAsync(harness, main);
             var tabs = (ListBox)window.FindName("RequestTabs");
             var item = (ListBoxItem)tabs.ItemContainerGenerator.ContainerFromItem(main.SelectedTab);
             Ui.Press(Ui.Descendants<TextBlock>(item).Single(text => text.Text == "Original"), 2);
             await Ui.UntilAsync(() => !main.IsChangingCollection && main.SelectedTab!.Name == "Renamed" && RequestTreeViewModel.Flatten(main.Tree.Nodes).Any(node => node.Path == "Renamed" && node.Tab is not null));
-            Assert.Equal("unsaved", main.SelectedTab!.Body);
+            Assert.Equal("unsaved", main.SelectedTab!.Editor.Body);
             Assert.Equal("", (await harness.Library.LoadAsync("Renamed", Cancellation))!.Body);
         });
     }
@@ -174,7 +174,7 @@ public sealed class CollectionInteractionTests
             main.MoveTab(main.SelectedTab!, main.Tabs.Single(tab => tab.Name == "A"), false);
             var active = main.SelectedTab!;
             main.NewTab();
-            main.SelectedTab!.Body = "discard this";
+            main.SelectedTab!.Editor.Body = "discard this";
             main.SelectedTab = active;
             var window = await Ui.ShowAsync(harness, main);
             window.Close();

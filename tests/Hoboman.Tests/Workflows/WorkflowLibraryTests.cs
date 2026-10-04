@@ -29,7 +29,27 @@ public sealed class WorkflowLibraryTests : IDisposable
             Id = Guid.NewGuid(),
             Parameters = [new("orderId"), new("pageSize") { Default = JsonSerializer.SerializeToElement(new { size = 50, name = "Æble" }) }],
             Variables = [new("token")],
-            Steps = [new() { Request = Guid.NewGuid(), With = [new("externalId", "{{orderId}}", false)], Saves = [new("token", "$.access_token")] }],
+            Steps =
+            [
+                new()
+                {
+                    Name = "Login",
+                    Request = new()
+                    {
+                        Id = Guid.NewGuid(),
+                        Auth = new(AuthKind.Basic, "{{user}}"),
+                        Method = "POST",
+                        Url = "https://dev.local/login",
+                        Query = [new("page", "2")],
+                        Headers = [new("X-Order", "{{orderId}}", false)],
+                        BodyKind = BodyKind.Json,
+                        Body = "{}",
+                        UseEnvironmentVariablesInBody = false,
+                        Base64 = new() { Encode = ["$.password"] },
+                    },
+                    Saves = [new("token", "$.access_token")],
+                },
+            ],
         };
         await Library().SaveAsync("Ordre-sync", workflow, Cancellation);
 
@@ -67,7 +87,7 @@ public sealed class WorkflowLibraryTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_WhenAStepHasNoRequest_ThenLoadsItWithoutAnId()
+    public async Task LoadAsync_WhenAStepHasNoRequest_ThenLoadsItWithoutOne()
     {
         // Arrange
         WriteWorkflow("Ordre-sync", """{"steps": [{}]}""");
@@ -76,7 +96,25 @@ public sealed class WorkflowLibraryTests : IDisposable
         var loaded = await Library().LoadAsync("Ordre-sync", Cancellation);
 
         // Assert
-        Assert.Equal(Guid.Empty, Assert.Single(loaded!.Steps).Request);
+        Assert.Null(Assert.Single(loaded!.Steps).Request);
+    }
+
+    [Theory]
+    [InlineData("../secret.js")]
+    [InlineData("..\\secret.js")]
+    [InlineData("secret.txt")]
+    public async Task LoadScriptAsync_WhenTheNameLeadsOutOfTheFolderOrIsNotJavaScript_ThenGivesNoCode(string script)
+    {
+        // Arrange
+        WriteWorkflow("Ordre-sync", "{}");
+        File.WriteAllText(Path.Combine(WorkflowsFolder, "secret.js"), "return 1;");
+        File.WriteAllText(Path.Combine(WorkflowsFolder, "Ordre-sync", "secret.txt"), "return 1;");
+
+        // Act
+        var code = await Library().LoadScriptAsync("Ordre-sync", script, Cancellation);
+
+        // Assert
+        Assert.Null(code);
     }
 
     [Fact]

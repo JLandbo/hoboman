@@ -72,6 +72,20 @@ public sealed class JsonPathTests
         Assert.Equal(expected, inside);
     }
 
+    [Theory]
+    [InlineData("$['token']", "$.token")]
+    [InlineData("$.items[0]['first name']", "$.items[0]['first name']")]
+    [InlineData("$.items[*].id", null)]
+    [InlineData("status", null)]
+    public void PlaceOf_WhenGivenAPath_ThenWritesItAsABodysPlaces(string path, string? expected)
+    {
+        // Act
+        var place = JsonPath.PlaceOf(path);
+
+        // Assert
+        Assert.Equal(expected, place);
+    }
+
     [Fact]
     public void TrySelect_WhenThePathHasAnIndex_ThenSelectsTheElement()
     {

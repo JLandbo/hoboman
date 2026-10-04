@@ -71,8 +71,8 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     {
         sender ??= new HttpRequestSender(Secrets, _clients ??= new(Settings), TimeProvider.System, NullLogger<HttpRequestSender>.Instance);
         var runner = new RequestRunner(sender, Library, History, NullLogger<RequestRunner>.Instance);
-        var check = new WorkflowCheck(Library, Secrets, NullLogger<WorkflowCheck>.Instance);
-        var workflowRunner = new WorkflowRunner(runner, Folder, NullLogger<WorkflowRunner>.Instance);
+        var check = new WorkflowCheck(Workflows, Secrets, NullLogger<WorkflowCheck>.Instance);
+        var workflowRunner = new WorkflowRunner(sender, Folder, NullLogger<WorkflowRunner>.Instance);
         var tokens = new UnaskedTokens(oauth ?? new(_ => throw new OAuthException(OAuthProblem.Denied, "access_denied")), Secrets, NullLogger<UnaskedTokens>.Instance);
         return new CliApplication(Library, Settings, Environments, runner, Workflows, check, workflowRunner, tokens, new(_output, _error), new(input ?? TextReader.Null, input is not null))
             .RunAsync(arguments, cancellationToken ?? Cancellation);
@@ -84,18 +84,13 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
 
     static FakeSender Failing(Exception exception) => new(() => Task.FromException<ApiResponse>(exception));
 
-    // A workflow named Flow with one step per saved request.
-    Task SaveWorkflowAsync(params ApiRequest[] requests) =>
-        SaveWorkflowAsync(new Workflow { Id = Guid.NewGuid(), Steps = [.. requests.Select(request => new WorkflowStep { Request = request.Id })] }, requests);
+    WorkflowRequest Call => new() { Url = $"{server.Http}" };
 
-    async Task SaveWorkflowAsync(Workflow workflow, params ApiRequest[] requests)
-    {
-        foreach (var (index, request) in requests.Index())
-        {
-            await Library.SaveAsync($"Step {index}", request, Cancellation);
-        }
-        await Workflows.SaveAsync("Flow", workflow, Cancellation);
-    }
+    // A workflow named Flow with one step per request.
+    Task SaveWorkflowAsync(params WorkflowRequest[] requests) =>
+        SaveWorkflowAsync(new Workflow { Id = Guid.NewGuid(), Steps = [.. requests.Select(request => new WorkflowStep { Request = request })] });
+
+    Task SaveWorkflowAsync(Workflow workflow) => Workflows.SaveAsync("Flow", workflow, Cancellation);
 
     JsonElement Event(string type) => Events.Single(element => element.GetProperty("type").GetString() == type);
 
@@ -592,7 +587,7 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     public async Task RunAsync_WhenEveryStepSucceeds_ThenWritesEventsAndExitsZero()
     {
         // Arrange
-        await SaveWorkflowAsync(Request);
+        await SaveWorkflowAsync(Call);
 
         // Act
         var exitCode = await RunAsync(["run", "Flow"]);
@@ -605,7 +600,7 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     public async Task RunAsync_WhenAStepFails_ThenEndsWithRunFinishedAndExitsOne()
     {
         // Arrange
-        await SaveWorkflowAsync(Request, Request);
+        await SaveWorkflowAsync(Call, Call);
 
         // Act
         var exitCode = await RunAsync(["run", "Flow"], Answering(500));
@@ -618,7 +613,7 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     public async Task RunAsync_WhenRunning_ThenWritesTheSameLinesToTheRunFile()
     {
         // Arrange
-        await SaveWorkflowAsync(Request);
+        await SaveWorkflowAsync(Call);
 
         // Act
         await RunAsync(["run", "Flow"]);
@@ -628,23 +623,23 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     }
 
     [Fact]
-    public async Task RunAsync_WhenRunning_ThenRemembersEachCallAsFromTheCli()
+    public async Task RunAsync_WhenRunning_ThenKeepsTheCallsOutOfTheHistory()
     {
         // Arrange
-        await SaveWorkflowAsync(Request, Request);
+        await SaveWorkflowAsync(Call, Call);
 
         // Act
         await RunAsync(["run", "Flow"], Answering());
 
         // Assert
-        Assert.Equal([HistorySource.Cli, HistorySource.Cli], (await CallsAsync()).Select(call => call.Entry.Source));
+        Assert.Empty(await CallsAsync());
     }
 
     [Fact]
     public async Task RunAsync_WhenTheCheckFails_ThenWritesNothingToStdoutAndExitsTwo()
     {
         // Arrange
-        await SaveWorkflowAsync(Request with { Url = $"{server.Http}{{{{token}}}}" });
+        await SaveWorkflowAsync(Call with { Url = $"{server.Http}{{{{token}}}}" });
 
         // Act
         var exitCode = await RunAsync(["run", "Flow"]);
@@ -658,7 +653,7 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     public async Task RunAsync_WhenAParameterIsUnknown_ThenExitsTwo()
     {
         // Arrange
-        await SaveWorkflowAsync(Request);
+        await SaveWorkflowAsync(Call);
 
         // Act
         var exitCode = await RunAsync(["run", "Flow", "--param", "unknown=1"], Answering());
@@ -687,7 +682,7 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     public async Task RunAsync_WhenTheParametersAreInvalid_ThenFailsBeforeStarting(string[] options, string? json)
     {
         // Arrange
-        await SaveWorkflowAsync(Request);
+        await SaveWorkflowAsync(Call);
         using var input = json is null ? null : new StringReader(json);
 
         // Act
@@ -730,7 +725,7 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     public async Task RunAsync_WhenTheEnvironmentIsUnknownForAWorkflow_ThenFailsBeforeStarting()
     {
         // Arrange
-        await SaveWorkflowAsync(Request);
+        await SaveWorkflowAsync(Call);
 
         // Act
         var exitCode = await RunAsync(["run", "Flow", "--env", "missing"], Answering());
@@ -740,10 +735,25 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     }
 
     [Fact]
+    public async Task RunAsync_WhenATokenIsFetchedInARun_ThenFetchesItWithTheSavedEnvironment()
+    {
+        // Arrange
+        var oauth = new FakeOAuthClient(_ => Task.FromResult(_fetched));
+        await SaveWorkflowAsync(new Workflow { Id = Guid.NewGuid(), Parameters = [new("clientId")], Steps = [new() { Request = Call with { Id = Guid.NewGuid(), Auth = new(AuthKind.OAuth2) } }] });
+        await Environments.SaveAsync([new("Dev", [new("clientId", "saved")])], Cancellation);
+
+        // Act
+        await RunAsync(["run", "Flow", "--env", "Dev", "--param", "clientId=temporary"], oauth: oauth);
+
+        // Assert
+        Assert.Equal("saved", oauth.Asked?.Environment?.Resolve("{{clientId}}"));
+    }
+
+    [Fact]
     public async Task RunAsync_WhenTheCallerCancelsARun_ThenEndsWithACancelledRunAndExitsOne()
     {
         // Arrange
-        await SaveWorkflowAsync(Request);
+        await SaveWorkflowAsync(Call);
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(Cancellation);
         var sending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var sender = new FakeSender(() =>
@@ -760,21 +770,5 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
 
         // Assert
         Assert.Equal((1, "Cancelled"), (exitCode, Event("run.finished").GetProperty("outcome").GetString()));
-    }
-
-    [Fact]
-    public async Task RunAsync_WhenATokenIsFetchedInARun_ThenFetchesItWithTheSavedEnvironment()
-    {
-        // Arrange
-        var oauth = new FakeOAuthClient(_ => Task.FromResult(_fetched));
-        var request = Request with { Auth = new(AuthKind.OAuth2) };
-        await SaveWorkflowAsync(new Workflow { Id = Guid.NewGuid(), Parameters = [new("clientId")], Steps = [new() { Request = request.Id }] }, request);
-        await Environments.SaveAsync([new("Dev", [new("clientId", "saved")])], Cancellation);
-
-        // Act
-        await RunAsync(["run", "Flow", "--env", "Dev", "--param", "clientId=temporary"], oauth: oauth);
-
-        // Assert
-        Assert.Equal("saved", oauth.Asked?.Environment?.Resolve("{{clientId}}"));
     }
 }

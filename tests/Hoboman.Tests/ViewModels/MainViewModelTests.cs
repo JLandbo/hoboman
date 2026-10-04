@@ -48,11 +48,11 @@ public sealed class MainViewModelTests
         using (new FileStream(Path.Combine(harness.Folder.Requests, "Users", "Saved.json.tmp"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
         {
             saving = tab.SaveAsync();
-            tab.Method = "POST";
+            tab.Editor.Method = "POST";
         }
         await saving;
         Assert.True(tab.IsDirty);
-        Assert.Equal("POST", tab.Method);
+        Assert.Equal("POST", tab.Editor.Method);
 
         main.Close(tab);
 
@@ -138,7 +138,7 @@ public sealed class MainViewModelTests
         var first = main.SelectedTab!;
         await main.NewDraftAsync(NodeOf(main, "Users/Admin"));
         var second = main.SelectedTab!;
-        second.Body = "content";
+        second.Editor.Body = "content";
         await main.NewDraftAsync(NodeOf(main, "Users2"));
         var other = main.SelectedTab!;
         main.SelectedTab = second;
@@ -149,7 +149,7 @@ public sealed class MainViewModelTests
 
         Assert.Equal((name, $"{name}/Admin", "Users2"), (first.Destination, second.Destination, other.Destination));
         Assert.Equal(titles, main.Tabs.Select(tab => tab.Title));
-        Assert.Equal("content", second.Body);
+        Assert.Equal("content", second.Editor.Body);
         Assert.True(second.IsDirty);
         Assert.Same(second, Assert.Single(RequestTreeViewModel.Flatten(main.Tree.Nodes), node => node.IsActive).Tab);
         Assert.Equal(3, RequestTreeViewModel.Flatten(main.Tree.Nodes).Count(node => node.IsDraft));
@@ -169,12 +169,12 @@ public sealed class MainViewModelTests
         var untouched = main.SelectedTab!;
         await main.OpenAsync(NodeOf(main, "Users/Admin/Get"));
         var saved = main.SelectedTab!;
-        saved.Body = "saved edit";
+        saved.Editor.Body = "saved edit";
         await main.OpenAsync(NodeOf(main, "Users/Clean"));
         var clean = main.SelectedTab!;
         await main.NewDraftAsync(NodeOf(main, "Users/Admin"));
         var draft = main.SelectedTab!;
-        draft.Body = "draft content";
+        draft.Editor.Body = "draft content";
         var tabs = main.Tabs.ToList();
 
         await main.DeleteFolderAsync(NodeOf(main, "Users"));
@@ -187,8 +187,8 @@ public sealed class MainViewModelTests
         Assert.Same(accept ? main.Tabs[0] : draft, main.SelectedTab);
         if (!accept)
         {
-            Assert.Equal("draft content", draft.Body);
-            Assert.Equal("saved edit", saved.Body);
+            Assert.Equal("draft content", draft.Editor.Body);
+            Assert.Equal("saved edit", saved.Editor.Body);
             Assert.Equal("Users/Admin", draft.Destination);
         }
     }
@@ -208,7 +208,7 @@ public sealed class MainViewModelTests
         var draft = main.SelectedTab!;
         if (edited)
         {
-            draft.Body = "content";
+            draft.Editor.Body = "content";
         }
         Assert.Equal(!edited || accept, main.CanClose());
         if (edited)
@@ -350,9 +350,9 @@ public sealed class MainViewModelTests
         await main.LoadAsync();
         await main.NewDraftAsync(NodeOf(main, "Users"));
         var draft = main.SelectedTab!;
-        draft.Body = "content";
+        draft.Editor.Body = "content";
         await draft.SendAsync();
-        var response = draft.Response;
+        var response = draft.Result.Response;
 
         await harness.Library.SaveFolderAsync("Users", new() { Id = Guid.NewGuid(), Auth = new(AuthKind.OAuth2) }, Cancellation);
         await main.RequestsChangedAsync();
@@ -362,8 +362,8 @@ public sealed class MainViewModelTests
         Assert.True(draft.HasOAuth);
         Assert.Equal("People", draft.InheritedAuthFolder);
         Assert.Equal(harness.Translator.Format("Auth.InheritedFrom", "People"), draft.AuthSourceTip);
-        Assert.Equal("content", draft.Body);
-        Assert.Same(response, draft.Response);
+        Assert.Equal("content", draft.Editor.Body);
+        Assert.Same(response, draft.Result.Response);
         Assert.True(draft.IsDirty);
     }
 
@@ -541,7 +541,7 @@ public sealed class MainViewModelTests
         await main.RequestsChangedAsync();
 
         // Assert
-        Assert.Equal("https://agent.local", main.SelectedTab?.Url);
+        Assert.Equal("https://agent.local", main.SelectedTab?.Editor.Url);
     }
 
     [Fact]
@@ -554,15 +554,15 @@ public sealed class MainViewModelTests
         await main.LoadAsync();
         await main.OpenAsync(main.Tree.Nodes.Single());
         var tab = main.SelectedTab!;
-        tab.Url = "https://saved.local";
+        tab.Editor.Url = "https://saved.local";
         await tab.SaveAsync();
-        tab.Url = "https://newer.local";
+        tab.Editor.Url = "https://newer.local";
 
         // Act
         await main.RequestsChangedAsync();
 
         // Assert
-        Assert.Equal("https://newer.local", tab.Url);
+        Assert.Equal("https://newer.local", tab.Editor.Url);
     }
 
     [Fact]
@@ -662,7 +662,7 @@ public sealed class MainViewModelTests
         var main = harness.Main();
         await main.LoadAsync();
         var tab = main.SelectedTab!;
-        tab.Url = "https://dev.local";
+        tab.Editor.Url = "https://dev.local";
 
         // Act
         main.Close(tab);
@@ -678,7 +678,7 @@ public sealed class MainViewModelTests
         using var harness = new Harness(new FakeDialogs(accept: false));
         var main = harness.Main();
         await main.LoadAsync();
-        main.SelectedTab!.Url = "https://dev.local";
+        main.SelectedTab!.Editor.Url = "https://dev.local";
 
         // Act
         main.CanClose();
@@ -694,7 +694,7 @@ public sealed class MainViewModelTests
         using var harness = new Harness(new FakeDialogs(accept: false));
         var main = harness.Main();
         await main.LoadAsync();
-        main.SelectedTab!.Url = "https://dev.local";
+        main.SelectedTab!.Editor.Url = "https://dev.local";
 
         // Act
         var canClose = main.CanClose();
@@ -1197,7 +1197,7 @@ public sealed class MainViewModelTests
         Assert.DoesNotContain(tab, main.Tabs);
         Assert.NotSame(tab, main.SelectedTab);
         Assert.Null(Assert.Single(main.Tabs).Name);
-        Assert.Equal(BodyKind.Json, main.SelectedTab!.BodyKind);
+        Assert.Equal(BodyKind.Json, main.SelectedTab!.Editor.BodyKind);
         Assert.Equal(RequestSection.Body, main.SelectedTab.RequestSection);
     }
 
@@ -1227,7 +1227,7 @@ public sealed class MainViewModelTests
         await main.LoadAsync();
         await main.OpenAsync(main.Tree.Nodes.Single());
         var tab = main.SelectedTab!;
-        tab.Body = "unsaved";
+        tab.Editor.Body = "unsaved";
 
         // Act
         await main.DeleteAsync(main.Tree.Nodes.Single());
@@ -1235,7 +1235,7 @@ public sealed class MainViewModelTests
         // Assert
         Assert.Equal(["Ping"], await harness.Library.NamesAsync(Cancellation));
         Assert.Same(tab, main.SelectedTab);
-        Assert.Equal("unsaved", tab.Body);
+        Assert.Equal("unsaved", tab.Editor.Body);
         Assert.Contains(tab, main.Tabs);
     }
 
@@ -1453,7 +1453,7 @@ public sealed class MainViewModelTests
         await main.OpenAsync(new HistoryItemViewModel(new("call.json", entry), "Today"));
 
         // Assert
-        Assert.Equal("200 OK", main.SelectedTab?.Response?.Status);
+        Assert.Equal("200 OK", main.SelectedTab?.Result.Response?.Status);
     }
 
     [Theory]
@@ -1521,13 +1521,13 @@ public sealed class MainViewModelTests
         var main = harness.Main();
         await main.LoadAsync();
         await main.OpenAsync(new HistoryItemViewModel(new("call.json", entry), "Today"));
-        main.SelectedTab!.Url = "https://changed.local";
+        main.SelectedTab!.Editor.Url = "https://changed.local";
 
         // Act
         await main.OpenAsync(new HistoryItemViewModel(new("call.json", entry), "Today"));
 
         // Assert
-        Assert.Equal("https://dev.local", main.SelectedTab?.Url);
+        Assert.Equal("https://dev.local", main.SelectedTab?.Editor.Url);
     }
 
     [Fact]
@@ -1542,7 +1542,7 @@ public sealed class MainViewModelTests
         await main.LoadAsync();
         await main.OpenAsync(main.Tree.Nodes.Single(node => node.Path == "A"));
         var tab = main.SelectedTab!;
-        tab.Url = "https://edited.local";
+        tab.Editor.Url = "https://edited.local";
         await main.DeleteAsync(main.Tree.Nodes.Single(node => node.Path == "A"));
 
         // Act
@@ -1642,13 +1642,13 @@ public sealed class MainViewModelTests
         var main = harness.Main();
         await main.LoadAsync();
         await main.OpenAsync(main.Tree.Nodes.Single());
-        main.SelectedTab!.Url = "https://edited.local";
+        main.SelectedTab!.Editor.Url = "https://edited.local";
 
         // Act
         await main.RequestsChangedAsync();
 
         // Assert
-        Assert.Equal("https://edited.local", main.SelectedTab!.Url);
+        Assert.Equal("https://edited.local", main.SelectedTab!.Editor.Url);
     }
 
     [Fact]
@@ -1661,9 +1661,9 @@ public sealed class MainViewModelTests
         await main.LoadAsync();
         await main.OpenAsync(main.Tree.Nodes.Single());
         var tab = main.SelectedTab!;
-        tab.Url = "https://saved.local";
+        tab.Editor.Url = "https://saved.local";
         await tab.SaveAsync();
-        tab.Url = "https://newer.local";
+        tab.Editor.Url = "https://newer.local";
 
         // Act
         await main.RequestsChangedAsync();
@@ -1684,7 +1684,7 @@ public sealed class MainViewModelTests
         await main.OpenAsync(new HistoryItemViewModel(new("b.json", new(DateTimeOffset.Now, HistorySource.App, "b.local", ApiRequest.New() with { Url = "https://b.local" })), "Today"));
 
         // Assert
-        Assert.Equal("https://b.local", main.SelectedTab?.Url);
+        Assert.Equal("https://b.local", main.SelectedTab?.Editor.Url);
     }
 
     [Fact]
@@ -1742,13 +1742,13 @@ public sealed class MainViewModelTests
         using var harness = new Harness();
         var main = harness.Main();
         await main.OpenAsync(HistoryItem("a.json"));
-        main.SelectedTab!.Url = "https://changed.local";
+        main.SelectedTab!.Editor.Url = "https://changed.local";
 
         // Act
         await main.OpenAsync(HistoryItem("b.json"));
 
         // Assert
-        Assert.Equal(["https://changed.local", "https://b.local"], main.Tabs.Select(tab => tab.Url));
+        Assert.Equal(["https://changed.local", "https://b.local"], main.Tabs.Select(tab => tab.Editor.Url));
     }
 
     [Fact]

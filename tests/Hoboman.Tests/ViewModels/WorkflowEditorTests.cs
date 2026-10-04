@@ -16,11 +16,27 @@ public sealed class WorkflowEditorTests
         return () => Task.FromResult(queue.Dequeue());
     }
 
-    static async Task<Guid> SaveRequestAsync(Harness harness, string name, string url = "https://dev.local/ping")
+    static WorkflowRequest Request(string url = "https://dev.local/ping") => new() { Url = url };
+
+    static AuthSettings ClientCredentials => new(AuthKind.OAuth2, OAuth: new() { Grant = OAuthGrant.ClientCredentials, TokenUrl = "https://dev.local/token" });
+
+    // A token is fetched for the step until the fetch is cancelled.
+    static Harness FetchingHarness(TaskCompletionSource fetching) => new(send: () => throw new MissingSecretException(SecretKind.OAuthToken), oauth: new(async cancellationToken =>
     {
-        var request = ApiRequest.New() with { Url = url, Auth = AuthSettings.None };
-        await harness.Library.SaveAsync(name, request, TestContext.Current.CancellationToken);
-        return request.Id;
+        fetching.TrySetResult();
+        await Task.Delay(Timeout.Infinite, cancellationToken);
+        return FakeOAuthClient.Token;
+    }));
+
+    internal static async Task<WorkflowViewModel> AddBearerStepAndRunAsync(MainViewModel main, Harness harness)
+    {
+        var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid() }, harness);
+        workflow.AddRequest();
+        workflow.Steps[0].Request!.Url = "https://dev.local";
+        workflow.Steps[0].Auth!.Kind = AuthKind.Bearer;
+        workflow.Steps[0].Auth!.Token = "abc";
+        await workflow.RunAsync();
+        return workflow;
     }
 
     static async Task<WorkflowViewModel> OpenAsync(MainViewModel main, string name, Workflow workflow, Harness harness)
@@ -32,7 +48,7 @@ public sealed class WorkflowEditorTests
     }
 
     [Fact]
-    public async Task NewWorkflowAsync_WhenNamed_ThenCreatesItWithAnIdAndShowsItInsteadOfTheTab()
+    public async Task NewWorkflowAsync_WhenNamed_ThenCreatesItWithAnIdAndShowsItWithTheWorkflows()
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(answer: "Ordre-sync"));
@@ -45,13 +61,13 @@ public sealed class WorkflowEditorTests
         // Assert
         Assert.NotEqual(Guid.Empty, (await harness.WorkflowLibrary.LoadAsync("Ordre-sync", Cancellation))!.Id);
         Assert.Equal(["Ordre-sync"], main.Workflows.Names);
-        Assert.Null(main.SelectedTab);
+        Assert.Equal(SidebarSection.Workflows, main.Section);
         Assert.Same(main.Workflow, main.Content);
         Assert.Equal("Ordre-sync", main.Workflow!.Name);
     }
 
     [Fact]
-    public async Task Content_WhenATabIsChosenAndTheWorkflowOpenedAgain_ThenSwitchesBetweenThem()
+    public async Task Content_WhenTheSidebarSwitchesBetweenCollectionsAndWorkflows_ThenShowsTheChosenTabOrTheWorkflow()
     {
         // Arrange
         using var harness = new Harness();
@@ -60,14 +76,30 @@ public sealed class WorkflowEditorTests
         var tab = main.Tabs.Single();
 
         // Act
-        main.SelectedTab = tab;
+        main.Section = SidebarSection.Collections;
         var shownTab = main.Content;
-        await main.OpenWorkflowAsync("Flow");
+        main.Section = SidebarSection.Workflows;
 
         // Assert
         Assert.Same(tab, shownTab);
         Assert.Same(workflow, main.Content);
-        Assert.Null(main.SelectedTab);
+        Assert.Same(tab, main.SelectedTab);
+    }
+
+    [Fact]
+    public async Task NewTab_WhenTheWorkflowsAreShown_ThenShowsTheNewTabWithTheCollections()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var main = harness.Main();
+        await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid() }, harness);
+
+        // Act
+        main.NewTab();
+
+        // Assert
+        Assert.Equal(SidebarSection.Collections, main.Section);
+        Assert.Same(main.Tabs.Last(), main.Content);
     }
 
     [Fact]
@@ -77,7 +109,7 @@ public sealed class WorkflowEditorTests
         using var harness = new Harness(new FakeDialogs(answer: "Renamed"));
         var main = harness.Main();
         var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid() }, harness);
-        workflow.Variables.Rows[0].Name = "token";
+        workflow.Parameters.Rows[0].Name = "token";
 
         // Act
         await main.RenameWorkflowAsync("Flow");
@@ -85,12 +117,12 @@ public sealed class WorkflowEditorTests
 
         // Assert
         Assert.Equal(["Renamed"], main.Workflows.Names);
-        Assert.Equal("token", (await harness.WorkflowLibrary.LoadAsync("Renamed", Cancellation))!.Variables.Single().Name);
+        Assert.Equal("token", (await harness.WorkflowLibrary.LoadAsync("Renamed", Cancellation))!.Parameters.Single().Name);
         Assert.False(Directory.Exists(Path.Combine(harness.Folder.Workflows, "Flow")));
     }
 
     [Fact]
-    public async Task DeleteWorkflowAsync_WhenConfirmed_ThenRemovesItAndShowsATab()
+    public async Task DeleteWorkflowAsync_WhenConfirmed_ThenRemovesItAndShowsNoWorkflow()
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(accept: true));
@@ -103,7 +135,304 @@ public sealed class WorkflowEditorTests
         // Assert
         Assert.Empty(main.Workflows.Names);
         Assert.Null(main.Workflow);
-        Assert.Same(main.Tabs.Single(), main.Content);
+        Assert.Null(main.Content);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public async Task DeleteWorkflowAsync_WhenConfirmed_ThenForgetsTheSecretsOfItsStepsUnlessACopyUsesThem(bool copied, bool kept)
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(accept: true));
+        var id = Guid.NewGuid();
+        await harness.Secrets.SaveAsync(id, SecretKind.Token, "abc", Cancellation);
+        var workflow = new Workflow { Id = Guid.NewGuid(), Steps = [new() { Request = Request() with { Id = id, Auth = new(AuthKind.Bearer) } }] };
+        if (copied)
+        {
+            await harness.WorkflowLibrary.SaveAsync("Flow - kopi", workflow, Cancellation);
+        }
+        var main = harness.Main();
+        await OpenAsync(main, "Flow", workflow, harness);
+
+        // Act
+        await main.DeleteWorkflowAsync("Flow");
+
+        // Assert
+        Assert.Equal(kept, await harness.Secrets.OfAsync(id, SecretKind.Token, Cancellation) is not null);
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenAStepHasABearerToken_ThenSavesItAsASecretAndNotInTheWorkflow()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid() }, harness);
+        workflow.AddRequest();
+        workflow.Steps[0].Request!.Url = "https://dev.local";
+        workflow.Steps[0].Auth!.Kind = AuthKind.Bearer;
+        workflow.Steps[0].Auth!.Token = "abc";
+
+        // Act
+        await workflow.SaveAsync();
+
+        // Assert
+        var saved = (await harness.WorkflowLibrary.LoadAsync("Flow", Cancellation))!.Steps.Single().Request!;
+        Assert.Equal((AuthKind.Bearer, "abc"), (saved.Auth!.Kind, await harness.Secrets.OfAsync(saved.Id, SecretKind.Token, Cancellation)));
+        Assert.DoesNotContain("abc", await File.ReadAllTextAsync(Path.Combine(harness.Folder.Workflows, "Flow", "workflow.json"), Cancellation));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenAStepWithSecretsIsRemoved_ThenForgetsThem()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var id = Guid.NewGuid();
+        await harness.Secrets.SaveAsync(id, SecretKind.Token, "abc", Cancellation);
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request() with { Id = id, Auth = new(AuthKind.Bearer) } }] }, harness);
+        workflow.RemoveStep(workflow.Steps.Single());
+
+        // Act
+        await workflow.SaveAsync();
+
+        // Assert
+        Assert.Null(await harness.Secrets.OfAsync(id, SecretKind.Token, Cancellation));
+    }
+
+    [Fact]
+    public async Task OpenWorkflowAsync_WhenAStepHasSecrets_ThenShowsThem()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var id = Guid.NewGuid();
+        await harness.Secrets.SaveAsync(id, SecretKind.Password, "secret", Cancellation);
+
+        // Act
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request() with { Id = id, Auth = new(AuthKind.Basic, "demo") } }] }, harness);
+
+        // Assert
+        Assert.Equal(("demo", "secret"), (workflow.Steps.Single().Auth!.UserName, workflow.Steps.Single().Auth!.Password));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAClientCredentialsTokenIsMissing_ThenFetchesAndSavesItForTheStepAndTheChosenEnvironment()
+    {
+        // Arrange
+        var calls = 0;
+        using var harness = new Harness(send: () => ++calls == 1 ? throw new MissingSecretException(SecretKind.OAuthToken) : Task.FromResult(Ok("{}")));
+        var dev = new ApiEnvironment("Dev", []) { Id = Guid.NewGuid() };
+        await harness.EnvironmentStore.SaveAsync([dev], Cancellation);
+        var id = Guid.NewGuid();
+        var main = harness.Main();
+        var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request() with { Id = id, Auth = ClientCredentials } }] }, harness);
+        await main.Environments.ChooseAsync(main.Environments.Items.Single());
+
+        // Act
+        await workflow.RunAsync();
+
+        // Assert
+        Assert.Equal(("200", "Dev", false), (workflow.Steps.Single().Status, harness.OAuth.Asked!.Value.Environment!.Name, workflow.IsDirty));
+        Assert.NotNull(await harness.Secrets.OfAsync(id, SecretKind.OAuthToken, dev.Id, Cancellation));
+    }
+
+    [Fact]
+    public async Task Cancel_WhenATokenIsFetchedDuringARun_ThenCancelsTheStep()
+    {
+        // Arrange
+        var fetching = new TaskCompletionSource();
+        using var harness = new Harness(send: () => throw new MissingSecretException(SecretKind.OAuthToken), oauth: new(async cancellationToken =>
+        {
+            fetching.TrySetResult();
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return FakeOAuthClient.Token;
+        }));
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request() with { Id = Guid.NewGuid(), Auth = ClientCredentials } }] }, harness);
+        var running = workflow.RunAsync();
+        await fetching.Task.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+
+        // Act
+        workflow.Cancel();
+        await running.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+
+        // Assert
+        Assert.Equal(harness.Translator.Of("Workflow.Cancelled"), workflow.Steps.Single().State);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheStepIsEditedWhileItsTokenIsFetched_ThenTheWorkflowStaysUnsaved()
+    {
+        // Arrange
+        var fetching = new TaskCompletionSource();
+        using var harness = FetchingHarness(fetching);
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request() with { Id = Guid.NewGuid(), Auth = ClientCredentials } }] }, harness);
+        var running = workflow.RunAsync();
+        await fetching.Task.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+
+        // Act
+        workflow.Steps.Single().Auth!.Scope = "orders";
+        await running.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+
+        // Assert
+        Assert.True(workflow.IsDirty);
+    }
+
+    [Fact]
+    public async Task RemoveStep_WhenItsTokenIsFetchedDuringARun_ThenStopsTheFetch()
+    {
+        // Arrange
+        var fetching = new TaskCompletionSource();
+        using var harness = FetchingHarness(fetching);
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request() with { Id = Guid.NewGuid(), Auth = ClientCredentials } }] }, harness);
+        var running = workflow.RunAsync();
+        await fetching.Task.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+
+        // Act
+        workflow.RemoveStep(workflow.Steps.Single());
+        await running.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+
+        // Assert
+        Assert.False(workflow.IsRunning);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenOnlyASecretIsEdited_ThenSavesItAndTheWorkflowIsSaved()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var id = Guid.NewGuid();
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request() with { Id = id, Auth = new(AuthKind.Bearer) } }] }, harness);
+        workflow.Steps.Single().Auth!.Token = "abc";
+
+        // Act
+        await workflow.RunAsync();
+
+        // Assert
+        Assert.Equal(("abc", false), (await harness.Secrets.OfAsync(id, SecretKind.Token, Cancellation), workflow.IsDirty));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenARunSavedTheSecretOfAStepThatIsRemoved_ThenForgetsIt()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var workflow = await AddBearerStepAndRunAsync(harness.Main(), harness);
+        var id = workflow.Steps.Single().SecretsId!.Value;
+        var savedByRun = await harness.Secrets.OfAsync(id, SecretKind.Token, Cancellation);
+        workflow.RemoveStep(workflow.Steps.Single());
+
+        // Act
+        await workflow.SaveAsync();
+
+        // Assert
+        Assert.Equal(("abc", null), (savedByRun, await harness.Secrets.OfAsync(id, SecretKind.Token, Cancellation)));
+    }
+
+    [Fact]
+    public async Task OpenWorkflowAsync_WhenAWorkflowIsLeftWithoutSavingAStepARunSavedSecretsFor_ThenForgetsThem()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(accept: true));
+        await harness.WorkflowLibrary.SaveAsync("Other", new() { Id = Guid.NewGuid() }, Cancellation);
+        var main = harness.Main();
+        var workflow = await AddBearerStepAndRunAsync(main, harness);
+        var id = workflow.Steps.Single().SecretsId!.Value;
+        var savedByRun = await harness.Secrets.OfAsync(id, SecretKind.Token, Cancellation);
+
+        // Act
+        await main.OpenWorkflowAsync("Other");
+
+        // Assert
+        Assert.Equal(("abc", null), (savedByRun, await harness.Secrets.OfAsync(id, SecretKind.Token, Cancellation)));
+    }
+
+    [Fact]
+    public async Task WorkflowsChangedAsync_WhenTheOpenWorkflowIsRemovedOnDisk_ThenKeepsTheSecretsOfItsSteps()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var id = Guid.NewGuid();
+        await harness.Secrets.SaveAsync(id, SecretKind.Token, "abc", Cancellation);
+        var main = harness.Main();
+        await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request() with { Id = id, Auth = new(AuthKind.Bearer) } }] }, harness);
+        Directory.Delete(Path.Combine(harness.Folder.Workflows, "Flow"), recursive: true);
+
+        // Act
+        await main.WorkflowsChangedAsync();
+
+        // Assert
+        Assert.Equal((null, "abc"), (main.Workflow, await harness.Secrets.OfAsync(id, SecretKind.Token, Cancellation)));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAStepIsRemovedBeforeItRuns_ThenFetchesNoTokenForIt()
+    {
+        // Arrange
+        var sending = new TaskCompletionSource();
+        var answer = new TaskCompletionSource<ApiResponse>();
+        var calls = 0;
+        using var harness = new Harness(send: () =>
+        {
+            if (++calls > 1)
+            {
+                throw new MissingSecretException(SecretKind.OAuthToken);
+            }
+            sending.TrySetResult();
+            return answer.Task;
+        });
+        var workflow = await OpenAsync(harness.Main(), "Flow", new()
+        {
+            Id = Guid.NewGuid(),
+            Steps = [new() { Request = Request() }, new() { Request = Request() with { Id = Guid.NewGuid(), Auth = ClientCredentials } }],
+        }, harness);
+        var running = workflow.RunAsync();
+        await sending.Task.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+
+        // Act
+        workflow.RemoveStep(workflow.Steps[1]);
+        answer.SetResult(Ok("{}"));
+        await running.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+
+        // Assert
+        Assert.Null(harness.OAuth.Asked);
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenAVariableHasADefaultWrittenByHand_ThenKeepsIt()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var workflow = await OpenAsync(harness.Main(), "Flow", new()
+        {
+            Id = Guid.NewGuid(),
+            Variables = [new("token") { Default = JsonSerializer.SerializeToElement("abc") }],
+            Steps = [new() { Request = Request(), Saves = [new("token", "$.token")] }],
+        }, harness);
+        workflow.Steps.Single().Name = "Login";
+
+        // Act
+        await workflow.SaveAsync();
+
+        // Assert
+        Assert.Equal("abc", (await harness.WorkflowLibrary.LoadAsync("Flow", Cancellation))!.Variables.Single().Default.GetString());
+    }
+
+    [Fact]
+    public async Task OpenWorkflowAsync_WhenAStepsSavedTokenUsesAName_ThenTheStepShowsItAsUsed()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var id = Guid.NewGuid();
+        await harness.Secrets.SaveAsync(id, SecretKind.Token, "{{token}}", Cancellation);
+
+        // Act
+        var workflow = await OpenAsync(harness.Main(), "Flow", new()
+        {
+            Id = Guid.NewGuid(),
+            Steps = [new() { Request = Request(), Saves = [new("token", "$.token")] }, new() { Request = Request() with { Id = id, Auth = new(AuthKind.Bearer) } }],
+        }, harness);
+
+        // Assert
+        Assert.Equal(["token"], workflow.Steps[1].UsedNames);
     }
 
     [Fact]
@@ -152,15 +481,15 @@ public sealed class WorkflowEditorTests
         var workflow = await OpenAsync(main, "Flow", new() { Id = id }, harness);
         if (edited)
         {
-            workflow.Variables.Rows[0].Name = "mine";
+            workflow.Parameters.Rows[0].Name = "mine";
         }
-        await harness.WorkflowLibrary.SaveAsync("Flow", new() { Id = id, Variables = [new("theirs")] }, Cancellation);
+        await harness.WorkflowLibrary.SaveAsync("Flow", new() { Id = id, Parameters = [new("theirs")] }, Cancellation);
 
         // Act
         await main.WorkflowsChangedAsync();
 
         // Assert
-        Assert.Equal(edited ? "mine" : "theirs", workflow.Variables.Rows[0].Name);
+        Assert.Equal(edited ? "mine" : "theirs", workflow.Parameters.Rows[0].Name);
         Assert.Equal(edited, workflow.IsDirty);
     }
 
@@ -175,7 +504,7 @@ public sealed class WorkflowEditorTests
         var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid() }, harness);
         if (edited)
         {
-            workflow.Variables.Rows[0].Name = "mine";
+            workflow.Parameters.Rows[0].Name = "mine";
         }
         Directory.Delete(Path.Combine(harness.Folder.Workflows, "Flow"), recursive: true);
 
@@ -194,7 +523,7 @@ public sealed class WorkflowEditorTests
         await harness.WorkflowLibrary.SaveAsync("Other", new() { Id = Guid.NewGuid() }, Cancellation);
         var main = harness.Main();
         var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid() }, harness);
-        workflow.Variables.Rows[0].Name = "mine";
+        workflow.Parameters.Rows[0].Name = "mine";
 
         // Act
         await main.OpenWorkflowAsync("Other");
@@ -206,60 +535,272 @@ public sealed class WorkflowEditorTests
     }
 
     [Fact]
-    public async Task AddStepAsync_WhenTheRequestHasNoId_ThenTellsToSaveItFirst()
+    public async Task AddScriptAsync_WhenNamed_ThenCreatesTheFileAndSavesAScriptStep()
     {
         // Arrange
-        using var harness = new Harness();
-        await harness.Library.SaveAsync("Ping", ApiRequest.New() with { Id = Guid.Empty }, Cancellation);
+        using var harness = new Harness(new FakeDialogs(answer: "map"));
         var main = harness.Main();
         var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid() }, harness);
 
         // Act
-        await workflow.AddStepAsync("Ping");
+        await workflow.AddScriptAsync();
+        await workflow.SaveAsync();
 
         // Assert
-        Assert.Empty(workflow.Steps);
-        Assert.Equal(harness.Translator.Of("Workflow.NoId"), harness.Dialogs.Notification!.Value.Message);
+        Assert.Equal(harness.Translator.Of("Workflow.ScriptTemplate"), await File.ReadAllTextAsync(Path.Combine(harness.Folder.Workflows, "Flow", "map.js"), Cancellation));
+        Assert.Equal("map.js", Assert.Single((await harness.WorkflowLibrary.LoadAsync("Flow", Cancellation))!.Steps).Script);
+    }
+
+    static async Task<WorkflowViewModel> OpenScriptAsync(Harness harness, string code, params WorkflowStep[] more)
+    {
+        Directory.CreateDirectory(Path.Combine(harness.Folder.Workflows, "Flow"));
+        await File.WriteAllTextAsync(Path.Combine(harness.Folder.Workflows, "Flow", "map.js"), code, TestContext.Current.CancellationToken);
+        var workflow = new Workflow { Id = Guid.NewGuid(), Parameters = [new("orderId") { Default = JsonSerializer.SerializeToElement("o-17") }], Variables = [new("value")],
+            Steps = [new() { Script = "map.js", Saves = [new("value", "$.value")] }, .. more] };
+        return await OpenAsync(harness.Main(), "Flow", workflow, harness);
     }
 
     [Fact]
-    public async Task AddStepAsync_WhenTheRequestSharesItsId_ThenTellsToRemoveTheCopy()
+    public async Task SaveAsync_WhenAStepSavesIntoANewName_ThenDeclaresItAsAVariable()
     {
         // Arrange
         using var harness = new Harness();
-        var request = ApiRequest.New();
-        await harness.Library.SaveAsync("Ping", request, Cancellation);
-        await harness.Library.SaveAsync("Ping copy", request, Cancellation);
-        var main = harness.Main();
-        var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid() }, harness);
+        var ping = Request();
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = ping }] }, harness);
+        workflow.Steps[0].Saves.Rows[0].Name = "token";
+        workflow.Steps[0].Saves.Rows[0].Value = "$.token";
 
         // Act
-        await workflow.AddStepAsync("Ping");
+        await workflow.SaveAsync();
 
         // Assert
-        Assert.Empty(workflow.Steps);
-        Assert.Equal(harness.Translator.Of("Workflow.SharedId"), harness.Dialogs.Notification!.Value.Message);
+        Assert.Equal(["token"], (await harness.WorkflowLibrary.LoadAsync("Flow", Cancellation))!.Variables.Select(variable => variable.Name));
     }
 
     [Fact]
-    public async Task SaveAsync_WhenStepsAreAddedAndMoved_ThenWritesTheRequestIdsInTheirOrder()
+    public async Task Code_WhenEditedAndSaved_ThenWritesTheScript()
     {
         // Arrange
         using var harness = new Harness();
-        var login = await SaveRequestAsync(harness, "Shop/Login");
-        var orders = await SaveRequestAsync(harness, "Shop/Orders");
+        var workflow = await OpenScriptAsync(harness, "return { value: 1 };");
+
+        // Act
+        workflow.Code = "return { value: 2 };";
+        var unsaved = workflow.IsDirty;
+        await workflow.SaveAsync();
+
+        // Assert
+        Assert.Equal((true, false), (unsaved, workflow.IsDirty));
+        Assert.Equal("return { value: 2 };", await File.ReadAllTextAsync(Path.Combine(harness.Folder.Workflows, "Flow", "map.js"), Cancellation));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheCodeIsNotSaved_ThenRunsTheCodeInTheEditor()
+    {
+        // Arrange
+        using var harness = new Harness(send: Answering(Ok("{}")));
+        var echo = Request("https://dev.local/{{value}}");
+        var workflow = await OpenScriptAsync(harness, "return { value: 'saved' };", new WorkflowStep { Request = echo });
+        workflow.Code = "return { value: 'edited' };";
+
+        // Act
+        await workflow.RunAsync();
+
+        // Assert
+        Assert.Equal("edited", harness.Sender.Environment!.Resolve("{{value}}"));
+    }
+
+    [Fact]
+    public async Task ReloadAsync_WhenTheScriptChangesOnDisk_ThenShowsTheNewCode()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var workflow = await OpenScriptAsync(harness, "return { value: 1 };");
+        await File.WriteAllTextAsync(Path.Combine(harness.Folder.Workflows, "Flow", "map.js"), "return { value: 3 };", Cancellation);
+
+        // Act
+        await workflow.ReloadAsync();
+
+        // Assert
+        Assert.Equal("return { value: 3 };", workflow.Code);
+    }
+
+    [Theory]
+    [InlineData(false, "return { value: 3 };")]
+    [InlineData(true, "return { value: 2 };")]
+    public async Task ReloadAsync_WhenTheWorkflowIsEditedAndTheScriptChangesOnDisk_ThenShowsTheNewCodeUnlessTheScriptIsEdited(bool editCode, string expected)
+    {
+        // Arrange
+        using var harness = new Harness();
+        var workflow = await OpenScriptAsync(harness, "return { value: 1 };");
+        workflow.Parameters.Rows[1].Name = "page";
+        if (editCode)
+        {
+            workflow.Code = "return { value: 2 };";
+        }
+        await File.WriteAllTextAsync(Path.Combine(harness.Folder.Workflows, "Flow", "map.js"), "return { value: 3 };", Cancellation);
+
+        // Act
+        await workflow.ReloadAsync();
+
+        // Assert
+        Assert.Equal(expected, workflow.Code);
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenAScriptNameLeadsOutOfTheFolder_ThenOpensTheWorkflowWithoutAPathToIt()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var main = harness.Main();
+
+        // Act
+        var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Script = "../secret.js" }] }, harness);
+
+        // Assert
+        Assert.Null(workflow.ScriptPathOf(workflow.Steps.Single()));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheScriptFileIsMissing_ThenTellsItInsteadOfRunningNothing()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Script = "map.js" }] }, harness);
+
+        // Act
+        await workflow.RunAsync();
+
+        // Assert
+        Assert.Equal([harness.Translator.Format("Workflow.StepProblem", 1, harness.Translator.Format("WorkflowProblem.ScriptNotFound", "map.js"))], workflow.Problems);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAStepFails_ThenTheResponseViewTellsWhy()
+    {
+        // Arrange
+        using var harness = new Harness(send: () => throw new HttpRequestException());
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request() }] }, harness);
+
+        // Act
+        await workflow.RunAsync();
+
+        // Assert
+        Assert.Equal(new ProblemMessage(harness.Translator.Of("Workflow.StepFailed"), harness.Translator.Of("RequestProblem.NetworkFailed")), workflow.Steps.Single().Problem);
+    }
+
+    [Fact]
+    public async Task OpenWorkflowAsync_WhenAScriptReadsValuesThroughVars_ThenTheStepShowsThemAsUsed()
+    {
+        // Arrange
+        using var harness = new Harness();
+
+        // Act
+        var workflow = await OpenScriptAsync(harness, "return { value: vars.orderId + vars.unknown };");
+
+        // Assert
+        Assert.Equal(["orderId"], workflow.Steps[0].UsedNames);
+    }
+
+    [Fact]
+    public async Task Code_WhenTwoStepsRunTheSameFileWrittenWithOtherCase_ThenTheyShareIt()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var workflow = await OpenScriptAsync(harness, "return 1;", new WorkflowStep { Script = "MAP.js" });
+        workflow.Code = "return 2;";
+
+        // Act
+        workflow.SelectedStep = workflow.Steps[1];
+
+        // Assert
+        Assert.Equal("return 2;", workflow.Code);
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenTheEditedScriptsStepIsRemoved_ThenLeavesTheFile()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var workflow = await OpenScriptAsync(harness, "return 1;");
+        workflow.Code = "return 2;";
+        workflow.RemoveStep(workflow.Steps.Single());
+
+        // Act
+        await workflow.SaveAsync();
+
+        // Assert
+        Assert.Equal("return 1;", await File.ReadAllTextAsync(Path.Combine(harness.Folder.Workflows, "Flow", "map.js"), Cancellation));
+    }
+
+    [Fact]
+    public async Task AddScriptAsync_WhenARemovedStepRanTheScript_ThenReadsItFromTheFileAgain()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(answer: "map"));
+        var workflow = await OpenScriptAsync(harness, "return 1;");
+        workflow.RemoveStep(workflow.Steps.Single());
+        await File.WriteAllTextAsync(Path.Combine(harness.Folder.Workflows, "Flow", "map.js"), "return 2;", Cancellation);
+
+        // Act
+        await workflow.AddScriptAsync();
+
+        // Assert
+        Assert.Equal("return 2;", workflow.Code);
+    }
+
+    [Fact]
+    public async Task AddScriptAsync_WhenTheFileIsThere_ThenKeepsItsCode()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(answer: "map.js"));
         var main = harness.Main();
         var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid() }, harness);
-        await workflow.AddStepAsync("Shop/Orders");
-        await workflow.AddStepAsync("Shop/Login");
+        var path = Path.Combine(harness.Folder.Workflows, "Flow", "map.js");
+        await File.WriteAllTextAsync(path, "return 1;", Cancellation);
+
+        // Act
+        await workflow.AddScriptAsync();
+
+        // Assert
+        Assert.Equal("return 1;", await File.ReadAllTextAsync(path, Cancellation));
+    }
+
+    [Fact]
+    public async Task AddRequest_WhenAdded_ThenStartsWithAJsonBody()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid() }, harness);
+
+        // Act
+        workflow.AddRequest();
+
+        // Assert
+        Assert.Equal(BodyKind.Json, workflow.Steps.Single().Request!.BodyKind);
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenRequestsAreAddedAndMoved_ThenWritesThemInTheirOrder()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var main = harness.Main();
+        var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid() }, harness);
+        workflow.AddRequest();
+        workflow.Steps[0].Request!.Url = "https://dev.local/orders";
+        workflow.AddRequest();
+        workflow.Steps[1].Request!.Method = "POST";
+        workflow.Steps[1].Request!.Url = "https://dev.local/login";
 
         // Act
         workflow.MoveStep(workflow.Steps[1], -1);
         await workflow.SaveAsync();
 
         // Assert
-        Assert.Equal([login, orders], (await harness.WorkflowLibrary.LoadAsync("Flow", Cancellation))!.Steps.Select(step => step.Request));
-        Assert.Equal(("Login", "Shop /"), (workflow.Steps[0].Title, workflow.Steps[0].Folder));
+        Assert.Equal(["POST https://dev.local/login", "GET https://dev.local/orders"], (await harness.WorkflowLibrary.LoadAsync("Flow", Cancellation))!.Steps.Select(step => $"{step.Request!.Method} {step.Request.Url}"));
+        Assert.Equal("https://dev.local/login", workflow.Steps[0].Title);
+        Assert.Equal([false, true], workflow.Steps.Select(step => step.IsLast));
         Assert.False(workflow.IsDirty);
     }
 
@@ -308,7 +849,7 @@ public sealed class WorkflowEditorTests
         using var harness = new Harness();
         var main = harness.Main();
         var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid() }, harness);
-        workflow.Variables.Rows[0].Name = "token";
+        workflow.Parameters.Rows[0].Name = "token";
         Directory.Delete(Path.Combine(harness.Folder.Workflows, "Flow"), recursive: true);
 
         // Act
@@ -320,40 +861,89 @@ public sealed class WorkflowEditorTests
     }
 
     [Fact]
-    public async Task Uses_WhenNamesComeFromDifferentPlaces_ThenTellsWhereEachComesFromWithoutValues()
+    public async Task Steps_WhenTheySaveAndUseNames_ThenShowWhatEachSavesAndWhichOfTheWorkflowsOwnNamesItUses()
     {
         // Arrange
         using var harness = new Harness();
         await harness.EnvironmentStore.SaveAsync([new("Dev", [new("host", "dev.local")])], Cancellation);
-        var login = await SaveRequestAsync(harness, "Login");
-        var orders = await SaveRequestAsync(harness, "Orders", "https://{{host}}/{{orderId}}/{{token}}/{{page}}/{{size}}/{{gone}}");
+        var login = Request();
+        var orders = Request("https://{{host}}/{{orderId}}/{{token}}/{{size}}/{{gone}}");
         var main = harness.Main();
         var workflow = await OpenAsync(main, "Flow", new()
         {
             Id = Guid.NewGuid(),
             Parameters = [new("orderId")],
             Variables = [new("token"), new("size") { Default = JsonSerializer.SerializeToElement(50) }, new("gone")],
-            Steps = [new() { Request = login, Saves = [new("token", "$.token")] }, new() { Request = orders, With = [new("page", "{{external}}")] }],
+            Steps = [new() { Name = "Login", Request = login, Saves = [new("token", "$.token")] }, new() { Request = orders }],
         }, harness);
         await main.Environments.ChooseAsync(main.Environments.Items.Single());
         main.EnvironmentChosen();
 
         // Act
-        var uses = workflow.Steps[1].Uses.Select(use => $"{use.Name} {use.Source}");
+        var shown = workflow.Steps.Select(step => (string.Join(", ", step.UsedNames), string.Join(", ", step.SavedNames)));
 
         // Assert
-        Assert.Equal(["{{external}} missing", "{{gone}} missing", "{{host}} environment Dev", "{{orderId}} parameter", "{{page}} this step", "{{size}} default", "{{token}} step 1"], uses);
-        Assert.Equal("uses gone, orderId, size, token", workflow.Steps[1].Summary);
-        Assert.Equal("saves token", workflow.Steps[0].Summary);
+        Assert.Equal([("", "token"), ("orderId, token", "")], shown);
+    }
+
+    [Theory]
+    [InlineData("$.token")]
+    [InlineData("$['token']")]
+    public async Task RunAsync_WhenAStepSavesFromTheBody_ThenMarksWhereInTheResponseItWasSavedFrom(string from)
+    {
+        // Arrange
+        using var harness = new Harness(send: Answering(Ok("""{"name":"Emily","token":"abc"}""")));
+        var workflow = await OpenAsync(harness.Main(), "Flow", new()
+        {
+            Id = Guid.NewGuid(),
+            Variables = [new("token")],
+            Steps = [new() { Request = Request(), Saves = [new("token", from)] }],
+        }, harness);
+
+        // Act
+        await workflow.RunAsync();
+
+        // Assert
+        var saved = workflow.Steps.Single().Result.ResponseMarks.Where(mark => mark.Saved is not null).Select(mark => (mark.Path, mark.Saved));
+        Assert.Equal([("$.token", harness.Translator.Format("Workflow.SavedAs", "token"))], saved);
     }
 
     [Fact]
-    public async Task RunAsync_WhenEveryStepSucceeds_ThenShowsEachStepAndRemembersTheCallsAsFromTheApp()
+    public async Task RunAsync_WhenWhereToSaveFromIsEditedDuringTheRun_ThenMarksWhereTheRunSavedFrom()
+    {
+        // Arrange
+        var sending = new TaskCompletionSource();
+        var answer = new TaskCompletionSource<ApiResponse>();
+        using var harness = new Harness(send: () =>
+        {
+            sending.TrySetResult();
+            return answer.Task;
+        });
+        var workflow = await OpenAsync(harness.Main(), "Flow", new()
+        {
+            Id = Guid.NewGuid(),
+            Variables = [new("token")],
+            Steps = [new() { Request = Request(), Saves = [new("token", "$.token")] }],
+        }, harness);
+        var running = workflow.RunAsync();
+        await sending.Task.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+
+        // Act
+        workflow.Steps.Single().Saves.Rows[0].Value = "$.name";
+        answer.SetResult(Ok("""{"name":"Emily","token":"abc"}"""));
+        await running.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+
+        // Assert
+        Assert.Equal(["$.token"], workflow.Steps.Single().Result.ResponseMarks.Where(mark => mark.Saved is not null).Select(mark => mark.Path));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenEveryStepSucceeds_ThenShowsEachStepAndKeepsTheCallsOutOfTheHistory()
     {
         // Arrange
         using var harness = new Harness(send: Answering(Ok("""{"token":"abc"}"""), Ok("""{"id":7}""")));
-        var login = await SaveRequestAsync(harness, "Login");
-        var orders = await SaveRequestAsync(harness, "Orders", "https://dev.local/{{token}}");
+        var login = Request();
+        var orders = Request("https://dev.local/{{token}}");
         var main = harness.Main();
         var id = Guid.NewGuid();
         var workflow = await OpenAsync(main, "Flow", new()
@@ -368,10 +958,9 @@ public sealed class WorkflowEditorTests
 
         // Assert
         Assert.Equal([("200", true), ("200", true)], workflow.Steps.Select(step => (step.Status, step.IsSuccess)));
-        Assert.Contains("\"id\": 7", workflow.Steps[1].Response!.Body);
+        Assert.Contains("\"id\": 7", workflow.Steps[1].Result.Response!.Body);
         Assert.Equal("abc", harness.Sender.Environment!.Resolve("{{token}}"));
-        var history = await harness.History().ReadAsync(await harness.History().LatestAsync(10, Cancellation), Cancellation);
-        Assert.Equal([HistorySource.App, HistorySource.App], history.Select(file => file.Entry.Source));
+        Assert.Empty(await harness.History().LatestAsync(10, Cancellation));
         Assert.Single(Directory.GetFiles(Path.Combine(harness.Folder.Runs, $"{id}")));
         Assert.False(workflow.IsRunning);
     }
@@ -381,8 +970,8 @@ public sealed class WorkflowEditorTests
     {
         // Arrange
         using var harness = new Harness(send: Answering(new ApiResponse(500, "Internal Server Error", 1, 2, [], "{}")));
-        var first = await SaveRequestAsync(harness, "First");
-        var second = await SaveRequestAsync(harness, "Second");
+        var first = Request();
+        var second = Request();
         var main = harness.Main();
         var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = first }, new() { Request = second }] }, harness);
 
@@ -391,6 +980,7 @@ public sealed class WorkflowEditorTests
 
         // Assert
         Assert.Equal([("500", false, null), (null, false, harness.Translator.Of("Workflow.Skipped"))], workflow.Steps.Select(step => (step.Status, step.IsSuccess, step.State)));
+        Assert.Equal([true, false], workflow.Steps.Select(step => step.HasFailed));
     }
 
     [Fact]
@@ -398,7 +988,7 @@ public sealed class WorkflowEditorTests
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs { Values = new Dictionary<string, string> { ["orderId"] = "o-17" } }, Answering(Ok("{}")));
-        var orders = await SaveRequestAsync(harness, "Orders", "https://dev.local/{{orderId}}/{{pageSize}}");
+        var orders = Request("https://dev.local/{{orderId}}/{{pageSize}}");
         var main = harness.Main();
         var workflow = await OpenAsync(main, "Flow", new()
         {
@@ -420,9 +1010,9 @@ public sealed class WorkflowEditorTests
     {
         // Arrange
         using var harness = new Harness();
-        var orders = await SaveRequestAsync(harness, "Orders", "https://dev.local/{{token}}");
+        var orders = Request("https://dev.local/{{token}}");
         var main = harness.Main();
-        var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid(), Variables = [new("token")], Steps = [new() { Request = orders }] }, harness);
+        var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = orders }, new() { Request = Request(), Saves = [new("token", "$.token")] }] }, harness);
 
         // Act
         await workflow.RunAsync();
@@ -434,34 +1024,11 @@ public sealed class WorkflowEditorTests
     }
 
     [Fact]
-    public async Task RunAsync_WhenAClientCredentialsTokenIsMissing_ThenFetchesAndSavesItForTheChosenEnvironment()
-    {
-        // Arrange
-        var calls = 0;
-        using var harness = new Harness(send: () => ++calls == 1 ? throw new MissingSecretException(SecretKind.OAuthToken) : Task.FromResult(Ok("{}")));
-        var dev = new ApiEnvironment("Dev", []) { Id = Guid.NewGuid() };
-        await harness.EnvironmentStore.SaveAsync([dev], Cancellation);
-        var request = ApiRequest.New() with { Url = "https://dev.local", Auth = new(AuthKind.OAuth2, OAuth: new() { Grant = OAuthGrant.ClientCredentials, TokenUrl = "https://dev.local/token" }) };
-        await harness.Library.SaveAsync("Orders", request, Cancellation);
-        var main = harness.Main();
-        var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = request.Id }] }, harness);
-        await main.Environments.ChooseAsync(main.Environments.Items.Single());
-
-        // Act
-        await workflow.RunAsync();
-
-        // Assert
-        Assert.Equal("200", workflow.Steps.Single().Status);
-        Assert.Equal("Dev", harness.OAuth.Asked!.Value.Environment!.Name);
-        Assert.NotNull(await harness.Secrets.OfAsync(request.Id, SecretKind.OAuthToken, dev.Id, Cancellation));
-    }
-
-    [Fact]
     public async Task OpenWorkflowAsync_WhenOpenedAgainAfterARun_ThenShowsNothingOfThatRun()
     {
         // Arrange
         using var harness = new Harness(send: Answering(Ok("{}")));
-        var ping = await SaveRequestAsync(harness, "Ping");
+        var ping = Request();
         await harness.WorkflowLibrary.SaveAsync("Other", new() { Id = Guid.NewGuid() }, Cancellation);
         var main = harness.Main();
         var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = ping }] }, harness);
@@ -473,7 +1040,7 @@ public sealed class WorkflowEditorTests
 
         // Assert
         var step = main.Workflow!.Steps.Single();
-        Assert.Equal((null, null, null), (step.Status, step.Response, step.State));
+        Assert.Equal((null, null, null), (step.Status, step.Result.Response, step.State));
     }
 
     [Fact]
@@ -487,7 +1054,7 @@ public sealed class WorkflowEditorTests
             sending.TrySetResult();
             return answer.Task;
         });
-        var ping = await SaveRequestAsync(harness, "Ping");
+        var ping = Request();
         await harness.WorkflowLibrary.SaveAsync("Other", new() { Id = Guid.NewGuid() }, Cancellation);
         var main = harness.Main();
         var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = ping }] }, harness);
@@ -507,44 +1074,45 @@ public sealed class WorkflowEditorTests
     }
 
     [Fact]
-    public async Task RunAsync_WhenTheRequestHasUnsavedEditsInATab_ThenSendsTheSavedRequest()
-    {
-        // Arrange
-        using var harness = new Harness(send: Answering(Ok("{}")));
-        var ping = await SaveRequestAsync(harness, "Ping");
-        var main = harness.Main();
-        var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = ping }] }, harness);
-        await main.OpenAsync(RequestTreeViewModel.Flatten(main.Tree.Nodes).Single(node => node.Path == "Ping"));
-        main.SelectedTab!.Url = "https://dev.local/unsaved";
-
-        // Act
-        await workflow.RunAsync();
-
-        // Assert
-        Assert.Equal("https://dev.local/ping", harness.Sender.Request!.Url);
-    }
-
-    [Fact]
-    public async Task With_WhenAStepsValueIsEdited_ThenMarksTheWorkflowUnsavedShowsWhereTheNameComesFromAndSavesIt()
+    public async Task Headers_WhenAHeaderIsEdited_ThenMarksTheWorkflowUnsavedAndSavesIt()
     {
         // Arrange
         using var harness = new Harness();
-        var orders = await SaveRequestAsync(harness, "Orders", "https://dev.local/{{page}}");
         var main = harness.Main();
-        var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = orders }] }, harness);
-        var row = workflow.Steps[0].With.Rows[0];
+        var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request() }] }, harness);
+        var row = workflow.Steps[0].Request!.Headers.Rows[0];
 
         // Act
-        row.Name = "page";
-        row.Value = "2";
+        row.Name = "Authorization";
+        row.Value = "Bearer {{token}}";
         var dirty = workflow.IsDirty;
         await workflow.SaveAsync();
 
         // Assert
         Assert.True(dirty);
-        Assert.Equal(harness.Translator.Of("Workflow.FromThisStep"), workflow.Steps[0].Uses.Single().Source);
-        var with = (await harness.WorkflowLibrary.LoadAsync("Flow", Cancellation))!.Steps.Single().With.Single();
-        Assert.Equal(("page", "2"), (with.Name, with.Value));
+        var header = (await harness.WorkflowLibrary.LoadAsync("Flow", Cancellation))!.Steps.Single().Request!.Headers.Single();
+        Assert.Equal(("Authorization", "Bearer {{token}}"), (header.Name, header.Value));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenTheRequestOfAStepIsEdited_ThenSavesItsQueryAndBody()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request() }] }, harness);
+        var request = workflow.Steps[0].Request!;
+        request.Query.Rows[0].Name = "page";
+        request.Query.Rows[0].Value = "{{page}}";
+        request.BodyKind = BodyKind.Json;
+        request.Body = "{}";
+        request.UseEnvironmentVariablesInBody = false;
+
+        // Act
+        await workflow.SaveAsync();
+
+        // Assert
+        var saved = (await harness.WorkflowLibrary.LoadAsync("Flow", Cancellation))!.Steps.Single().Request!;
+        Assert.Equal(("page", "{{page}}", BodyKind.Json, "{}", false), (saved.Query.Single().Name, saved.Query.Single().Value, saved.BodyKind, saved.Body, saved.UseEnvironmentVariablesInBody));
     }
 
     [Fact]
@@ -552,11 +1120,11 @@ public sealed class WorkflowEditorTests
     {
         // Arrange
         using var harness = new Harness(send: Answering(Ok("{}")));
-        var ping = await SaveRequestAsync(harness, "Ping");
+        var ping = Request();
         var main = harness.Main();
         var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = ping }] }, harness);
         await workflow.RunAsync();
-        workflow.Variables.Rows[0].Name = "token";
+        workflow.Parameters.Rows[0].Name = "token";
         await workflow.SaveAsync();
 
         // Act
@@ -567,27 +1135,11 @@ public sealed class WorkflowEditorTests
     }
 
     [Fact]
-    public async Task Uses_WhenAWithValueUsesANameTheStepAlsoGives_ThenTellsWhereItComesFromOutsideTheStep()
-    {
-        // Arrange
-        using var harness = new Harness();
-        var orders = await SaveRequestAsync(harness, "Orders", "https://dev.local/{{token}}/{{auth}}");
-        var main = harness.Main();
-        var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = orders, With = [new("token", "abc"), new("auth", "Bearer {{token}}")] }] }, harness);
-
-        // Act
-        var uses = workflow.Steps[0].Uses.Select(use => $"{use.Name} {use.Source}");
-
-        // Assert
-        Assert.Equal(["{{auth}} this step", "{{token}} missing"], uses);
-    }
-
-    [Fact]
     public async Task RunAsync_WhenTheWorkflowChangesOnDiskWhileValuesAreAsked_ThenRunsTheNewSteps()
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs { Values = new Dictionary<string, string> { ["orderId"] = "o-17" } }, Answering(Ok("{}"), Ok("{}")));
-        var ping = await SaveRequestAsync(harness, "Ping");
+        var ping = Request();
         var main = harness.Main();
         var id = Guid.NewGuid();
         var workflow = await OpenAsync(main, "Flow", new() { Id = id, Parameters = [new("orderId")], Steps = [new() { Request = ping }, new() { Request = ping }] }, harness);
@@ -609,10 +1161,10 @@ public sealed class WorkflowEditorTests
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs { Values = new Dictionary<string, string> { ["orderId"] = "o-17" } });
-        var ping = await SaveRequestAsync(harness, "Ping");
+        var ping = Request();
         var main = harness.Main();
         var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid(), Parameters = [new("orderId")], Steps = [new() { Request = ping }] }, harness);
-        harness.Dialogs.Asking = workflow.Close;
+        harness.Dialogs.Asking = () => _ = workflow.CloseAsync();
 
         // Act
         await workflow.RunAsync();
@@ -632,22 +1184,22 @@ public sealed class WorkflowEditorTests
             sending.TrySetResult();
             return answer.Task;
         });
-        var ping = await SaveRequestAsync(harness, "Ping");
+        var ping = Request();
         var main = harness.Main();
         var id = Guid.NewGuid();
         var workflow = await OpenAsync(main, "Flow", new() { Id = id, Steps = [new() { Request = ping }] }, harness);
         var running = workflow.RunAsync();
         await sending.Task.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
-        await harness.WorkflowLibrary.SaveAsync("Flow", new() { Id = id, Variables = [new("theirs")], Steps = [new() { Request = ping }] }, Cancellation);
+        await harness.WorkflowLibrary.SaveAsync("Flow", new() { Id = id, Parameters = [new("theirs")], Steps = [new() { Request = ping }] }, Cancellation);
 
         // Act
         await main.WorkflowsChangedAsync();
-        var duringRun = workflow.Variables.Rows[0].Name;
+        var duringRun = workflow.Parameters.Rows[0].Name;
         answer.SetResult(Ok("{}"));
         await running.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
 
         // Assert
-        Assert.Equal(("", "theirs"), (duringRun, workflow.Variables.Rows[0].Name));
+        Assert.Equal(("", "theirs"), (duringRun, workflow.Parameters.Rows[0].Name));
     }
 
     [Fact]
@@ -655,7 +1207,7 @@ public sealed class WorkflowEditorTests
     {
         // Arrange
         using var harness = new Harness(send: Answering(Ok("{}")));
-        var ping = await SaveRequestAsync(harness, "Ping");
+        var ping = Request();
         var main = harness.Main();
         var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = ping }] }, harness);
         await workflow.RunAsync();
@@ -667,7 +1219,7 @@ public sealed class WorkflowEditorTests
 
         // Assert
         var step = workflow.Steps.Single();
-        Assert.Equal((null, null, null), (step.Status, step.Response, step.State));
+        Assert.Equal((null, null, null), (step.Status, step.Result.Response, step.State));
     }
 
     [Fact]
@@ -680,7 +1232,7 @@ public sealed class WorkflowEditorTests
             sending.TrySetResult();
             return new TaskCompletionSource<ApiResponse>().Task;
         });
-        var ping = await SaveRequestAsync(harness, "Ping");
+        var ping = Request();
         var main = harness.Main();
         var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = ping }, new() { Request = ping }] }, harness);
         var running = workflow.RunAsync();
@@ -700,7 +1252,7 @@ public sealed class WorkflowEditorTests
     {
         // Arrange
         using var harness = new Harness(send: () => throw new HttpRequestException());
-        var ping = await SaveRequestAsync(harness, "Ping");
+        var ping = Request();
         var main = harness.Main();
         var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = ping }] }, harness);
 
@@ -716,7 +1268,7 @@ public sealed class WorkflowEditorTests
     {
         // Arrange
         using var harness = new Harness(send: Answering(Ok("{}")));
-        var ping = await SaveRequestAsync(harness, "Ping");
+        var ping = Request();
         var main = harness.Main();
         var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid(), Variables = [new("token")], Steps = [new() { Request = ping, Saves = [new("token", "$.token")] }] }, harness);
 
@@ -725,46 +1277,5 @@ public sealed class WorkflowEditorTests
 
         // Assert
         Assert.Equal(harness.Translator.Format("Workflow.MissingSave", "$.token"), workflow.Steps.Single().Error);
-    }
-
-    [Fact]
-    public async Task RequestsChangedAsync_WhenAStepsRequestIsRenamed_ThenShowsTheNewPath()
-    {
-        // Arrange
-        using var harness = new Harness();
-        var login = await SaveRequestAsync(harness, "Shop/Login");
-        var main = harness.Main();
-        var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = login }] }, harness);
-        await harness.Library.RenameAsync("Shop/Login", "Auth/Login", Cancellation);
-
-        // Act
-        await main.RequestsChangedAsync();
-
-        // Assert
-        Assert.Equal(("Login", "Auth /"), (workflow.Steps[0].Title, workflow.Steps[0].Folder));
-    }
-
-    [Fact]
-    public async Task RunAsync_WhenTheFoldersClientCredentialsTokenIsMissing_ThenFetchesAndSavesItWithTheFolder()
-    {
-        // Arrange
-        var calls = 0;
-        using var harness = new Harness(send: () => ++calls == 1 ? throw new MissingSecretException(SecretKind.OAuthToken) : Task.FromResult(Ok("{}")));
-        var dev = new ApiEnvironment("Dev", []) { Id = Guid.NewGuid() };
-        await harness.EnvironmentStore.SaveAsync([dev], Cancellation);
-        await harness.Library.SaveFolderAsync("Shop", new() { Auth = new(AuthKind.OAuth2, OAuth: new() { Grant = OAuthGrant.ClientCredentials, TokenUrl = "https://dev.local/token" }) }, Cancellation);
-        var request = ApiRequest.New() with { Url = "https://dev.local", Auth = AuthSettings.Inherit };
-        await harness.Library.SaveAsync("Shop/Orders", request, Cancellation);
-        var main = harness.Main();
-        var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = request.Id }] }, harness);
-        await main.Environments.ChooseAsync(main.Environments.Items.Single());
-
-        // Act
-        await workflow.RunAsync();
-
-        // Assert
-        var folder = await harness.Library.LoadFolderAsync("Shop", Cancellation);
-        Assert.Equal("200", workflow.Steps.Single().Status);
-        Assert.NotNull(await harness.Secrets.OfAsync(folder!.Id, SecretKind.OAuthToken, dev.Id, Cancellation));
     }
 }

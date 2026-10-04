@@ -77,7 +77,7 @@ public sealed class RequestTreeViewTests
                 await saved.SendAsync();
                 await main.HistoryChangedAsync();
                 await main.OpenAsync(Assert.Single(main.History.Items));
-                main.SelectedTab!.Body = "history edit";
+                main.SelectedTab!.Editor.Body = "history edit";
             }
             else if (change == "unlink")
             {
@@ -308,7 +308,7 @@ public sealed class RequestTreeViewTests
             await main.NewDraftAsync(Node(main, "Users"));
             var draft = main.SelectedTab!;
             var window = await Ui.ShowAsync(harness, main);
-            saved.Method = draft.Method = "POST";
+            saved.Editor.Method = draft.Editor.Method = "POST";
             await Ui.IdleAsync();
             var draftNode = Assert.Single(RequestTreeViewModel.Flatten(main.Tree.Nodes), node => node.IsDraft);
             var draftRow = Ui.Row(Ui.Item(window, draftNode));
@@ -376,7 +376,7 @@ public sealed class RequestTreeViewTests
             Assert.Same(window.FindResource("Edge"), Ui.Row(draftItem).Background);
             Assert.Same(window.FindResource("Attention"), Ui.Row(draftItem).BorderBrush);
             var editor = Ui.Descendants<RequestEditorView>(window).Single();
-            var url = Ui.Descendants<TextBox>(editor).First(box => box.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path.Path == nameof(RequestTabViewModel.Url));
+            var url = Ui.Descendants<TextBox>(editor).First(box => box.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path.Path == nameof(RequestViewModel.Url));
             Keyboard.Focus(url);
             await Ui.IdleAsync();
             Assert.Same(window.FindResource("Edge"), Ui.Row(draftItem).Background);
@@ -471,8 +471,8 @@ public sealed class RequestTreeViewTests
             scroller.ScrollToVerticalOffset(100);
             await Ui.IdleAsync();
             offset = scroller.VerticalOffset;
-            draft.Method = "POST";
-            draft.Url = "https://example.test";
+            draft.Editor.Method = "POST";
+            draft.Editor.Url = "https://example.test";
             await draft.SendAsync();
             await main.RequestsChangedAsync();
             await Ui.IdleAsync();

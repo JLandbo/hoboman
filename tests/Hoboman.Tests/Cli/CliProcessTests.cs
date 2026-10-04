@@ -20,11 +20,9 @@ public sealed class CliProcessTests(CliTestServer server) : IClassFixture<CliTes
 
     Task SaveWorkflowAsync(params WorkflowStep[] steps) => Workflows.SaveAsync("Flow", new Workflow { Id = Guid.NewGuid(), Variables = [new("target")], Steps = steps }, Cancellation);
 
-    async Task<WorkflowStep> StepAsync(string name, ApiRequest request, params WorkflowSave[] saves)
-    {
-        await Library.SaveAsync(name, request, Cancellation);
-        return new() { Request = request.Id, Saves = saves };
-    }
+    WorkflowRequest Call => new() { Url = $"{server.Http}" };
+
+    static WorkflowStep Step(WorkflowRequest request, params WorkflowSave[] saves) => new() { Request = request, Saves = saves };
 
     public void Dispose() => _process.Dispose();
 
@@ -145,8 +143,8 @@ public sealed class CliProcessTests(CliTestServer server) : IClassFixture<CliTes
     {
         // Arrange
         await SaveWorkflowAsync(
-            await StepAsync("First", Request with { Url = $"{server.Http}first" }, new WorkflowSave("target", "$.target")),
-            await StepAsync("Second", Request with { Headers = [new("X", "{{target}}")] }));
+            Step(Call with { Url = $"{server.Http}first" }, new WorkflowSave("target", "$.target")),
+            Step(Call with { Headers = [new("X", "{{target}}")] }));
 
         // Act
         var result = await _process.RunAsync(["run", "Flow"]);
@@ -158,10 +156,10 @@ public sealed class CliProcessTests(CliTestServer server) : IClassFixture<CliTes
     }
 
     [Fact]
-    public async Task RunAsync_WhenAWorkflowRuns_ThenChangesNoFilesButTheHistoryAndTheRuns()
+    public async Task RunAsync_WhenAWorkflowRuns_ThenChangesNoFilesButTheRuns()
     {
         // Arrange
-        await SaveWorkflowAsync(await StepAsync("Send", Request));
+        await SaveWorkflowAsync(Step(Call));
         var original = _process.Snapshot();
 
         // Act
@@ -176,7 +174,7 @@ public sealed class CliProcessTests(CliTestServer server) : IClassFixture<CliTes
     public async Task RunAsync_WhenAStepOfAWorkflowFails_ThenEndsWithRunFinishedAndExitsOne()
     {
         // Arrange
-        await SaveWorkflowAsync(await StepAsync("Abort", Request with { Url = $"{server.Http}abort" }), await StepAsync("Send", Request));
+        await SaveWorkflowAsync(Step(Call with { Url = $"{server.Http}abort" }), Step(Call));
 
         // Act
         var result = await _process.RunAsync(["run", "Flow"]);
@@ -189,7 +187,7 @@ public sealed class CliProcessTests(CliTestServer server) : IClassFixture<CliTes
     public async Task RunAsync_WhenAWorkflowCannotRun_ThenExitsTwoWithoutSendingOrARunFile()
     {
         // Arrange
-        await SaveWorkflowAsync(new WorkflowStep { Request = Guid.NewGuid() });
+        await SaveWorkflowAsync(new WorkflowStep());
         var requestCount = server.RequestCount;
 
         // Act
