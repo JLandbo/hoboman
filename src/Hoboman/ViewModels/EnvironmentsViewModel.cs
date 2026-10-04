@@ -13,6 +13,8 @@ public sealed class EnvironmentsViewModel(EnvironmentStore store, SettingsStore 
 
     public ApiEnvironment? Selected { get; private set => Set(ref field, value); }
 
+    public ApiEnvironment SelectedOrNone => Selected ?? ApiEnvironment.None;
+
     public async Task ChooseAsync(ApiEnvironment? environment)
     {
         Selected = environment;

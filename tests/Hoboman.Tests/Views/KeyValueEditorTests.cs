@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using Hoboman.Controls;
+using Hoboman.Tests.ViewModels;
 
 namespace Hoboman.Tests.Views;
 
@@ -41,6 +42,31 @@ public sealed class KeyValueEditorTests
             // Assert
             var columns = ((Grid)Dividers(editor).First().Parent).ColumnDefinitions;
             Assert.Equal(0.3, columns[1].ActualWidth / (columns[1].ActualWidth + columns[2].ActualWidth), 2);
+        });
+    }
+
+    [Fact]
+    public async Task Divider_WhenTheEnvironmentsAreEdited_ThenIsWhereItWasKept()
+    {
+        using var harness = new Harness();
+        await Ui.RunAsync(async () =>
+        {
+            // Arrange
+            var main = harness.Main();
+            await main.LoadAsync();
+            var window = await Ui.ShowAsync(harness, main);
+            SplitMemory.GetSplits(window)!["Variables"] = 0.3;
+            var environments = harness.EnvironmentEditor();
+            await environments.LoadAsync(TestContext.Current.CancellationToken);
+            environments.Add();
+
+            // Act
+            var dialog = new EnvironmentEditorWindow(environments);
+            Ui.Show(dialog);
+            await Ui.IdleAsync();
+
+            // Assert
+            Assert.Equal(0.3, Ui.Descendants<KeyValueEditor>(dialog).Single().NameWidth.Value, 3);
         });
     }
 
@@ -86,6 +112,21 @@ public sealed class KeyValueEditorTests
         });
     }
 
+    [Theory]
+    [InlineData(true, 30)]
+    [InlineData(false, 0)]
+    public async Task Row_WhenItCanBeTurnedOffOrNot_ThenHasRoomForTheCheckboxOrNone(bool canDisable, double expected)
+    {
+        await Ui.RunAsync(async () =>
+        {
+            // Act
+            var editor = await ShowAsync(new(), [new("name", "value")], canDisable);
+
+            // Assert
+            Assert.All(Dividers(editor), divider => Assert.Equal(expected, ((Grid)divider.Parent).ColumnDefinitions[0].ActualWidth));
+        });
+    }
+
     // The header's divider comes first, then one in each row.
     static IEnumerable<Thumb> Dividers(KeyValueEditor editor) => Ui.Descendants<Thumb>(editor).Where(thumb => thumb.Style == editor.FindResource("Divider"));
 
@@ -99,11 +140,11 @@ public sealed class KeyValueEditorTests
         Ui.Descendants<Button>(row).Single(),
     }.Select(element => Math.Round(element.TranslatePoint(new(0, 0), row).Y)));
 
-    static async Task<KeyValueEditor> ShowAsync(Dictionary<string, double> splits, IEnumerable<KeyValue> values)
+    static async Task<KeyValueEditor> ShowAsync(Dictionary<string, double> splits, IEnumerable<KeyValue> values, bool canDisable = true)
     {
         var list = new KeyValueListViewModel();
         list.Load(values);
-        var editor = new KeyValueEditor { DataContext = list };
+        var editor = new KeyValueEditor { DataContext = list, CanDisable = canDisable };
         SplitMemory.SetColumns(editor, "Table");
         var window = new Window { Content = editor, Width = 400, Height = 400 };
         SplitMemory.SetSplits(window, splits);

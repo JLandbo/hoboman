@@ -32,18 +32,6 @@
         </Border>
         <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
             <StackPanel HorizontalAlignment="Left" Width="420">
-                <TextBlock x:Name="InheritHint" Text="{DynamicResource Auth.InheritHint}" Foreground="{DynamicResource Muted}" TextWrapping="Wrap">
-                    <TextBlock.Style>
-                        <Style TargetType="TextBlock">
-                            <Setter Property="Visibility" Value="Collapsed" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding Kind}" Value="{x:Static auth:AuthKind.Inherit}">
-                                    <Setter Property="Visibility" Value="Visible" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </TextBlock.Style>
-                </TextBlock>
                 <TextBlock Text="{Binding TokenProblem}" Foreground="{DynamicResource Error}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock">
@@ -149,12 +137,7 @@
                     <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
                         <controls:VariableTextBox Text="{Binding ClientId, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" />
                     </Border>
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="{DynamicResource OAuth.ClientSecret}" Style="{StaticResource Label}" />
-                        <Border Style="{StaticResource OnlyForAuthorizationCode}" Margin="4,0,0,0">
-                            <TextBlock Text="{DynamicResource OAuth.Optional}" Style="{StaticResource Label}" />
-                        </Border>
-                    </StackPanel>
+                    <TextBlock Text="{DynamicResource OAuth.ClientSecret}" Style="{StaticResource Label}" />
                     <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
                         <PasswordBox x:Name="ClientSecretBox" Style="{StaticResource PasswordCell}" PasswordChanged="ClientSecretBox_PasswordChanged" />
                     </Border>

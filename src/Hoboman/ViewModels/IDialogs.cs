@@ -8,6 +8,9 @@ public interface IDialogs
 
     void Tell(string title, string message);
 
+    // Where to save a file, or null when the user cancels.
+    string? AskSavePath(string fileName);
+
     // One text for each name, or null when the user cancels.
     IReadOnlyDictionary<string, string>? AskValues(string title, IReadOnlyList<string> names, string confirm);
 

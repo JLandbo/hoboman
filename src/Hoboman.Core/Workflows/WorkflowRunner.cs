@@ -172,7 +172,8 @@ public sealed class WorkflowRunner(IRequestSender sender, AppFolder folder, Time
             }
             var output = await Task.Run(() => ScriptHost.Run(step.Step.Script!, step.Code!, all, cancellationToken), cancellationToken)
                 ?? (step.Step.Saves is [] ? "" : throw new ScriptException($"{step.Step.Script} returned nothing to save."));
-            return new(200, "OK", (long)Stopwatch.GetElapsedTime(scriptStarted).TotalMilliseconds, Encoding.UTF8.GetByteCount(output), [], output);
+            var bytes = Encoding.UTF8.GetBytes(output);
+            return new(200, "OK", (long)Stopwatch.GetElapsedTime(scriptStarted).TotalMilliseconds, bytes.Length, [], output) { Bytes = bytes };
         }
 
         // The log is written first, so it holds the event even when telling of it fails.

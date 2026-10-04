@@ -74,7 +74,7 @@ public sealed class WorkflowStepViewModel : ObservableObject
             };
         }
         // A script has no request to keep what to decode, so its choices last only while the step is shown.
-        Result = new(services.Translator, Request?.Base64 ?? new(services.Translator, services.Clock));
+        Result = new(services.Translator, Request?.Base64 ?? new(services.Translator, services.Clock), services.Dialogs);
         Saves.Load(step.Saves.Select(save => new KeyValue(save.Variable, save.From)));
         Saves.Changed += OnChanged;
         Saves.Changed += () => OnPropertyChanged(nameof(HasSaves));
@@ -225,7 +225,7 @@ public sealed class WorkflowStepViewModel : ObservableObject
     // The same response view as in a tab.
     public ResponseViewModel Result { get; }
 
-    // Told by the kind of problem, as in the run log, so it never holds a value.
+    // Told by the kind of problem, as in the run log, so it holds no value from the answer, other than what stopped a retry.
     public string? Error => _finished is null ? null : ErrorOf(_finished);
 
     public ProblemMessage? Problem => Error is { } error ? new(_translator.Of("Workflow.StepFailed"), error) : null;
@@ -333,7 +333,7 @@ public sealed class WorkflowStepViewModel : ObservableObject
         if (finished.Status is { } status)
         {
             Result.Saved = SavedPlacesOf(finished, saves);
-            await Result.ShowAsync(new(status, finished.Reason ?? "", finished.ElapsedMs ?? 0, finished.Size ?? 0, finished.Headers ?? [], finished.Body ?? ""));
+            await Result.ShowAsync(new(status, finished.Reason ?? "", finished.ElapsedMs ?? 0, finished.Size ?? 0, finished.Headers ?? [], finished.Body ?? "") { Bytes = finished.Bytes });
         }
     }
 
@@ -348,18 +348,9 @@ public sealed class WorkflowStepViewModel : ObservableObject
         { MissingSave: { } path } => _translator.Format("Workflow.MissingSave", path),
         { NotReady: true } => _translator.Format("Workflow.NotReady", finished.Attempts),
         { Stopped: var (path, value) } => _translator.Format("Workflow.Stopped", path, value),
-        { Problem: RequestProblemKind.Cancelled } => _translator.Of("RequestProblem.Cancelled"),
-        { Problem: RequestProblemKind.TimedOut } => _translator.Of("RequestProblem.TimedOut"),
         { Problem: RequestProblemKind.MissingOAuthToken } when Auth?.Kind == AuthKind.Inherit => _translator.Of("Workflow.MissingOAuthToken"),
         { Problem: RequestProblemKind.MissingSecret } when Auth?.Kind == AuthKind.Inherit => _translator.Of("Workflow.MissingSecret"),
-        { Problem: RequestProblemKind.MissingOAuthToken } => _translator.Of("RequestProblem.MissingOAuthToken"),
-        { Problem: RequestProblemKind.MissingSecret } => _translator.Of("RequestProblem.MissingSecret"),
-        { Problem: RequestProblemKind.InvalidUrl } => _translator.Of("RequestProblem.InvalidUrl"),
-        { Problem: RequestProblemKind.NetworkFailed } => _translator.Of("RequestProblem.NetworkFailed"),
-        { Problem: RequestProblemKind.InvalidInput } => _translator.Of("RequestProblem.InvalidInput"),
-        { Problem: RequestProblemKind.BodyNotEncoded } => _translator.Of("RequestProblem.BodyNotEncoded"),
-        { Problem: RequestProblemKind.InputUnreadable } => _translator.Of("RequestProblem.InputUnreadable"),
-        { Problem: not null } => _translator.Of("RequestProblem.Failed"),
+        { Problem: { } kind } => RequestProblemTexts.TextOf(kind, _translator),
         // A script tells of its own error by file and line, as written by the script.
         { Error: { } error } => error,
         _ => null,
@@ -367,9 +358,7 @@ public sealed class WorkflowStepViewModel : ObservableObject
 
     public void Relabel()
     {
-        Request?.Relabel();
-        Auth?.Relabel();
-        OnPropertyChanged(nameof(AuthHeader));
+        RelabelRequest();
         OnPropertyChanged(nameof(Badge));
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(Elapsed));
@@ -377,5 +366,12 @@ public sealed class WorkflowStepViewModel : ObservableObject
         OnPropertyChanged(nameof(Error));
         OnPropertyChanged(nameof(Problem));
         Result.ShowAgain();
+    }
+
+    public void RelabelRequest()
+    {
+        Request?.Relabel();
+        Auth?.Relabel();
+        OnPropertyChanged(nameof(AuthHeader));
     }
 }

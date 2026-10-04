@@ -216,6 +216,21 @@ public sealed class WorkflowCheckTests
         Assert.Equal(expected, checkedWorkflow.Problems.Count(problem => problem == new WorkflowProblem(WorkflowProblemKind.UnknownName, 0, "host")));
     }
 
+    [Theory]
+    [InlineData("{\"html\": \"{{kunde}}\", \"navn\": \"{{orderId}}\"}", true)]
+    [InlineData("{\"html\": \"{{kunde}}\"}", false)]
+    public void Check_WhenABodyHasNamesTheWorkflowDoesNotHave_ThenLeavesThemAsWritten(string body, bool urlToo)
+    {
+        // Arrange
+        var request = new WorkflowRequest { Method = "POST", Url = urlToo ? "https://dev.local/{{kunde}}" : "https://dev.local", BodyKind = BodyKind.Json, Body = body };
+
+        // Act
+        var checkedWorkflow = Check(OrderSync(new WorkflowStep { Request = request }));
+
+        // Assert
+        Assert.Equal(urlToo ? [new(WorkflowProblemKind.UnknownName, 0, "kunde")] : [], checkedWorkflow.Problems);
+    }
+
     [Fact]
     public void Check_WhenARequiredParameterIsMissing_ThenReportsIt()
     {
@@ -328,7 +343,7 @@ public sealed class WorkflowCheckTests
     public void Check_WhenTheBodyUsesAName_ThenChecksItOnlyWhenTheBodyIsFilledIn(BodyKind kind, bool useVariables, int expected)
     {
         // Arrange
-        var login = LoginStep with { Request = Login with { Body = "{{missing}}", BodyKind = kind, UseEnvironmentVariablesInBody = useVariables } };
+        var login = LoginStep with { Request = Login with { Body = "{{token}}", BodyKind = kind, UseEnvironmentVariablesInBody = useVariables } };
 
         // Act
         var checkedWorkflow = Check(OrderSync(login));

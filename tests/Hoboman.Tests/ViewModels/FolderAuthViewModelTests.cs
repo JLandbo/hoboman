@@ -137,7 +137,7 @@ public sealed class FolderAuthViewModelTests
         await harness.Library.SaveFolderAsync("Users", users, Cancellation);
         var folderAuth = harness.FolderAuth();
         await folderAuth.LoadAsync("Users", Cancellation);
-        Directory.Move(Path.Combine(harness.Folder.Requests, "Users"), Path.Combine(harness.Folder.Requests, "Moved"));
+        await harness.Library.RenameFolderAsync("Users", "Moved", Cancellation);
 
         // Act
         await folderAuth.SaveAsync();

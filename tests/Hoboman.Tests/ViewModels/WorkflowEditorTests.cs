@@ -337,6 +337,23 @@ public sealed class WorkflowEditorTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenAStepIsAnswered_ThenItsResponseCanBeSavedAsAFile()
+    {
+        // Arrange
+        byte[] file = [0x25, 0x50, 0x44, 0x46, 0x00, 0xFF];
+        using var harness = new Harness(send: () => Task.FromResult(new ApiResponse(200, "OK", 1, file.Length, [new("Content-Type", "application/pdf")], "") { Bytes = file }));
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request() }] }, harness);
+        harness.Dialogs.SavePath = Path.Combine(harness.Folder.Root, "udskrift.pdf");
+
+        // Act
+        await workflow.RunAsync();
+        await workflow.Steps.Single().Result.SaveAsAsync();
+
+        // Assert
+        Assert.Equal(file, await File.ReadAllBytesAsync(harness.Dialogs.SavePath, Cancellation));
+    }
+
+    [Fact]
     public async Task RunAsync_WhenAStepStops_ThenTheStepTellsWhy()
     {
         // Arrange
@@ -470,6 +487,21 @@ public sealed class WorkflowEditorTests
         // Assert
         var saved = await harness.Secrets.OfEachEnvironmentAsync(onStep ? stepId : id, SecretKind.OAuthToken, Cancellation);
         Assert.Equal((false, 1), (workflow.IsDirty, saved.Count));
+    }
+
+    [Fact]
+    public async Task FetchToken_WhenTheSecretsCannotBeSaved_ThenTellsWhy()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Auth = ClientCredentials, Steps = [new() { Request = Request() with { Auth = new(AuthKind.Inherit) } }] }, harness);
+        Directory.CreateDirectory(harness.Folder.Secrets);
+
+        // Act
+        await workflow.Auth.OwnerFetch!();
+
+        // Assert
+        Assert.Equal(harness.Translator.Of("Workflow.SecretsSaveFailed"), harness.Dialogs.Notification?.Title);
     }
 
     [Fact]

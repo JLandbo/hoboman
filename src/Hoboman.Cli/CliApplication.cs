@@ -62,6 +62,11 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         {
             request = input.IsDirect ? await RequestInput.CreateAsync(input, cancellationToken) : await library.LoadAsync(name!, cancellationToken);
         }
+        catch (InvalidFileException exception) when (!input.IsDirect && exception.InnerException is JsonException invalid)
+        {
+            // Only where the file is wrong is told, as the message of the exception can quote a value from it.
+            return await output.WriteErrorAsync(new { error = "Saved request file is not valid.", file = exception.FilePath, path = invalid.Path, line = invalid.LineNumber + 1 });
+        }
         catch (Exception exception) when (!input.IsDirect && (FileProblem.Is(exception) || exception is ArgumentException))
         {
             request = null;

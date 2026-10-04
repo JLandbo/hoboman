@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using Hoboman.ViewModels;
 using ICSharpCode.AvalonEdit;
+using ICSharpCode.AvalonEdit.Rendering;
 
 namespace Hoboman.Controls;
 
@@ -21,7 +22,9 @@ public abstract class MarkedEditor : TextEditor
 
     readonly Base64Margin _margin;
     readonly Base64Highlighter _highlighter;
+    readonly Base64Strip _strip;
     readonly BodyFolding _folding;
+    int? _pointed;
 
     protected MarkedEditor()
     {
@@ -32,6 +35,9 @@ public abstract class MarkedEditor : TextEditor
         TextArea.TextView.BackgroundRenderers.Add(_highlighter);
         // The text area's own template with a column on the right for what the marked lines say, so the text gets narrower instead of covered.
         TextArea.Template = (ControlTemplate)FindResource("MarkedTextArea");
+        // What a pointed line says is drawn over the text, so it goes in a layer of its own above it.
+        _strip = new(this) { IsHitTestVisible = false };
+        TextArea.TextView.InsertLayer(_strip, KnownLayer.Caret, LayerInsertionPosition.Below);
         _folding = new(this);
     }
 
@@ -67,7 +73,21 @@ public abstract class MarkedEditor : TextEditor
 
     internal Brush? TintOf(Base64Mark mark) => _highlighter.TintOf(mark);
 
-    // The marks changed or are drawn otherwise, so the column with what they say may need another width.
+    // The line whose icon is pointed at, so what it says unfolds over its text.
+    internal int? Pointed
+    {
+        get => _pointed;
+        set
+        {
+            if (_pointed != value)
+            {
+                _pointed = value;
+                _strip.InvalidateVisual();
+            }
+        }
+    }
+
+    // The marks changed or are drawn otherwise, so the column with their icons may come or go.
     internal event Action? MarksRedrawn
     {
         add => _margin.Redrawn += value;

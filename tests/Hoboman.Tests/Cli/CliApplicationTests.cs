@@ -444,7 +444,7 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     }
 
     [Theory]
-    [InlineData(false, "Saved request could not be loaded.")]
+    [InlineData(false, "Saved request file is not valid.")]
     [InlineData(true, "Environment settings could not be read.")]
     public async Task RunAsync_WhenAFileIsCorrupt_ThenFailsBeforeSending(bool environments, string problem)
     {
@@ -702,6 +702,21 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
 
         // Assert
         Assert.Equal((2, "Workflow could not be loaded."), (exitCode, Problem));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheSavedRequestFileIsInvalid_ThenTellsTheFileThePathAndTheLineWithoutTheValue()
+    {
+        // Arrange
+        var path = Path.Combine(Folder.Requests, "Send.json");
+        Directory.CreateDirectory(Folder.Requests);
+        await File.WriteAllTextAsync(path, "{\n  \"headers\": \"secret-value\"\n}", Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["send", "Send"]);
+
+        // Assert
+        Assert.Equal((2, JsonSerializer.Serialize(new { error = "Saved request file is not valid.", file = path, path = "$.headers", line = 2 }, CompactJson.Options)), (exitCode, Error.TrimEnd()));
     }
 
     [Theory]

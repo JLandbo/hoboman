@@ -34,7 +34,7 @@ public static class JsonOutline
                         var (path, place) = (JsonPath.Root, JsonPath.Root);
                         if (named is { } property)
                         {
-                            properties.Add(new(property.Line, property.Path, property.Place, holdsMore));
+                            properties.Add(new(property.Line, property.Path, property.Place));
                             (path, place, named) = (property.Path, property.Place, null);
                         }
                         else if (containers.TryPeek(out var list))

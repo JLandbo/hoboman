@@ -350,6 +350,93 @@ public sealed class MainWindowTests
     }
 
     [Fact]
+    public async Task SaveResponse_WhenClicked_ThenSavesTheBodyAsTheServerSentIt()
+    {
+        // Arrange
+        byte[] file = [0x25, 0x50, 0x44, 0x46, 0x00, 0xFF];
+        using var harness = new Harness(send: () => Task.FromResult(new ApiResponse(200, "OK", 1, file.Length, [new("Content-Type", "application/pdf")], "") { Bytes = file }));
+        harness.Dialogs.SavePath = System.IO.Path.Combine(harness.Folder.Root, "udskrift.pdf");
+        await Ui.RunAsync(async () =>
+        {
+            var main = harness.Main();
+            await main.LoadAsync();
+            var window = await Ui.ShowAsync(harness, main);
+            main.SelectedTab!.Editor.Url = "https://dev.local/file.pdf";
+            await main.SelectedTab.SendAsync();
+            await Ui.IdleAsync();
+
+            // Act
+            Ui.Click(Ui.Named<Button>(window, "SaveResponse"));
+            await Ui.UntilAsync(() => File.Exists(harness.Dialogs.SavePath));
+
+            // Assert
+            Assert.Equal(file, await File.ReadAllBytesAsync(harness.Dialogs.SavePath, Cancellation));
+        });
+    }
+
+    [Theory]
+    [InlineData(SidebarSection.Collections, true)]
+    [InlineData(SidebarSection.History, false)]
+    [InlineData(SidebarSection.Workflows, false)]
+    public async Task SidebarButtons_WhenASectionIsChosen_ThenNewFolderAndRequestShowOnlyInTheCollections(SidebarSection section, bool shown)
+    {
+        using var harness = new Harness();
+        await Ui.RunAsync(async () =>
+        {
+            var main = harness.Main();
+            await main.LoadAsync();
+            var window = await Ui.ShowAsync(harness, main);
+
+            // Act
+            main.Section = section;
+            await Ui.IdleAsync();
+
+            // Assert
+            var buttons = Ui.Descendants<Button>(window).Where(button => ReferenceEquals(button.Style, window.FindResource("CollectionButton"))).ToList();
+            Assert.Equal((2, shown), (buttons.Count, buttons.All(button => button.IsVisible)));
+        });
+    }
+
+    [Fact]
+    public async Task HistoryView_WhenACallIsShown_ThenItsRowIsTight()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.History().AddAsync(new(DateTimeOffset.Now, HistorySource.App, "dev.local/users", ApiRequest.New(), Response: new(200, "OK", 5, 2, [], "{}")), Cancellation);
+        await Ui.RunAsync(async () =>
+        {
+            var main = harness.Main();
+            await main.LoadAsync();
+
+            // Act
+            main.Section = SidebarSection.History;
+            var window = await Ui.ShowAsync(harness, main);
+            await Ui.UntilAsync(() => Ui.Descendants<HistoryView>(window).SelectMany(Ui.Descendants<ListBoxItem>).Any(item => item.IsVisible));
+
+            // Assert
+            Assert.True(Ui.Descendants<HistoryView>(window).SelectMany(Ui.Descendants<ListBoxItem>).Single().ActualHeight <= 26);
+        });
+    }
+
+    [Fact]
+    public async Task RequestTabs_WhenShown_ThenSitInABoxAroundThemLikeTheBodyKinds()
+    {
+        using var harness = new Harness();
+        await Ui.RunAsync(async () =>
+        {
+            // Act
+            var main = harness.Main();
+            await main.LoadAsync();
+            var window = await Ui.ShowAsync(harness, main);
+
+            // Assert
+            var editor = Ui.Descendants<RequestEditorView>(window).Single();
+            var box = (Border)((StackPanel)Ui.Named<RadioButton>(editor, "ParamsSection").Parent).Parent;
+            Assert.True(ReferenceEquals(box.Style, window.FindResource("SegmentGroup")) && box.ActualWidth < ((FrameworkElement)box.Parent).ActualWidth - 100);
+        });
+    }
+
+    [Fact]
     public async Task HistoryView_WhenACallIsShown_ThenItsStatusSitsInTheMiddleOfTheRow()
     {
         // Arrange

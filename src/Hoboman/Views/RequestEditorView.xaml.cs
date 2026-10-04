@@ -1,7 +1,5 @@
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
-using System.Windows.Media.Animation;
 using Hoboman.ViewModels;
 
 namespace Hoboman.Views;
@@ -26,17 +24,6 @@ public partial class RequestEditorView : UserControl
         {
             return;
         }
-        var button = (Button)sender;
-        var background = new SolidColorBrush(((SolidColorBrush)FindResource(succeeded ? "ClipboardSuccess" : "ClipboardError")).Color);
-        button.Background = background;
-        var fade = new ColorAnimation(Colors.Transparent, TimeSpan.FromMilliseconds(300)) { BeginTime = TimeSpan.FromMilliseconds(200) };
-        fade.Completed += (_, _) =>
-        {
-            if (ReferenceEquals(button.Background, background))
-            {
-                button.ClearValue(Control.BackgroundProperty);
-            }
-        };
-        background.BeginAnimation(SolidColorBrush.ColorProperty, fade);
+        Blink.Show((Button)sender, succeeded);
     }
 }

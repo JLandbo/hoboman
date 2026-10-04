@@ -45,7 +45,7 @@
                     </Style>
                 </Grid.Style>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="30" />
+                    <ColumnDefinition Width="{Binding CheckWidth, RelativeSource={RelativeSource AncestorType=local:KeyValueEditor}}" />
                     <ColumnDefinition Width="{Binding NameWidth, RelativeSource={RelativeSource AncestorType=local:KeyValueEditor}}" />
                     <ColumnDefinition Width="{Binding ValueWidth, RelativeSource={RelativeSource AncestorType=local:KeyValueEditor}}" />
                     <ColumnDefinition Width="28" />
@@ -61,7 +61,7 @@
                             <Border BorderBrush="{DynamicResource BoxEdge}" BorderThickness="0,1,0,0" Padding="8,0">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="30" />
+                                        <ColumnDefinition Width="{Binding CheckWidth, RelativeSource={RelativeSource AncestorType=local:KeyValueEditor}}" />
                                         <ColumnDefinition Width="{Binding NameWidth, RelativeSource={RelativeSource AncestorType=local:KeyValueEditor}}" />
                                         <ColumnDefinition Width="{Binding ValueWidth, RelativeSource={RelativeSource AncestorType=local:KeyValueEditor}}" />
                                         <ColumnDefinition Width="28" />

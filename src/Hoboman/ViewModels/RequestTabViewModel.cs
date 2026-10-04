@@ -57,7 +57,7 @@ public sealed class RequestTabViewModel : ObservableObject
         services.AuthRefresh.Changed += RefreshAuthHeader;
         Editor = new(services.Translator, services.Clock, services.Environments);
         Editor.Changed += MarkDirty;
-        Result = new(services.Translator, Editor.Base64);
+        Result = new(services.Translator, Editor.Base64, services.Dialogs);
         // Without an address there is nothing to send, and trying would only leave a failed call in the history.
         Send = new AsyncCommand(SendAsync, () => !string.IsNullOrWhiteSpace(Editor.Url) && !IsAuthRefreshing);
         Editor.PropertyChanged += (_, e) =>
@@ -321,8 +321,12 @@ public sealed class RequestTabViewModel : ObservableObject
     public async Task ShowAsync(HistoryEntry entry)
     {
         await Result.ShowAsync(entry.Response);
-        Problem = entry.Error is { } error ? new(_services.Translator.Of("Response.Failed"), error) : null;
+        Problem = entry.Error is { } error ? new(_services.Translator.Of("Response.Failed"), entry.Problem is { } kind ? HistoryProblemOf(kind) : error) : null;
     }
+
+    // A tab tells of a missing token as when it was sent, not as a workflow step does.
+    string HistoryProblemOf(RequestProblemKind kind) =>
+        kind == RequestProblemKind.MissingOAuthToken ? _services.Translator.Of("Response.MissingOAuthToken") : RequestProblemTexts.TextOf(kind, _services.Translator);
 
     public async Task LoadSecretsAsync(CancellationToken cancellationToken)
     {
@@ -357,7 +361,7 @@ public sealed class RequestTabViewModel : ObservableObject
         var translator = _services.Translator;
         var parent = RequestLibrary.ParentOf(SuggestedName) ?? Destination;
         string FullName(string value) => parent is null ? value : $"{parent}/{value}";
-        var name = _services.Dialogs.AskName(translator.Of("Save.Title"), RequestLibrary.LastPartOf(SuggestedName ?? DraftName ?? ""), translator.Of("Common.Save"), value => value.Contains('/') ? translator.Of("Save.Invalid") : _services.ProblemOfName(FullName(value)));
+        var name = _services.Dialogs.AskName(translator.Of("Save.Title"), RequestLibrary.LastPartOf(SuggestedName ?? DraftName ?? ""), translator.Of("Common.Save"), _services.OnePart(value => _services.ProblemOfName(FullName(value))));
         if (name is not null)
         {
             await SaveCoreAsync(FullName(name));
@@ -434,16 +438,21 @@ public sealed class RequestTabViewModel : ObservableObject
         _ = UpdateAuthSourceAsync();
     }
 
-    ApiEnvironment EnvironmentOrNone() => _services.Environments.Selected ?? ApiEnvironment.None;
+    ApiEnvironment EnvironmentOrNone() => _services.Environments.SelectedOrNone;
 
     public void Relabel()
     {
         OnPropertyChanged(nameof(Title));
+        RelabelRequest();
+        // What is written beside the response's properties is in the language too.
+        Result.ShowAgain();
+    }
+
+    public void RelabelRequest()
+    {
         Editor.Relabel();
         Auth.Relabel();
         RefreshAuthHeader();
-        // What is written beside the response's properties is in the language too.
-        Result.ShowAgain();
     }
 
     public void Unlink()

@@ -155,10 +155,14 @@ public sealed class MainViewModel(
     }
 
     // Each environment has its own OAuth tokens, so the tabs show the chosen environment's, and the workflow shows which names it has.
+    // The responses stay as they are shown, as the environment does not change them.
     public void EnvironmentChosen()
     {
-        RelabelTabs();
-        Workflow?.Relabel();
+        foreach (var tab in Tabs)
+        {
+            tab.RelabelRequest();
+        }
+        Workflow?.EnvironmentChosen();
     }
 
     public void NewTab()
@@ -288,7 +292,7 @@ public sealed class MainViewModel(
 
     public async Task NewFolderAsync()
     {
-        if (dialogs.AskName(translator.Of("Folder.Title"), "", translator.Of("Folder.Create"), name => name.Contains('/') ? translator.Of("Save.Invalid") : ProblemOfFolder(name)) is not { } name)
+        if (dialogs.AskName(translator.Of("Folder.Title"), "", translator.Of("Folder.Create"), tabServices.OnePart(ProblemOfNewFolder)) is not { } name)
         {
             return;
         }
@@ -304,7 +308,7 @@ public sealed class MainViewModel(
 
     public async Task NewSubfolderAsync(RequestNodeViewModel parent)
     {
-        if (dialogs.AskName(translator.Format("Folder.TitleIn", parent.Path), "", translator.Of("Folder.Create"), name => name.Contains('/') ? translator.Of("Save.Invalid") : ProblemOfNewFolder($"{parent.Path}/{name.Trim()}")) is not { } name)
+        if (dialogs.AskName(translator.Format("Folder.TitleIn", parent.Path), "", translator.Of("Folder.Create"), tabServices.OnePart(name => ProblemOfNewFolder($"{parent.Path}/{name.Trim()}"))) is not { } name)
         {
             return;
         }
@@ -334,7 +338,7 @@ public sealed class MainViewModel(
     public async Task RenameAsync(RequestNodeViewModel node)
     {
         string FullName(string value) => RequestLibrary.ParentOf(node.Path) is { } parent ? $"{parent}/{value}" : value;
-        if (dialogs.AskName(translator.Of("Rename.Title"), node.Name, translator.Of("Common.Save"), candidate => candidate.Contains('/') ? translator.Of("Save.Invalid") : SameName(candidate, node.Name) ? null : tabServices.ProblemOfName(FullName(candidate))) is not { } name || name == node.Name)
+        if (dialogs.AskName(translator.Of("Rename.Title"), node.Name, translator.Of("Common.Save"), tabServices.OnePart(candidate => SameName(candidate, node.Name) ? null : tabServices.ProblemOfName(FullName(candidate)))) is not { } name || name == node.Name)
         {
             return;
         }
@@ -344,7 +348,7 @@ public sealed class MainViewModel(
     public async Task RenameTabAsync(RequestTabViewModel tab)
     {
         string FullName(string value) => (RequestLibrary.ParentOf(tab.Name ?? tab.SuggestedName) ?? tab.Destination) is { } parent ? $"{parent}/{value}" : value;
-        if (dialogs.AskName(translator.Of("Rename.Title"), tab.Title, translator.Of("Common.Save"), value => value.Contains('/') ? translator.Of("Save.Invalid") : SameName(FullName(value), tab.Name) ? null : tabServices.ProblemOfName(FullName(value))) is not { } name)
+        if (dialogs.AskName(translator.Of("Rename.Title"), tab.Title, translator.Of("Common.Save"), tabServices.OnePart(value => SameName(FullName(value), tab.Name) ? null : tabServices.ProblemOfName(FullName(value)))) is not { } name)
         {
             return;
         }
@@ -501,7 +505,7 @@ public sealed class MainViewModel(
     public async Task RenameFolderAsync(RequestNodeViewModel folder)
     {
         string FullName(string value) => RequestLibrary.ParentOf(folder.Path) is { } parent ? $"{parent}/{value}" : value;
-        if (dialogs.AskName(translator.Of("RenameFolder.Title"), folder.Name, translator.Of("Common.Save"), candidate => candidate.Contains('/') ? translator.Of("Save.Invalid") : SameName(candidate, folder.Name) ? null : ProblemOfNewFolder(FullName(candidate))) is not { } name
+        if (dialogs.AskName(translator.Of("RenameFolder.Title"), folder.Name, translator.Of("Common.Save"), tabServices.OnePart(candidate => SameName(candidate, folder.Name) ? null : ProblemOfNewFolder(FullName(candidate)))) is not { } name
             || name == folder.Name)
         {
             return;
@@ -908,9 +912,8 @@ public sealed class MainViewModel(
 
     RequestTabViewModel? TabOf(string name) => Tabs.FirstOrDefault(tab => SameName(tab.Name, name));
 
-    string? ProblemOfFolder(string name) => RequestLibrary.IsValidName(name) ? null : translator.Of("Save.Invalid");
-
-    string? ProblemOfNewFolder(string name) => ProblemOfFolder(name) ?? (library.FolderExists(name) ? translator.Of("Folder.Exists") : null);
+    string? ProblemOfNewFolder(string name) =>
+        !RequestLibrary.IsValidName(name) ? translator.Of("Save.Invalid") : library.FolderExists(name) ? translator.Of("Folder.Exists") : null;
 
     // Windows does not tell upper and lower case apart in file names.
     static bool SameName(string? name, string? other) => string.Equals(name, other, StringComparison.OrdinalIgnoreCase);

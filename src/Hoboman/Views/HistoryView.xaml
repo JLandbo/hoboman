@@ -4,6 +4,12 @@
              xmlns:viewModels="clr-namespace:Hoboman.ViewModels">
     <Grid>
         <ListBox x:Name="Entries" ItemsSource="{Binding History.Items}" Style="{StaticResource SideList}" MouseLeftButtonUp="Entries_MouseLeftButtonUp" KeyDown="Entries_KeyDown">
+            <!-- The history has many calls, so its rows are only as high as their remove button. -->
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem" BasedOn="{StaticResource SideListItem}">
+                    <Setter Property="Padding" Value="8,0" />
+                </Style>
+            </ListBox.ItemContainerStyle>
             <ListBox.GroupStyle>
                 <GroupStyle>
                     <GroupStyle.HeaderTemplate>

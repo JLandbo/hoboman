@@ -13,16 +13,6 @@ public sealed class JsonOutlineTests
     }
 
     [Fact]
-    public void Of_WhenAPropertyHoldsAnObjectOrAList_ThenSaysItHoldsMore()
-    {
-        // Act
-        var outline = JsonOutline.Of("""{"html": "<p>", "data": {}, "items": []}""");
-
-        // Assert
-        Assert.Equal([false, true, true], outline!.Select(property => property.HoldsMore));
-    }
-
-    [Fact]
     public void Of_WhenAPropertyIsInAList_ThenItsPathCoversEveryElementAndItsPlaceIsItsOwn()
     {
         // Act

@@ -18,6 +18,9 @@
     <SolidColorBrush x:Key="Box" Color="#08FFFFFF" />
     <SolidColorBrush x:Key="BoxEdge" Color="#1FFFFFFF" />
     <SolidColorBrush x:Key="Success" Color="#6BDD9A" />
+    <!-- What a button blinks after it did something (Views/Blink.cs). -->
+    <SolidColorBrush x:Key="ClipboardSuccess" Color="#22C55E" />
+    <SolidColorBrush x:Key="ClipboardError" Color="#EF4444" />
     <SolidColorBrush x:Key="SuccessSoft" Color="#266BDD9A" />
     <SolidColorBrush x:Key="ErrorSoft" Color="#24FF6B6B" />
     <SolidColorBrush x:Key="ErrorEdge" Color="#8CFF6B6B" />
@@ -521,7 +524,7 @@
                     </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
             </ItemsControl>
-            <controls:Base64Labels DockPanel.Dock="Right" IsHitTestVisible="False" ClipToBounds="True" TextView="{Binding TextView, RelativeSource={RelativeSource TemplatedParent}}" />
+            <controls:Base64Labels DockPanel.Dock="Right" ClipToBounds="True" TextView="{Binding TextView, RelativeSource={RelativeSource TemplatedParent}}" />
             <ContentPresenter Panel.ZIndex="-1" Focusable="False" Content="{Binding TextView, RelativeSource={RelativeSource TemplatedParent}}" />
         </DockPanel>
     </ControlTemplate>
@@ -615,37 +618,36 @@
         </Setter>
     </Style>
 
+    <Style x:Key="SideListItem" TargetType="ListBoxItem">
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Padding" Value="8,6" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                    <Border x:Name="Root" CornerRadius="6" Padding="{TemplateBinding Padding}" Background="Transparent">
+                        <ContentPresenter />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource Card}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource Card}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="SideList" TargetType="ListBox">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Foreground" Value="{DynamicResource Text}" />
         <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
-        <Setter Property="ItemContainerStyle">
-            <Setter.Value>
-                <Style TargetType="ListBoxItem">
-                    <Setter Property="Cursor" Value="Hand" />
-                    <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
-                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                    <Setter Property="Template">
-                        <Setter.Value>
-                            <ControlTemplate TargetType="ListBoxItem">
-                                <Border x:Name="Root" CornerRadius="6" Padding="8,6" Background="Transparent">
-                                    <ContentPresenter />
-                                </Border>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="Root" Property="Background" Value="{DynamicResource Card}" />
-                                    </Trigger>
-                                    <Trigger Property="IsSelected" Value="True">
-                                        <Setter TargetName="Root" Property="Background" Value="{DynamicResource Card}" />
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Setter.Value>
-                    </Setter>
-                </Style>
-            </Setter.Value>
-        </Setter>
+        <Setter Property="ItemContainerStyle" Value="{StaticResource SideListItem}" />
     </Style>
 
     <Style x:Key="TreeItem" TargetType="TreeViewItem">

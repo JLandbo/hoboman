@@ -96,7 +96,8 @@ public sealed partial class WorkflowCheck(WorkflowLibrary workflows, SecretStore
                 case StepKind.Request when step.Request is { } request && !string.IsNullOrWhiteSpace(request.Url):
                     var sent = request.ToApiRequest();
                     steps.Add(new(step, sent));
-                    problems.AddRange(UnavailableIn(index, NamesUsedBy(sent, authTexts?.GetValueOrDefault(index) ?? []), declaredNames, set, environment));
+                    var auth = authTexts?.GetValueOrDefault(index) ?? [];
+                    problems.AddRange(UnavailableIn(index, NamesUsedBy(sent, auth), NamesUsedBy(sent with { UseEnvironmentVariablesInBody = false }, auth), declaredNames, set, environment));
                     break;
                 default:
                     problems.Add(new(WorkflowProblemKind.MissingUrl, index, ""));
@@ -161,7 +162,9 @@ public sealed partial class WorkflowCheck(WorkflowLibrary workflows, SecretStore
     async Task<IReadOnlyList<string>> SecretOfAsync(Guid id, SecretKind kind, CancellationToken cancellationToken) =>
         id != Guid.Empty && await secrets.OfAsync(id, kind, cancellationToken).ConfigureAwait(false) is { } secret ? [secret] : [];
 
-    static IEnumerable<WorkflowProblem> UnavailableIn(int index, IReadOnlySet<string> used, IReadOnlySet<string> declared, IReadOnlySet<string> set, ApiEnvironment environment) =>
-        used.Where(name => declared.Contains(name) ? !set.Contains(name) : !environment.Variables.Any(variable => variable.Enabled && variable.Name == name))
+    // A name only in the body that neither the workflow nor the environment has is left as written when sent, as in a tab,
+    // so a template's own {{names}}, such as Handlebars, can go with the workflow's.
+    static IEnumerable<WorkflowProblem> UnavailableIn(int index, IReadOnlySet<string> used, IReadOnlySet<string> usedOutsideBody, IReadOnlySet<string> declared, IReadOnlySet<string> set, ApiEnvironment environment) =>
+        used.Where(name => declared.Contains(name) ? !set.Contains(name) : usedOutsideBody.Contains(name) && !environment.Variables.Any(variable => variable.Enabled && variable.Name == name))
             .Select(name => new WorkflowProblem(declared.Contains(name) ? WorkflowProblemKind.UsedBeforeSaved : WorkflowProblemKind.UnknownName, index, name));
 }

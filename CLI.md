@@ -22,7 +22,7 @@ hoboman-cli --version
 
 - `list` skriver de gemte requests som stier relativt til `requests\`, én pr. linje og sorteret, fx `Brugere/Hent bruger`.
 - Ét argument efter `send` er en gemt request. To er en metode og en URL.
-- En gemt request sendes med sine egne headers, body, Base64-valg og indstillingen **Brug miljøvariabler i body**. Derfor kan `-H`, `--json` og `--text` kun bruges ved direkte kald.
+- En gemt request sendes med sine egne headers, body, Base64-valg og indstillingen **Brug environment-variabler i body**. Derfor kan `-H`, `--json` og `--text` kun bruges ved direkte kald.
 - Et direkte kald har ingen auth ud over de headers, du giver det, og ingen body uden `--json` eller `--text`. `@fil` læser bodyen fra en UTF-8-fil, og `@@tekst` sender `@tekst`.
 
 ## Miljøer og variabler
@@ -30,7 +30,7 @@ hoboman-cli --version
 - `--env` vælger miljø for både `send` og `run`. Uden det bruges det miljø, der er valgt i appen. Et ukendt miljø giver en fejl, før noget sendes. Valget gemmes ikke.
 - `--var navn=værdi` sætter en midlertidig variabel og kan gentages. `--vars fil.json` eller `--vars -` (stdin) læser et JSON-objekt, fx `{"userId":42}`. Værdier, der ikke er tekst, indsættes som deres JSON.
 - `--var` vinder over `--vars`, som vinder over miljøets gemte værdier. De midlertidige værdier gælder kun det ene kald, gemmes aldrig og bruges også, hvor miljøets variabel er slået fra.
-- Variabler i bodyen indsættes kun i gemte requests, der har **Brug miljøvariabler i body** slået til. Et direkte kald sendes, som det er skrevet.
+- Variabler i bodyen indsættes kun i gemte requests, der har **Brug environment-variabler i body** slået til. Et direkte kald sendes, som det er skrevet.
 - Giv følsomme værdier gennem `--vars -` eller `--params -` frem for `--var` og `--param`, så de ikke havner i shellens historik. `run` skriver dog parametre og variabler i klartekst på stdout og i run-loggen, så hemmeligheder hører til i trinnets auth.
 
 ## Output og exitkoder
@@ -43,7 +43,7 @@ Et svar skrives som én linje JSON på stdout, også ved 4xx og 5xx:
 
 `body` er svaret som tekst. Er det JSON, skal det derfor gennem `ConvertFrom-Json` endnu en gang.
 
-Fejl, før der kommer et svar, skrives som `{"error":"..."}` på stderr, og stdout er tom.
+Fejl, før der kommer et svar, skrives som `{"error":"..."}` på stderr, og stdout er tom. En gemt request, der ikke er gyldig JSON, angives med fil, JSON-sti og linje, fx `{"error":"Saved request file is not valid.","file":"...","path":"$.headers","line":4}`.
 
 | Exitkode | Betydning |
 |---|---|
@@ -78,7 +78,7 @@ Fejl, før der kommer et svar, skrives som `{"error":"..."}` på stderr, og stdo
 - Passwords, tokens og client secrets står aldrig i `workflow.json`; de gemmes krypteret i `secrets.json` under trinnets `id`, og workflowets under workflowets `id`. Auth kan også gives som header, fx `Authorization: Bearer {{token}}` med et token fra et tidligere trin.
 - `id` sættes af appen, første gang workflowet gemmes med trinnet, og ejer trinnets hemmeligheder. Auth med hemmeligheder virker derfor først i `run`, når workflowet er gemt i appen. Kopiér aldrig et `id` fra en gemt request eller et andet trin, for så deler de hemmeligheder, og sletter man den ene, kan den andens forsvinde.
 - Ved client credentials henter `run` selv et nyt token til trinnet eller workflowet, når det mangler, er udløbet, eller serveren svarer 401, ligesom `send`. Mangler client secret, fejler trinnet med `Fetch a new OAuth token in Hoboman before sending this request.` Authorization code kræver, at brugeren henter et token under Auth på trinnet eller workflowet i Hoboman.
-- `name` er valgfrit og vises i appen og i events. Uden navn bruges scriptets filnavn, `Wait 30 s` for en ventetid eller metoden og requestens adresse uden query, fx `POST {{baseUrl}}/auth/token`.
+- `name` er valgfrit og vises i appen og i events. Uden navn bruges scriptets filnavn, `Wait 30 seconds` for en ventetid eller metoden og requestens adresse uden query, fx `POST {{baseUrl}}/auth/token`.
 - Parametre gives ved start og kan ikke gemmes i. En parameters `default` kan være enhver JSON-værdi. Variabler er de navne, trinnene gemmer i med `saves`, og får deres værdi derfra. En variabel kan også have en `default`, som den har, indtil et trin gemmer i den. Appen skriver listen over variabler ud fra trinnene, når workflowet gemmes, og beholder deres `default`, så en fast værdi, som intet trin gemmer i, gives som en parameter med `default`. Et trin kan også gemme en fast værdi i en variabel, se `from` nedenfor.
 - Et trin kan i stedet for `request` have `"script": "map.js"`, en JavaScript-fil i workflowets mappe. Scriptet får alle parametre, variabler og miljøets variabler i `vars`, som ikke kan ændres. Et navn, workflowet selv har, vinder over miljøet, som i en request, og det, det returnerer, er trinnets output. Outputtet gemmes med `saves` som et svar, fx `"from": "$"` eller `"$.id"`. I events har trinnet scriptets filnavn som `name`, hvis det intet navn har, `JS` som `method` og outputtet som `body`. Returnerer scriptet intet, fejler trinnet kun, hvis det har noget i `saves`. Et script har ingen adgang til filer eller netværk og stoppes efter 5 sekunder, eller når det holder mere end 512 MB hukommelse. Tal over 2^53 kan ændre sig, når de går gennem et script.
 - Et request-trin kan gentages, indtil svaret er klar, fx mens et API laver noget færdigt i baggrunden: `"retry": { "until": "$.result.status", "equals": "succeeded", "times": 60, "waitSeconds": 5 }`.
@@ -92,7 +92,7 @@ Fejl, før der kommer et svar, skrives som `{"error":"..."}` på stderr, og stdo
 - `from` i `saves` er `$` for hele bodyen (rå tekst, hvis den ikke er JSON), en sti som `$.data.items[0].id`, `header:Navn`, `status` eller en fast JSON-værdi, der gemmes, som den er, fx `"from": "1"` for tallet 1 og `"from": "\"ja\""` for teksten ja. Der gemmes kun efter et 2xx-svar, og et trin gemmer alle sine værdier eller ingen.
 - `{{navn}}` udfyldes i URL, query og headers, i Basic-brugernavn og -password og i Bearer-token og i body, når `useEnvironmentVariablesInBody` er `true`. Navnet får sin værdi fra workflowets parametre og variabler. Kun et navn, som workflowet ikke selv har, hentes fra miljøet. Tekst indsættes uændret, og alt andet som kompakt JSON.
 - `--param navn=værdi` giver en parameter som tekst og kan gentages. `--params fil.json` eller `--params -` (stdin) læser et JSON-objekt, hvor værdierne beholder deres type, fx `{"orderId":"o-17","pageSize":50}`. `--param` vinder over `--params`.
-- Før første kald tjekkes hele workflowet: at hvert trin har en URL, at parametrene er kendte, at de påkrævede er givet, og at hvert `{{navn}}` i en request har en værdi, når trinnet kører. Navne, et script læser i `vars`, tjekkes ikke. Fejler tjekket, sendes intet.
+- Før første kald tjekkes hele workflowet: at hvert trin har en URL, at parametrene er kendte, at de påkrævede er givet, og at hvert `{{navn}}` i en request har en værdi, når trinnet kører. Et navn, der kun står i bodyen, og som hverken workflowet eller miljøet har, bliver stående som skrevet og tjekkes ikke, så fx en Handlebars-template kan bruge sine egne `{{navne}}`. Navne, et script læser i `vars`, tjekkes ikke. Fejler tjekket, sendes intet.
 - Trinene køres ét ad gangen i rækkefølge. Et trin fejler ved en status uden for 2xx, ved en fejl før svaret, eller hvis en værdi i `saves` ikke findes. Så springes resten over.
 
 ### Events
@@ -148,7 +148,7 @@ Ved exitkode 2 står fejlen som JSON på stderr. Fejler tjekket, følger problem
 | `NotAVariable` | `saves` gemmer i noget, der ikke er en variabel |
 | `InvalidSource` | `from` i `saves` er hverken en gyldig kilde eller en JSON-værdi |
 | `UsedBeforeSaved` | Et navn fra workflowet bruges, før det har en værdi |
-| `UnknownName` | Et navn findes hverken i workflowet eller i miljøet |
+| `UnknownName` | Et navn i URL, query, headers eller auth findes hverken i workflowet eller i miljøet. I en body bliver sådan et navn stående som skrevet |
 | `ScriptNotFound` | Scriptet findes ikke i workflowets mappe, eller navnet er ugyldigt |
 | `InvalidScript` | Scriptet har en syntaksfejl. `detail` er fejlen med fil, linje og kolonne, fx `Unexpected token ';' (map.js:2:11)` |
 | `MixedStep` | Trinnet har mere end én af `request`, `script` og `delaySeconds` |

@@ -65,7 +65,7 @@
                     </Border>
                     <TextBlock Text="{DynamicResource Environments.Variables}" Style="{StaticResource Label}" />
                 </StackPanel>
-                <local:KeyValueEditor DataContext="{Binding Variables}">
+                <local:KeyValueEditor DataContext="{Binding Variables}" local:SplitMemory.Columns="Variables">
                     <local:KeyValueEditor.Resources>
                         <!-- Variable definitions are literal values, not references to other variables. -->
                         <Style TargetType="controls:VariableTextBox" BasedOn="{StaticResource Cell}" />

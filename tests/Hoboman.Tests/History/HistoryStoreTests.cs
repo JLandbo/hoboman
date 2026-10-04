@@ -15,6 +15,21 @@ public sealed class HistoryStoreTests : IDisposable
 
     public void Dispose() => _temporary.Dispose();
 
+    [Fact]
+    public async Task AddAsync_WhenTheResponseHasItsBytes_ThenKeepsOnlyItsText()
+    {
+        // Arrange
+        var store = new HistoryStore(new(_temporary.Path), NullLogger<HistoryStore>.Instance);
+        var entry = EntryAt(1);
+
+        // Act
+        await store.AddAsync(entry with { Response = entry.Response! with { Bytes = [1, 2] } }, TestContext.Current.CancellationToken);
+
+        // Assert
+        var read = Assert.Single(await store.ReadAsync(await store.LatestAsync(10, TestContext.Current.CancellationToken), TestContext.Current.CancellationToken));
+        Assert.Equal(("1", null), (read.Entry.Response!.Body, read.Entry.Response.Bytes));
+    }
+
     async Task<IReadOnlyList<HistoryFile>> ReadLatestAsync(int count) => await Store().ReadAsync(await Store().LatestAsync(count, Cancellation), Cancellation);
 
     [Fact]

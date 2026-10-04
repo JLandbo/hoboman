@@ -182,141 +182,124 @@
                         </Button>
                         <TextBlock Text="{DynamicResource Workflow.Steps}" Style="{StaticResource Heading}" />
                     </DockPanel>
-                    <Grid>
-                        <!-- A timeline: numbered circles joined by a line, as the steps run in this order. Only the step itself is marked when it is chosen, not its circle. -->
-                        <ListBox ItemsSource="{Binding Steps}" SelectedItem="{Binding SelectedStep}" Style="{StaticResource SideList}">
-                            <ListBox.ItemContainerStyle>
-                                <Style TargetType="ListBoxItem">
-                                    <Setter Property="Cursor" Value="Hand" />
-                                    <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
-                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                    <Setter Property="Template">
-                                        <Setter.Value>
-                                            <ControlTemplate TargetType="ListBoxItem">
-                                                <ContentPresenter />
-                                            </ControlTemplate>
-                                        </Setter.Value>
-                                    </Setter>
-                                </Style>
-                            </ListBox.ItemContainerStyle>
-                            <ListBox.ItemTemplate>
-                                <DataTemplate DataType="{x:Type viewModels:WorkflowStepViewModel}">
-                                    <Grid Background="Transparent">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="30" />
-                                            <ColumnDefinition />
-                                        </Grid.ColumnDefinitions>
-                                        <Rectangle x:Name="Line" Width="2" Fill="{DynamicResource BoxEdge}" HorizontalAlignment="Center" Margin="0,30,0,0" />
-                                        <Border x:Name="Circle" Width="26" Height="26" CornerRadius="13" Background="{DynamicResource Input}" BorderBrush="{DynamicResource BoxEdge}" BorderThickness="1.5"
-                                                VerticalAlignment="Top" Margin="0,2,0,0">
-                                            <TextBlock x:Name="Number" Text="{Binding Number}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                        </Border>
-                                        <Border x:Name="Body" Grid.Column="1" CornerRadius="8" Padding="10,5,10,10" Margin="10,0,0,4" Background="Transparent">
-                                            <StackPanel>
-                                                <DockPanel>
-                                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
-                                                        <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFont}" FontSize="11" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0"
-                                                                   ToolTip="{DynamicResource Workflow.Retry}" Visibility="{Binding HasRetry, Converter={StaticResource VisibleWhenTrue}}" />
-                                                        <Border Style="{StaticResource Badge}">
-                                                            <TextBlock Text="{Binding Status}" Style="{StaticResource BadgeText}" />
-                                                        </Border>
-                                                        <TextBlock Text="{Binding Elapsed}" Foreground="{DynamicResource Muted}" FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center" />
-                                                        <TextBlock Text="{Binding State}" Foreground="{DynamicResource Muted}" FontSize="11" VerticalAlignment="Center" />
-                                                    </StackPanel>
-                                                    <Grid DockPanel.Dock="Left" Width="52" Margin="0,0,10,0" VerticalAlignment="Center">
-                                                        <Border CornerRadius="6" Background="{Binding Badge, Converter={StaticResource MethodBrush}}" Opacity="0.14" />
-                                                        <TextBlock Text="{Binding Badge}" FontSize="10.5" FontWeight="Bold" Foreground="{Binding Badge, Converter={StaticResource MethodBrush}}"
-                                                                   HorizontalAlignment="Center" Margin="0,1" TextTrimming="CharacterEllipsis" />
-                                                    </Grid>
-                                                    <TextBlock Text="{Binding Title}" FontSize="13.5" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                                                </DockPanel>
-                                                    <!-- What the step takes in, then what it gives on to the next steps. -->
-                                                    <WrapPanel x:Name="Flow" Margin="0,4,0,0">
-                                                        <ItemsControl ItemsSource="{Binding UsedNames}" Focusable="False">
-                                                            <ItemsControl.ItemsPanel>
-                                                                <ItemsPanelTemplate>
-                                                                    <WrapPanel />
-                                                                </ItemsPanelTemplate>
-                                                            </ItemsControl.ItemsPanel>
-                                                            <ItemsControl.ItemTemplate>
-                                                                <DataTemplate>
-                                                                    <Border Style="{StaticResource Chip}">
-                                                                        <TextBlock Text="{Binding}" Style="{StaticResource ChipText}" />
-                                                                    </Border>
-                                                                </DataTemplate>
-                                                            </ItemsControl.ItemTemplate>
-                                                        </ItemsControl>
-                                                        <TextBlock x:Name="Arrow" Text="&#x2192;" Foreground="{DynamicResource Muted}" Margin="2,0,6,0" VerticalAlignment="Center" />
-                                                        <ItemsControl ItemsSource="{Binding SavedNames}" Focusable="False">
-                                                            <ItemsControl.ItemsPanel>
-                                                                <ItemsPanelTemplate>
-                                                                    <WrapPanel />
-                                                                </ItemsPanelTemplate>
-                                                            </ItemsControl.ItemsPanel>
-                                                            <ItemsControl.ItemTemplate>
-                                                                <DataTemplate>
-                                                                    <Border Style="{StaticResource SavedChip}">
-                                                                        <TextBlock Text="{Binding}" Style="{StaticResource SavedChipText}" />
-                                                                    </Border>
-                                                                </DataTemplate>
-                                                            </ItemsControl.ItemTemplate>
-                                                        </ItemsControl>
-                                                    </WrapPanel>
-                                            </StackPanel>
-                                        </Border>
-                                    </Grid>
-                                    <DataTemplate.Triggers>
-                                        <DataTrigger Binding="{Binding IsLast}" Value="True">
-                                            <Setter TargetName="Line" Property="Visibility" Value="Collapsed" />
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding IsSuccess}" Value="True">
-                                            <Setter TargetName="Circle" Property="BorderBrush" Value="{DynamicResource Success}" />
-                                            <Setter TargetName="Number" Property="Foreground" Value="{DynamicResource Success}" />
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding HasFailed}" Value="True">
-                                            <Setter TargetName="Circle" Property="BorderBrush" Value="{DynamicResource Error}" />
-                                            <Setter TargetName="Number" Property="Foreground" Value="{DynamicResource Error}" />
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding IsRunning}" Value="True">
-                                            <Setter TargetName="Circle" Property="BorderBrush" Value="{DynamicResource Attention}" />
-                                            <Setter TargetName="Number" Property="Foreground" Value="{DynamicResource Attention}" />
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
-                                            <Setter TargetName="Body" Property="Background" Value="{DynamicResource Card}" />
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
-                                            <Setter TargetName="Body" Property="Background" Value="{DynamicResource Card}" />
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding UsedNames.Count}" Value="0">
-                                            <Setter TargetName="Arrow" Property="Visibility" Value="Collapsed" />
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding SavedNames.Count}" Value="0">
-                                            <Setter TargetName="Arrow" Property="Visibility" Value="Collapsed" />
-                                        </DataTrigger>
-                                        <MultiDataTrigger>
-                                            <MultiDataTrigger.Conditions>
-                                                <Condition Binding="{Binding UsedNames.Count}" Value="0" />
-                                                <Condition Binding="{Binding SavedNames.Count}" Value="0" />
-                                            </MultiDataTrigger.Conditions>
-                                            <Setter TargetName="Flow" Property="Visibility" Value="Collapsed" />
-                                        </MultiDataTrigger>
-                                    </DataTemplate.Triggers>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                        <TextBlock Text="{DynamicResource Workflow.NoSteps}" Foreground="{DynamicResource Muted}" Margin="8,4,0,0" TextWrapping="Wrap" IsHitTestVisible="False">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Visibility" Value="Collapsed" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding Steps.Count}" Value="0">
-                                            <Setter Property="Visibility" Value="Visible" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-                    </Grid>
+                    <!-- A timeline: numbered circles joined by a line, as the steps run in this order. Only the step itself is marked when it is chosen, not its circle. -->
+                    <ListBox ItemsSource="{Binding Steps}" SelectedItem="{Binding SelectedStep}" Style="{StaticResource SideList}">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem" BasedOn="{StaticResource SideListItem}">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <ContentPresenter />
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type viewModels:WorkflowStepViewModel}">
+                                <Grid Background="Transparent">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="30" />
+                                        <ColumnDefinition />
+                                    </Grid.ColumnDefinitions>
+                                    <Rectangle x:Name="Line" Width="2" Fill="{DynamicResource BoxEdge}" HorizontalAlignment="Center" Margin="0,30,0,0" />
+                                    <Border x:Name="Circle" Width="26" Height="26" CornerRadius="13" Background="{DynamicResource Input}" BorderBrush="{DynamicResource BoxEdge}" BorderThickness="1.5"
+                                            VerticalAlignment="Top" Margin="0,2,0,0">
+                                        <TextBlock x:Name="Number" Text="{Binding Number}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <Border x:Name="Body" Grid.Column="1" CornerRadius="8" Padding="10,5,10,10" Margin="10,0,0,4" Background="Transparent">
+                                        <StackPanel>
+                                            <DockPanel>
+                                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
+                                                    <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFont}" FontSize="11" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0"
+                                                               ToolTip="{DynamicResource Workflow.Retry}" Visibility="{Binding HasRetry, Converter={StaticResource VisibleWhenTrue}}" />
+                                                    <Border Style="{StaticResource Badge}">
+                                                        <TextBlock Text="{Binding Status}" Style="{StaticResource BadgeText}" />
+                                                    </Border>
+                                                    <TextBlock Text="{Binding Elapsed}" Foreground="{DynamicResource Muted}" FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center" />
+                                                    <TextBlock Text="{Binding State}" Foreground="{DynamicResource Muted}" FontSize="11" VerticalAlignment="Center" />
+                                                </StackPanel>
+                                                <Grid DockPanel.Dock="Left" Width="52" Margin="0,0,10,0" VerticalAlignment="Center">
+                                                    <Border CornerRadius="6" Background="{Binding Badge, Converter={StaticResource MethodBrush}}" Opacity="0.14" />
+                                                    <TextBlock Text="{Binding Badge}" FontSize="10.5" FontWeight="Bold" Foreground="{Binding Badge, Converter={StaticResource MethodBrush}}"
+                                                               HorizontalAlignment="Center" Margin="0,1" TextTrimming="CharacterEllipsis" />
+                                                </Grid>
+                                                <TextBlock Text="{Binding Title}" FontSize="13.5" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                            </DockPanel>
+                                                <!-- What the step takes in, then what it gives on to the next steps. -->
+                                                <WrapPanel x:Name="Flow" Margin="0,4,0,0">
+                                                    <ItemsControl ItemsSource="{Binding UsedNames}" Focusable="False">
+                                                        <ItemsControl.ItemsPanel>
+                                                            <ItemsPanelTemplate>
+                                                                <WrapPanel />
+                                                            </ItemsPanelTemplate>
+                                                        </ItemsControl.ItemsPanel>
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Border Style="{StaticResource Chip}">
+                                                                    <TextBlock Text="{Binding}" Style="{StaticResource ChipText}" />
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                    <TextBlock x:Name="Arrow" Text="&#x2192;" Foreground="{DynamicResource Muted}" Margin="2,0,6,0" VerticalAlignment="Center" />
+                                                    <ItemsControl ItemsSource="{Binding SavedNames}" Focusable="False">
+                                                        <ItemsControl.ItemsPanel>
+                                                            <ItemsPanelTemplate>
+                                                                <WrapPanel />
+                                                            </ItemsPanelTemplate>
+                                                        </ItemsControl.ItemsPanel>
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Border Style="{StaticResource SavedChip}">
+                                                                    <TextBlock Text="{Binding}" Style="{StaticResource SavedChipText}" />
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </WrapPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsLast}" Value="True">
+                                        <Setter TargetName="Line" Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsSuccess}" Value="True">
+                                        <Setter TargetName="Circle" Property="BorderBrush" Value="{DynamicResource Success}" />
+                                        <Setter TargetName="Number" Property="Foreground" Value="{DynamicResource Success}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding HasFailed}" Value="True">
+                                        <Setter TargetName="Circle" Property="BorderBrush" Value="{DynamicResource Error}" />
+                                        <Setter TargetName="Number" Property="Foreground" Value="{DynamicResource Error}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsRunning}" Value="True">
+                                        <Setter TargetName="Circle" Property="BorderBrush" Value="{DynamicResource Attention}" />
+                                        <Setter TargetName="Number" Property="Foreground" Value="{DynamicResource Attention}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                        <Setter TargetName="Body" Property="Background" Value="{DynamicResource Card}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                        <Setter TargetName="Body" Property="Background" Value="{DynamicResource Card}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding UsedNames.Count}" Value="0">
+                                        <Setter TargetName="Arrow" Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding SavedNames.Count}" Value="0">
+                                        <Setter TargetName="Arrow" Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding UsedNames.Count}" Value="0" />
+                                            <Condition Binding="{Binding SavedNames.Count}" Value="0" />
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter TargetName="Flow" Property="Visibility" Value="Collapsed" />
+                                    </MultiDataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                 </DockPanel>
             </Border>
 
@@ -330,71 +313,71 @@
                 </Grid.RowDefinitions>
 
                 <Border Style="{StaticResource Panel}">
-                    <Grid>
-                        <DockPanel DataContext="{Binding SelectedStep}">
-                            <DockPanel.Style>
-                                <Style TargetType="DockPanel">
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding}" Value="{x:Null}">
+                    <DockPanel DataContext="{Binding SelectedStep}">
+                        <DockPanel.Style>
+                            <Style TargetType="DockPanel">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding}" Value="{x:Null}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DockPanel.Style>
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                            <Button DockPanel.Dock="Right" Content="&#xE711;" ToolTip="{DynamicResource Workflow.RemoveStep}" AutomationProperties.Name="{DynamicResource Workflow.RemoveStep}"
+                                    Click="RemoveStep_Click" Style="{StaticResource CloseButton}" VerticalAlignment="Center" />
+                            <Button DockPanel.Dock="Right" Content="&#xE74B;" ToolTip="{DynamicResource Workflow.MoveDown}" AutomationProperties.Name="{DynamicResource Workflow.MoveDown}"
+                                    Click="MoveDown_Click" Style="{StaticResource CloseButton}" VerticalAlignment="Center" />
+                            <Button DockPanel.Dock="Right" Content="&#xE74A;" ToolTip="{DynamicResource Workflow.MoveUp}" AutomationProperties.Name="{DynamicResource Workflow.MoveUp}"
+                                    Click="MoveUp_Click" Style="{StaticResource CloseButton}" VerticalAlignment="Center" />
+                            <Button DockPanel.Dock="Right" Content="{DynamicResource Workflow.ShowScript}" Click="ShowScript_Click" FontSize="12" Padding="10,3" Margin="0,0,6,0" VerticalAlignment="Center"
+                                    Style="{StaticResource PillButton}" Visibility="{Binding IsScript, Converter={StaticResource VisibleWhenTrue}}" />
+                            <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource Muted}" Margin="0,0,6,0">
+                                <Run Text="{DynamicResource Workflow.Step}" />
+                                <Run Text="{Binding Number, Mode=OneWay}" />
+                                <Run Text="&#x00B7;" />
+                            </TextBlock>
+                            <!-- The name is written in the title. Without one, the step is known by what it calls. -->
+                            <Grid VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Title}" Foreground="{DynamicResource Muted}" FontSize="13.5" FontWeight="SemiBold" Margin="2,0,0,0" TextTrimming="CharacterEllipsis" IsHitTestVisible="False">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
                                             <Setter Property="Visibility" Value="Collapsed" />
-                                        </DataTrigger>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Name}" Value="">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" FontFamily="{StaticResource UiFont}" FontSize="13.5" FontWeight="SemiBold" Padding="0" Background="Transparent"
+                                         AutomationProperties.Name="{DynamicResource Common.Name}" />
+                            </Grid>
+                        </DockPanel>
+                        <StackPanel DockPanel.Dock="Top" Visibility="{Binding IsDelay, Converter={StaticResource VisibleWhenTrue}}">
+                            <TextBlock Text="{DynamicResource Workflow.DelaySeconds}" Style="{StaticResource Heading}" Margin="0,0,0,6" />
+                            <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,12" Width="120" HorizontalAlignment="Left">
+                                <TextBox Text="{Binding DelaySeconds, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
+                            </Border>
+                        </StackPanel>
+                        <local:RequestLineEditor DockPanel.Dock="Top" DataContext="{Binding Request}" Margin="0,0,0,10" Visibility="{Binding DataContext.IsRequest, RelativeSource={RelativeSource AncestorType=DockPanel}, Converter={StaticResource VisibleWhenTrue}}" />
+                        <Border DockPanel.Dock="Top" Margin="0,0,0,8">
+                            <Border.Style>
+                                <Style TargetType="Border" BasedOn="{StaticResource SegmentGroup}">
+                                    <Style.Triggers>
+                                        <!-- A wait has no tabs, unless a file gave it saves to remove. -->
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding IsDelay}" Value="True" />
+                                                <Condition Binding="{Binding HasSaves}" Value="False" />
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </MultiDataTrigger>
                                     </Style.Triggers>
                                 </Style>
-                            </DockPanel.Style>
-                            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-                                <Button DockPanel.Dock="Right" Content="&#xE711;" ToolTip="{DynamicResource Workflow.RemoveStep}" AutomationProperties.Name="{DynamicResource Workflow.RemoveStep}"
-                                        Click="RemoveStep_Click" Style="{StaticResource CloseButton}" VerticalAlignment="Center" />
-                                <Button DockPanel.Dock="Right" Content="&#xE74B;" ToolTip="{DynamicResource Workflow.MoveDown}" AutomationProperties.Name="{DynamicResource Workflow.MoveDown}"
-                                        Click="MoveDown_Click" Style="{StaticResource CloseButton}" VerticalAlignment="Center" />
-                                <Button DockPanel.Dock="Right" Content="&#xE74A;" ToolTip="{DynamicResource Workflow.MoveUp}" AutomationProperties.Name="{DynamicResource Workflow.MoveUp}"
-                                        Click="MoveUp_Click" Style="{StaticResource CloseButton}" VerticalAlignment="Center" />
-                                <Button DockPanel.Dock="Right" Content="{DynamicResource Workflow.ShowScript}" Click="ShowScript_Click" FontSize="12" Padding="10,3" Margin="0,0,6,0" VerticalAlignment="Center"
-                                        Style="{StaticResource PillButton}" Visibility="{Binding IsScript, Converter={StaticResource VisibleWhenTrue}}" />
-                                <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource Muted}" Margin="0,0,6,0">
-                                    <Run Text="{DynamicResource Workflow.Step}" />
-                                    <Run Text="{Binding Number, Mode=OneWay}" />
-                                    <Run Text="&#x00B7;" />
-                                </TextBlock>
-                                <!-- The name is written in the title. Without one, the step is known by what it calls. -->
-                                <Grid VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding Title}" Foreground="{DynamicResource Muted}" FontSize="13.5" FontWeight="SemiBold" Margin="2,0,0,0" TextTrimming="CharacterEllipsis" IsHitTestVisible="False">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Visibility" Value="Collapsed" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Name}" Value="">
-                                                        <Setter Property="Visibility" Value="Visible" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                    <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" FontFamily="{StaticResource UiFont}" FontSize="13.5" FontWeight="SemiBold" Padding="0" Background="Transparent"
-                                             AutomationProperties.Name="{DynamicResource Common.Name}" />
-                                </Grid>
-                            </DockPanel>
-                            <StackPanel DockPanel.Dock="Top" Visibility="{Binding IsDelay, Converter={StaticResource VisibleWhenTrue}}">
-                                <TextBlock Text="{DynamicResource Workflow.DelaySeconds}" Style="{StaticResource Heading}" Margin="0,0,0,6" />
-                                <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,12" Width="120" HorizontalAlignment="Left">
-                                    <TextBox Text="{Binding DelaySeconds, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
-                                </Border>
-                            </StackPanel>
-                            <local:RequestLineEditor DockPanel.Dock="Top" DataContext="{Binding Request}" Margin="0,0,0,10" Visibility="{Binding DataContext.IsRequest, RelativeSource={RelativeSource AncestorType=DockPanel}, Converter={StaticResource VisibleWhenTrue}}" />
-                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
-                                <StackPanel.Style>
-                                    <Style TargetType="StackPanel">
-                                        <Style.Triggers>
-                                            <!-- A wait has no tabs, unless a file gave it saves to remove. -->
-                                            <MultiDataTrigger>
-                                                <MultiDataTrigger.Conditions>
-                                                    <Condition Binding="{Binding IsDelay}" Value="True" />
-                                                    <Condition Binding="{Binding HasSaves}" Value="False" />
-                                                </MultiDataTrigger.Conditions>
-                                                <Setter Property="Visibility" Value="Collapsed" />
-                                            </MultiDataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </StackPanel.Style>
+                            </Border.Style>
+                            <StackPanel Orientation="Horizontal">
                                 <RadioButton x:Name="StepParamsSection" GroupName="StepSection" Style="{StaticResource Segment}" Visibility="{Binding IsRequest, Converter={StaticResource VisibleWhenTrue}}"
                                              IsChecked="{Binding Section, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:StepSection.Params}}">
                                     <StackPanel Orientation="Horizontal">
@@ -465,105 +448,83 @@
                                     </StackPanel>
                                 </RadioButton>
                             </StackPanel>
-                            <!-- Only the chosen tab is shown, and it fills the panel, so only its own content scrolls. -->
-                            <Grid>
-                                <Grid.Style>
-                                    <Style TargetType="Grid">
-                                        <Style.Triggers>
-                                            <MultiDataTrigger>
-                                                <MultiDataTrigger.Conditions>
-                                                    <Condition Binding="{Binding IsDelay}" Value="True" />
-                                                    <Condition Binding="{Binding HasSaves}" Value="False" />
-                                                </MultiDataTrigger.Conditions>
-                                                <Setter Property="Visibility" Value="Collapsed" />
-                                            </MultiDataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Grid.Style>
-                                <local:KeyValueEditor DataContext="{Binding Request.Query}" local:SplitMemory.Columns="Params" Visibility="{Binding IsChecked, ElementName=StepParamsSection, Converter={StaticResource VisibleWhenTrue}}" />
-                                <local:KeyValueEditor DataContext="{Binding Request.Headers}" local:SplitMemory.Columns="Headers" Visibility="{Binding IsChecked, ElementName=StepHeadersSection, Converter={StaticResource VisibleWhenTrue}}" />
-                                <local:RequestBodyEditor DataContext="{Binding Request}" Visibility="{Binding IsChecked, ElementName=StepBodySection, Converter={StaticResource VisibleWhenTrue}}" />
-                                <local:AuthEditor DataContext="{Binding Auth}" InheritsFromWorkflow="True" Visibility="{Binding IsChecked, ElementName=StepAuthSection, Converter={StaticResource VisibleWhenTrue}}" />
-                                <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False" Visibility="{Binding IsChecked, ElementName=StepRetrySection, Converter={StaticResource VisibleWhenTrue}}">
-                                    <StackPanel>
-                                        <ToggleButton Content="{DynamicResource Workflow.Retry}" IsChecked="{Binding Retries}" Style="{StaticResource Switch}" HorizontalAlignment="Left" Margin="0,0,0,8" />
-                                        <StackPanel Visibility="{Binding Retries, Converter={StaticResource VisibleWhenTrue}}">
-                                            <WrapPanel>
-                                                <TextBlock Text="{DynamicResource Workflow.RetryWhen}" VerticalAlignment="Center" Margin="0,0,8,6" />
-                                                <Border CornerRadius="8" Background="{DynamicResource Input}" Width="200" Margin="0,0,6,6">
-                                                    <TextBox Text="{Binding RetryUntil, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
-                                                </Border>
-                                                <TextBlock Text="&#x3D;" VerticalAlignment="Center" Margin="0,0,6,6" />
-                                                <Border CornerRadius="8" Background="{DynamicResource Input}" Width="140" Margin="0,0,0,6">
-                                                    <TextBox Text="{Binding RetryEquals, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
-                                                </Border>
-                                            </WrapPanel>
-                                            <WrapPanel>
-                                                <TextBlock Text="{DynamicResource Workflow.RetryStop}" VerticalAlignment="Center" Margin="0,0,8,6" />
-                                                <Border CornerRadius="8" Background="{DynamicResource Input}" Width="200" Margin="0,0,6,6">
-                                                    <TextBox Text="{Binding RetryStopIf, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
-                                                </Border>
-                                                <TextBlock Text="&#x3D;" VerticalAlignment="Center" Margin="0,0,6,6" />
-                                                <Border CornerRadius="8" Background="{DynamicResource Input}" Width="140" Margin="0,0,0,6">
-                                                    <TextBox Text="{Binding RetryStopEquals, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
-                                                </Border>
-                                            </WrapPanel>
-                                            <WrapPanel>
-                                                <TextBlock Text="{DynamicResource Workflow.RetryTimes}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                                <Border CornerRadius="8" Background="{DynamicResource Input}" Width="60" Margin="0,0,8,0">
-                                                    <TextBox Text="{Binding RetryTimes, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
-                                                </Border>
-                                                <TextBlock Text="{DynamicResource Workflow.RetryWait}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                                <Border CornerRadius="8" Background="{DynamicResource Input}" Width="60" Margin="0,0,8,0">
-                                                    <TextBox Text="{Binding RetryWaitSeconds, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
-                                                </Border>
-                                                <TextBlock Text="{DynamicResource Workflow.RetrySeconds}" VerticalAlignment="Center" />
-                                            </WrapPanel>
-                                        </StackPanel>
-                                    </StackPanel>
-                                </ScrollViewer>
-                                <Border CornerRadius="8" Background="{DynamicResource Input}" Visibility="{Binding IsChecked, ElementName=StepCodeSection, Converter={StaticResource VisibleWhenTrue}}">
-                                    <controls:ScriptEditor Code="{Binding DataContext.Code, RelativeSource={RelativeSource AncestorType=UserControl}}" />
-                                </Border>
-                                <DockPanel Visibility="{Binding IsChecked, ElementName=StepSavesSection, Converter={StaticResource VisibleWhenTrue}}">
-                                    <!-- What a step saves is picked from its response, where the saved lines are marked. -->
-                                    <local:KeyValueEditor DataContext="{Binding Saves}" local:SplitMemory.Columns="Saves" NameHeader="{DynamicResource Workflow.Variable}" ValueHeader="{DynamicResource Workflow.From}" CanDisable="False">
-                                        <local:KeyValueEditor.Resources>
-                                            <!-- Where to save from is a path such as $.id, not a reference to other names. -->
-                                            <Style TargetType="controls:VariableTextBox" BasedOn="{StaticResource Cell}" />
-                                        </local:KeyValueEditor.Resources>
-                                    </local:KeyValueEditor>
-                                </DockPanel>
-                            </Grid>
-                        </DockPanel>
-                        <TextBlock Text="{DynamicResource Workflow.NoSteps}" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Visibility" Value="Collapsed" />
+                        </Border>
+                        <!-- Only the chosen tab is shown, and it fills the panel, so only its own content scrolls. -->
+                        <Grid>
+                            <Grid.Style>
+                                <Style TargetType="Grid">
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding SelectedStep}" Value="{x:Null}">
-                                            <Setter Property="Visibility" Value="Visible" />
-                                        </DataTrigger>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding IsDelay}" Value="True" />
+                                                <Condition Binding="{Binding HasSaves}" Value="False" />
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </MultiDataTrigger>
                                     </Style.Triggers>
                                 </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-                    </Grid>
+                            </Grid.Style>
+                            <local:KeyValueEditor DataContext="{Binding Request.Query}" local:SplitMemory.Columns="Params" Visibility="{Binding IsChecked, ElementName=StepParamsSection, Converter={StaticResource VisibleWhenTrue}}" />
+                            <local:KeyValueEditor DataContext="{Binding Request.Headers}" local:SplitMemory.Columns="Headers" Visibility="{Binding IsChecked, ElementName=StepHeadersSection, Converter={StaticResource VisibleWhenTrue}}" />
+                            <local:RequestBodyEditor DataContext="{Binding Request}" Visibility="{Binding IsChecked, ElementName=StepBodySection, Converter={StaticResource VisibleWhenTrue}}" />
+                            <local:AuthEditor DataContext="{Binding Auth}" InheritsFromWorkflow="True" Visibility="{Binding IsChecked, ElementName=StepAuthSection, Converter={StaticResource VisibleWhenTrue}}" />
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False" Visibility="{Binding IsChecked, ElementName=StepRetrySection, Converter={StaticResource VisibleWhenTrue}}">
+                                <StackPanel>
+                                    <ToggleButton Content="{DynamicResource Workflow.Retry}" IsChecked="{Binding Retries}" Style="{StaticResource Switch}" HorizontalAlignment="Left" Margin="0,0,0,8" />
+                                    <StackPanel Visibility="{Binding Retries, Converter={StaticResource VisibleWhenTrue}}">
+                                        <WrapPanel>
+                                            <TextBlock Text="{DynamicResource Workflow.RetryWhen}" VerticalAlignment="Center" Margin="0,0,8,6" />
+                                            <Border CornerRadius="8" Background="{DynamicResource Input}" Width="200" Margin="0,0,6,6">
+                                                <TextBox Text="{Binding RetryUntil, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
+                                            </Border>
+                                            <TextBlock Text="&#x3D;" VerticalAlignment="Center" Margin="0,0,6,6" />
+                                            <Border CornerRadius="8" Background="{DynamicResource Input}" Width="140" Margin="0,0,0,6">
+                                                <TextBox Text="{Binding RetryEquals, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
+                                            </Border>
+                                        </WrapPanel>
+                                        <WrapPanel>
+                                            <TextBlock Text="{DynamicResource Workflow.RetryStop}" VerticalAlignment="Center" Margin="0,0,8,6" />
+                                            <Border CornerRadius="8" Background="{DynamicResource Input}" Width="200" Margin="0,0,6,6">
+                                                <TextBox Text="{Binding RetryStopIf, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
+                                            </Border>
+                                            <TextBlock Text="&#x3D;" VerticalAlignment="Center" Margin="0,0,6,6" />
+                                            <Border CornerRadius="8" Background="{DynamicResource Input}" Width="140" Margin="0,0,0,6">
+                                                <TextBox Text="{Binding RetryStopEquals, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
+                                            </Border>
+                                        </WrapPanel>
+                                        <WrapPanel>
+                                            <TextBlock Text="{DynamicResource Workflow.RetryTimes}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <Border CornerRadius="8" Background="{DynamicResource Input}" Width="60" Margin="0,0,8,0">
+                                                <TextBox Text="{Binding RetryTimes, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
+                                            </Border>
+                                            <TextBlock Text="{DynamicResource Workflow.RetryWait}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <Border CornerRadius="8" Background="{DynamicResource Input}" Width="60" Margin="0,0,8,0">
+                                                <TextBox Text="{Binding RetryWaitSeconds, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
+                                            </Border>
+                                            <TextBlock Text="{DynamicResource Workflow.RetrySeconds}" VerticalAlignment="Center" />
+                                        </WrapPanel>
+                                    </StackPanel>
+                                </StackPanel>
+                            </ScrollViewer>
+                            <Border CornerRadius="8" Background="{DynamicResource Input}" Visibility="{Binding IsChecked, ElementName=StepCodeSection, Converter={StaticResource VisibleWhenTrue}}">
+                                <controls:ScriptEditor Code="{Binding DataContext.Code, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                            </Border>
+                            <DockPanel Visibility="{Binding IsChecked, ElementName=StepSavesSection, Converter={StaticResource VisibleWhenTrue}}">
+                                <!-- What a step saves is picked from its response, where the saved lines are marked. -->
+                                <local:KeyValueEditor DataContext="{Binding Saves}" local:SplitMemory.Columns="Saves" NameHeader="{DynamicResource Workflow.Variable}" ValueHeader="{DynamicResource Workflow.From}" CanDisable="False">
+                                    <local:KeyValueEditor.Resources>
+                                        <!-- Where to save from is a path such as $.id, not a reference to other names. -->
+                                        <Style TargetType="controls:VariableTextBox" BasedOn="{StaticResource Cell}" />
+                                    </local:KeyValueEditor.Resources>
+                                </local:KeyValueEditor>
+                            </DockPanel>
+                        </Grid>
+                    </DockPanel>
                 </Border>
 
                 <GridSplitter Grid.Row="1" HorizontalAlignment="Stretch" Background="Transparent" />
 
                 <local:ResponseView Grid.Row="2" DataContext="{Binding SelectedStep}">
-                    <local:ResponseView.Style>
-                        <Style TargetType="local:ResponseView">
-                            <Setter Property="EmptyText" Value="{DynamicResource Workflow.ResponseEmpty}" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsDelay}" Value="True">
-                                    <Setter Property="EmptyText" Value="{DynamicResource Workflow.DelayNoResponse}" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </local:ResponseView.Style>
                     <local:ResponseView.Footer>
                         <WrapPanel Margin="0,8,0,0">
                             <WrapPanel.Style>

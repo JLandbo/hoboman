@@ -44,6 +44,8 @@
                     </Border>
                     <TextBlock Text="{Binding Result.Response.Elapsed}" Foreground="{DynamicResource Muted}" FontSize="12" VerticalAlignment="Center" Margin="0,0,10,0" />
                     <TextBlock Text="{Binding Result.Response.Size}" Foreground="{DynamicResource Muted}" FontSize="12" VerticalAlignment="Center" />
+                    <Button x:Name="SaveResponse" Content="&#xE74E;" Command="{Binding Result.SaveAs}" ToolTip="{DynamicResource Response.SaveAs}" AutomationProperties.Name="{DynamicResource Response.SaveAs}"
+                            Style="{StaticResource SmallIconButton}" FontSize="12" Margin="8,0,0,0" VerticalAlignment="Center" />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal">
                     <RadioButton x:Name="BodySection" Content="{DynamicResource Response.Body}" GroupName="ResponseSection" IsChecked="{Binding Result.ResponseSection, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:ResponseSection.Body}}" Style="{StaticResource Segment}" />
@@ -129,15 +131,6 @@
                         <Style TargetType="TextBlock">
                             <Setter Property="Visibility" Value="Collapsed" />
                             <Style.Triggers>
-                                <MultiDataTrigger>
-                                    <MultiDataTrigger.Conditions>
-                                        <Condition Binding="{Binding Result.Response}" Value="{x:Null}" />
-                                        <Condition Binding="{Binding Problem}" Value="{x:Null}" />
-                                        <Condition Binding="{Binding IsSending}" Value="False" />
-                                    </MultiDataTrigger.Conditions>
-                                    <Setter Property="Visibility" Value="Visible" />
-                                    <Setter Property="Text" Value="{Binding EmptyText, RelativeSource={RelativeSource AncestorType=local:ResponseView}}" />
-                                </MultiDataTrigger>
                                 <DataTrigger Binding="{Binding IsSending}" Value="True">
                                     <Setter Property="Visibility" Value="Visible" />
                                     <Setter Property="Text" Value="{DynamicResource Response.Sending}" />

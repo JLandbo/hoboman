@@ -21,12 +21,13 @@ public sealed record StepFinished(
     [property: JsonIgnore] RequestProblemKind? Problem = null,
     [property: JsonIgnore] string? MissingSave = null,
     [property: JsonIgnore] bool NotReady = false,
-    [property: JsonIgnore] (string Path, string Value)? Stopped = null) : WorkflowEvent
+    [property: JsonIgnore] (string Path, string Value)? Stopped = null,
+    [property: JsonIgnore] byte[]? Bytes = null) : WorkflowEvent
 {
     public static StepFinished Of(int index, ApiResponse response, IReadOnlyDictionary<string, JsonElement>? saved, string? missingSave) =>
         new(index, response.IsSuccess && missingSave is null ? StepOutcome.Succeeded : StepOutcome.Failed, response.StatusCode, response.Reason, response.ElapsedMs, response.Size,
             Error: missingSave is null ? null : $"Nothing to save was found at {missingSave}.", Saved: saved is { Count: > 0 } ? saved : null, Headers: response.Headers, Body: response.Body,
-            MissingSave: missingSave);
+            MissingSave: missingSave, Bytes: response.Bytes);
 
     // The answer told that what was waited for failed.
     public static StepFinished StoppedOf(int index, ApiResponse response, string path, string value) =>

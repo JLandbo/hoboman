@@ -29,8 +29,6 @@
             <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Padding" Value="1" />
         </Style>
-        <SolidColorBrush x:Key="ClipboardSuccess" Color="#22C55E" />
-        <SolidColorBrush x:Key="ClipboardError" Color="#EF4444" />
         <Style x:Key="ClipboardButton" TargetType="Button" BasedOn="{StaticResource PillButton}">
             <Setter Property="FontSize" Value="11" />
             <Setter Property="Padding" Value="8,3" />
@@ -60,16 +58,18 @@
                 </Grid.RowDefinitions>
                 <local:RequestEditorView />
                 <GridSplitter Grid.Row="1" HorizontalAlignment="Stretch" Background="Transparent" />
-                <local:ResponseView Grid.Row="2" EmptyText="{DynamicResource Response.Empty}" />
+                <local:ResponseView Grid.Row="2" />
             </Grid>
         </DataTemplate>
         <DataTemplate DataType="{x:Type viewModels:WorkflowViewModel}">
             <local:WorkflowView />
         </DataTemplate>
+        <!-- New requests and folders belong to the collections, so their buttons are shown only there. -->
         <Style x:Key="CollectionButton" TargetType="Button" BasedOn="{StaticResource SmallIconButton}">
+            <Setter Property="Visibility" Value="Collapsed" />
             <Style.Triggers>
-                <DataTrigger Binding="{Binding IsChecked, ElementName=WorkflowsSection}" Value="True">
-                    <Setter Property="Visibility" Value="Collapsed" />
+                <DataTrigger Binding="{Binding IsChecked, ElementName=CollectionsSection}" Value="True">
+                    <Setter Property="Visibility" Value="Visible" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -256,22 +256,6 @@
                 </DockPanel>
             </DockPanel>
             <ContentControl Grid.Row="1" Content="{Binding Content}" Focusable="False" />
-            <TextBlock Grid.Row="1" Text="{DynamicResource Workflow.NoneOpen}" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center">
-                <TextBlock.Style>
-                    <Style TargetType="TextBlock">
-                        <Setter Property="Visibility" Value="Collapsed" />
-                        <Style.Triggers>
-                            <MultiDataTrigger>
-                                <MultiDataTrigger.Conditions>
-                                    <Condition Binding="{Binding Section}" Value="{x:Static viewModels:SidebarSection.Workflows}" />
-                                    <Condition Binding="{Binding Workflow}" Value="{x:Null}" />
-                                </MultiDataTrigger.Conditions>
-                                <Setter Property="Visibility" Value="Visible" />
-                            </MultiDataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </TextBlock.Style>
-            </TextBlock>
         </Grid>
     </Grid>
 </Window>

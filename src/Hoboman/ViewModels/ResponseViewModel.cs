@@ -1,5 +1,7 @@
+using System.IO;
 using Hoboman.Core.Languages;
 using Hoboman.Core.Sending;
+using Hoboman.Core.Storage;
 using Hoboman.Mvvm;
 
 namespace Hoboman.ViewModels;
@@ -8,16 +10,22 @@ namespace Hoboman.ViewModels;
 public sealed class ResponseViewModel : ObservableObject
 {
     readonly Translator _translator;
+    readonly IDialogs _dialogs;
     ApiResponse? _response;
     BodyFormat _bodyFormat;
     CancellationTokenSource? _formatting;
 
-    public ResponseViewModel(Translator translator, Base64ViewModel base64)
+    public ResponseViewModel(Translator translator, Base64ViewModel base64, IDialogs dialogs)
     {
         _translator = translator;
+        _dialogs = dialogs;
         Base64 = base64;
         base64.DecodeChanged += ShowAgain;
+        SaveAs = new AsyncCommand(SaveAsAsync, () => _response?.Bytes is not null);
     }
+
+    // Saves the body as the server sent it, also when it is shown formatted or decoded. A response from the history has only its text, so it cannot.
+    public AsyncCommand SaveAs { get; }
 
     public Base64ViewModel Base64 { get; }
 
@@ -51,6 +59,7 @@ public sealed class ResponseViewModel : ObservableObject
     public async Task ShowAsync(ApiResponse? response)
     {
         _response = response;
+        SaveAs.RaiseCanExecuteChanged();
         Response = null;
         ResponseBodyProblem = null;
         ResponseMarks = [];
@@ -61,7 +70,40 @@ public sealed class ResponseViewModel : ObservableObject
         }
     }
 
-    // What is written beside the response's properties is in the language too.
+    internal async Task SaveAsAsync()
+    {
+        if (_response is not { Bytes: { } bytes } response || _dialogs.AskSavePath(FileNameOf(response)) is not { } path)
+        {
+            return;
+        }
+        try
+        {
+            await File.WriteAllBytesAsync(path, bytes);
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            _dialogs.Tell(_translator.Of("Response.SaveFailed"), _translator.DetailsOf(exception));
+        }
+    }
+
+    // "response" with the ending its Content-Type usually has, so the file opens in the right program. Any other name can be typed instead.
+    internal static string FileNameOf(ApiResponse response) =>
+        response.Headers.FirstOrDefault(header => header.Name.Equals("Content-Type", StringComparison.OrdinalIgnoreCase))?.Value.Split(';')[0].Trim().ToLowerInvariant() switch
+        {
+            "application/pdf" => "response.pdf",
+            "image/svg+xml" => "response.svg",
+            { } type when type.EndsWith("json", StringComparison.Ordinal) => "response.json",
+            { } type when type.EndsWith("xml", StringComparison.Ordinal) => "response.xml",
+            "text/html" => "response.html",
+            "text/plain" => "response.txt",
+            "text/csv" => "response.csv",
+            "application/zip" => "response.zip",
+            "image/png" => "response.png",
+            "image/jpeg" => "response.jpg",
+            "image/gif" => "response.gif",
+            _ => "response",
+        };
+
     public void ShowAgain()
     {
         if (_response is { } response)

@@ -204,7 +204,7 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
 
     // The token is kept with the other secrets, so it is saved the same way and under the same id, when the request is sent or saved.
     // It belongs to the environment chosen when the fetch started, even if another is chosen while the login is open.
-    public Task<bool> FetchTokenAsync() => FetchTokenAsync(environments.Selected ?? ApiEnvironment.None, saveSecrets: false, CancellationToken.None);
+    public Task<bool> FetchTokenAsync() => FetchTokenAsync(environments.SelectedOrNone, saveSecrets: false, CancellationToken.None);
 
     public async Task<bool> FetchTokenAsync(ApiEnvironment environment, bool saveSecrets, CancellationToken cancellationToken)
     {
@@ -273,7 +273,7 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
         OnPropertyChanged(nameof(TokenStatus));
     }
 
-    Guid ChosenEnvironment => (environments.Selected ?? ApiEnvironment.None).Id;
+    Guid ChosenEnvironment => environments.SelectedOrNone.Id;
 
     OAuthSettings EditedOAuth() => new()
     {

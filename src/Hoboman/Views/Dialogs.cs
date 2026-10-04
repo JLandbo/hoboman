@@ -1,5 +1,7 @@
+using System.IO;
 using Hoboman.Core.Languages;
 using Hoboman.ViewModels;
+using Microsoft.Win32;
 
 namespace Hoboman.Views;
 
@@ -15,6 +17,13 @@ public sealed class Dialogs(Translator translator) : IDialogs
         new ConfirmDialog(title, message, confirm, items, canCancel: true).ShowDialog() == true;
 
     public void Tell(string title, string message) => new ConfirmDialog(title, message, translator.Of("Common.Ok"), [], canCancel: false).ShowDialog();
+
+    // A name typed without an ending gets the suggested one.
+    public string? AskSavePath(string fileName)
+    {
+        var dialog = new SaveFileDialog { FileName = fileName, DefaultExt = Path.GetExtension(fileName) };
+        return dialog.ShowDialog() == true ? dialog.FileName : null;
+    }
 
     public IReadOnlyDictionary<string, string>? AskValues(string title, IReadOnlyList<string> names, string confirm)
     {

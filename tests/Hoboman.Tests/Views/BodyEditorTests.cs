@@ -69,6 +69,71 @@ public sealed class BodyEditorTests
         });
     }
 
+    [Fact]
+    public async Task BodyView_WhenALineSaysMuch_ThenItsIconColumnStaysThin()
+    {
+        await Ui.RunAsync(async () =>
+        {
+            // Arrange
+            var view = new BodyView { Coloring = BodyFormat.Json, Body = "{\n  \"data\": \"e30=\"\n}" };
+
+            // Act
+            view.Marks = [new(2, "$.data", Base64MarkState.Decoded, "decodet", "gemt i dokumentId")];
+            Ui.Show(new Window { Content = view, Width = 400, Height = 300 });
+            await Ui.UntilAsync(() => Ui.Descendants<Base64Labels>(view).Any(labels => labels.ActualWidth > 0));
+
+            // Assert
+            Assert.True(Ui.Descendants<Base64Labels>(view).Single().ActualWidth < 30);
+        });
+    }
+
+    [Fact]
+    public async Task Point_WhenAnIconIsPointedAt_ThenItsLineUnfoldsUntilALineWithoutOneIs()
+    {
+        await Ui.RunAsync(async () =>
+        {
+            // Arrange
+            var (view, labels) = await ShowDecodedAsync(600);
+            var strip = Ui.Descendants<Base64Strip>(view).Single();
+
+            // Act
+            labels.Point(view.TextArea.TextView.GetVisualLine(2));
+            var unfolded = strip.Unfolded;
+            labels.Point(view.TextArea.TextView.GetVisualLine(1));
+
+            // Assert
+            Assert.Equal(["decodet", "gemt i dokumentId"], unfolded);
+            Assert.Empty(strip.Unfolded);
+        });
+    }
+
+    [Fact]
+    public async Task Point_WhenTheTextAreaIsNarrow_ThenCutsWhatIsSaidFirst()
+    {
+        await Ui.RunAsync(async () =>
+        {
+            // Arrange
+            var (view, labels) = await ShowDecodedAsync(200);
+
+            // Act
+            var strip = Ui.Descendants<Base64Strip>(view).Single();
+            labels.Point(view.TextArea.TextView.GetVisualLine(2));
+
+            // Assert
+            var unfolded = strip.Unfolded;
+            Assert.Equal(("…", "gemt i dokumentId"), (unfolded[0], unfolded[^1]));
+        });
+    }
+
+    static async Task<(BodyView View, Base64Labels Labels)> ShowDecodedAsync(double width)
+    {
+        var view = new BodyView { Coloring = BodyFormat.Json, Body = "{\n  \"data\": \"e30=\"\n}" };
+        view.Marks = [new(2, "$.data", Base64MarkState.Decoded, "decodet", "gemt i dokumentId")];
+        Ui.Show(new Window { Content = view, Width = width, Height = 300 });
+        await Ui.UntilAsync(() => Ui.Descendants<Base64Labels>(view).Any(labels => labels.ActualWidth > 0));
+        return (view, Ui.Descendants<Base64Labels>(view).Single());
+    }
+
     static double RightOf(FrameworkElement element, UIElement to) => element.TranslatePoint(new(element.ActualWidth, 0), to).X;
 
     static async Task<(BodyEditor Editor, Base64Labels Labels, RequestViewModel Request)> ShowAsync(Harness harness, List<string> encode)

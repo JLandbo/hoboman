@@ -72,6 +72,36 @@ public sealed class WorkflowRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task RunAsync_WhenAWaitHasNoName_ThenItIsNamedInWholeWords()
+    {
+        // Arrange
+        var running = RunAsync(new Workflow { Id = Guid.NewGuid(), Steps = [new() { DelaySeconds = 30 }] }, Answering());
+        await _clock.Waiting.Task.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+
+        // Act
+        _clock.Advance(TimeSpan.FromSeconds(30));
+        await running.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+
+        // Assert
+        Assert.Equal("Wait 30 seconds", Single<StepStarted>().Name);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenABodyHasATemplatesOwnNames_ThenSendsThemAsWrittenWithTheWorkflowsValues()
+    {
+        // Arrange
+        var sender = Answering(Ok("{}"));
+        var request = new WorkflowRequest { Method = "POST", Url = "https://dev.local/docs/templates", BodyKind = BodyKind.Text, Body = "{{#each linjer}}{{tekst}}{{/each}} {{dokument}}" };
+        var workflow = new Workflow { Id = Guid.NewGuid(), Parameters = [new("dokument") { Default = JsonSerializer.SerializeToElement("hoboman-test") }], Steps = [new() { Request = request }] };
+
+        // Act
+        var outcome = await RunAsync(workflow, sender);
+
+        // Assert
+        Assert.Equal((RunOutcome.Succeeded, "{{#each linjer}}{{tekst}}{{/each}} hoboman-test"), (outcome, sender.Environment!.Resolve(sender.Request!.Body)));
+    }
+
+    [Fact]
     public async Task RunAsync_WhenCancelledWhileAStepWaits_ThenStopsAtOnce()
     {
         // Arrange
@@ -274,6 +304,21 @@ public sealed class WorkflowRunnerTests : IDisposable
 
         // Assert
         Assert.Equal(expected, outcome);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAScriptAnswers_ThenItsOutputCanBeSavedAsBytes()
+    {
+        // Arrange
+        await ScriptAsync("map.js", "return { navn: 'Dør' };");
+        var workflow = new Workflow { Id = Guid.NewGuid(), Steps = [new() { Script = "map.js" }] };
+
+        // Act
+        await RunAsync(workflow, Answering());
+
+        // Assert
+        var finished = Single<StepFinished>();
+        Assert.Equal(Encoding.UTF8.GetBytes(finished.Body!), finished.Bytes);
     }
 
     [Fact]
@@ -504,6 +549,20 @@ public sealed class WorkflowRunnerTests : IDisposable
 
         // Assert
         Assert.Equal("""{"text":"1","number":2}""", JsonSerializer.Serialize(Single<StepFinished>().Saved));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAStepIsAnswered_ThenItsBytesGoWithTheStepButNotIntoItsEvent()
+    {
+        // Arrange
+        var workflow = new Workflow { Id = Guid.NewGuid(), Steps = [new() { Request = Request("https://dev.local/file.pdf") }] };
+
+        // Act
+        await RunAsync(workflow, Answering(Ok("%PDF") with { Bytes = [0x25, 0x50, 0x44, 0x46] }));
+
+        // Assert
+        Assert.Equal([0x25, 0x50, 0x44, 0x46], Single<StepFinished>().Bytes);
+        Assert.DoesNotContain("bytes", JsonSerializer.Serialize<WorkflowEvent>(Single<StepFinished>(), JsonSerializerOptions.Web), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

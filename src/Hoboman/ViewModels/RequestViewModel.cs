@@ -145,7 +145,7 @@ public sealed class RequestViewModel : ObservableObject
         Base64.Relabel();
     }
 
-    ApiEnvironment EnvironmentOrNone() => _environments.Selected ?? ApiEnvironment.None;
+    ApiEnvironment EnvironmentOrNone() => _environments.SelectedOrNone;
 
     static LayoutProblem ProblemOf(string body, BodyKind kind, ApiEnvironment environment, bool useVariables) =>
         useVariables && BodyLayout.NeedsVariables(body, kind, environment) ? LayoutProblem.NeedsVariables

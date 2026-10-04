@@ -133,6 +133,7 @@ Ved `run` står de samme tekster som `error` i et trins `step.finished` (exitkod
 | Fejl (stderr `error`) | Gør |
 |---|---|
 | `Saved request could not be loaded.` | Stien findes ikke. Kør `list`, og brug en sti derfra |
+| `Saved request file is not valid.` | Den gemte request er ugyldig JSON. `file`, `path` og `line` viser hvor. Fortæl brugeren det |
 | `Selected environment was not found.` | Miljøet findes ikke. Spørg brugeren om det rigtige navn |
 | `Environment settings could not be read.` | Bed brugeren åbne Hoboman og tjekke miljøerne |
 | `Fetch a new OAuth token in Hoboman before sending this request.` | Tokenet kunne ikke hentes. Ved authorization code kræver det login: bed brugeren hente et nyt token i Hoboman (Auth-fanen). Ved client credentials mangler client secret typisk: bed brugeren udfylde den under Auth på requesten, mappen, workflowet eller trinnet og gemme |
@@ -160,7 +161,7 @@ Ved `run` står de samme tekster som `error` i et trins `step.finished` (exitkod
 
 Et trin, hvor en værdi i `saves` mangler i svaret, fejler med `error` = `Nothing to save was found at <sti>`. Svaret havde ikke den forventede form.
 
-Et trin med `retry`, hvis svar aldrig blev klar, fejler med det sidste svar, og `attempts` viser antallet af forsøg. Passede `until`-værdien ikke, er `error` `The answer was not ready after <n> attempts.` Ellers er det sidste svars `status` eller `error` som ved et almindeligt trin. Stoppede trinnet, fordi det, der ventes på, fejlede, er `error` `Stopped as <sti> was <værdi>.` Det, API'et ventede på, blev ikke færdigt i tide. Fortæl brugeren, hvad det sidste svar sagde, fx en status.
+Et trin med `retry`, hvis svar aldrig blev klar, fejler med det sidste svar, og `attempts` viser antallet af forsøg. Passede `until`-værdien ikke, er `error` `The answer was not ready after <n> attempts.`: det, API'et lavede, blev ikke færdigt i tide. Ellers er det sidste svars `status` eller `error` som ved et almindeligt trin. Fortæl brugeren, hvad det sidste svar sagde, fx en status. Er `error` `Stopped as <sti> was <værdi>.`, stoppede trinnet med det samme, fordi API'et svarede, at det, der ventes på, er fejlet. Det er ikke en timeout.
 
 Et script-trin har `JS` som `method` og scriptets filnavn som `name`, hvis det intet navn har. Fejler det, er `error` fil, linje og scriptets fejltekst, fx `map.js:2: No order`.
 

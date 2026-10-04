@@ -11,7 +11,12 @@ public partial class KeyValueEditor : UserControl
 
     public static readonly DependencyProperty ValueHeaderProperty = DependencyProperty.Register(nameof(ValueHeader), typeof(string), typeof(KeyValueEditor));
 
-    public static readonly DependencyProperty CanDisableProperty = DependencyProperty.Register(nameof(CanDisable), typeof(bool), typeof(KeyValueEditor), new(true));
+    public static readonly DependencyProperty CanDisableProperty = DependencyProperty.Register(nameof(CanDisable), typeof(bool), typeof(KeyValueEditor),
+        new(true, (editor, e) => ((KeyValueEditor)editor).CheckWidth = new((bool)e.NewValue ? 30 : 0)));
+
+    static readonly DependencyPropertyKey _checkWidthKey = DependencyProperty.RegisterReadOnly(nameof(CheckWidth), typeof(GridLength), typeof(KeyValueEditor), new(new GridLength(30)));
+
+    public static readonly DependencyProperty CheckWidthProperty = _checkWidthKey.DependencyProperty;
 
     public static readonly DependencyProperty NameWidthProperty = DependencyProperty.Register(nameof(NameWidth), typeof(GridLength), typeof(KeyValueEditor), new(new GridLength(1, GridUnitType.Star)));
 
@@ -40,11 +45,17 @@ public partial class KeyValueEditor : UserControl
         set => SetValue(ValueHeaderProperty, value);
     }
 
-    // Lists whose rows cannot be turned off, such as a workflow's parameters, leave out the box for it.
+    // Lists whose rows cannot be turned off, such as a workflow's parameters, leave out the box for it and the room it takes.
     public bool CanDisable
     {
         get => (bool)GetValue(CanDisableProperty);
         set => SetValue(CanDisableProperty, value);
+    }
+
+    public GridLength CheckWidth
+    {
+        get => (GridLength)GetValue(CheckWidthProperty);
+        private set => SetValue(_checkWidthKey, value);
     }
 
     // The name's share of the room, so the columns keep their proportion when the table gets wider or narrower.

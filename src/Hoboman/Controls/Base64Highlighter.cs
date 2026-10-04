@@ -4,7 +4,7 @@ using ICSharpCode.AvalonEdit.Rendering;
 
 namespace Hoboman.Controls;
 
-// Tints the lines of the chosen properties under the text. What they say is written beside the text by Base64Labels.
+// Tints the lines of the chosen properties under the text. Their icons are beside the text (Base64Labels), and what they say unfolds over it (Base64Strip).
 sealed class Base64Highlighter : IBackgroundRenderer
 {
     readonly MarkedEditor _editor;

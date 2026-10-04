@@ -90,7 +90,8 @@ public sealed class RequestRunnerTests : IDisposable
         await Record.ExceptionAsync(() => runner.RunAsync(Request(), null, null, HistorySource.Cli, NoToken, Cancellation));
 
         // Assert
-        Assert.Equal("Ingen forbindelse", Assert.Single(await CallsAsync()).Entry.Error);
+        var entry = Assert.Single(await CallsAsync()).Entry;
+        Assert.Equal(("Ingen forbindelse", RequestProblemKind.NetworkFailed), (entry.Error, entry.Problem));
     }
 
     [Fact]
@@ -168,6 +169,7 @@ public sealed class RequestRunnerTests : IDisposable
 
         // Assert
         Assert.Equal(200, response.StatusCode);
+        Assert.Equal(200, Assert.Single(await CallsAsync()).Entry.Response?.StatusCode);
     }
 
     [Fact]

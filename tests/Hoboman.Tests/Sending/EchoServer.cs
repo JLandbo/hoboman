@@ -15,6 +15,9 @@ public sealed class EchoServer : IAsyncLifetime
     // Letters beyond ASCII are sent back as they are, so the body can be longer in bytes than in characters.
     static readonly JsonSerializerOptions _json = new(JsonSerializerOptions.Web) { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
+    // Sent from /file, and not text, as a PDF is not.
+    public static readonly byte[] File = [0x25, 0x50, 0x44, 0x46, 0x00, 0xFF, 0xFE, 0x80];
+
     readonly X509Certificate2 _certificate = SelfSignedCertificate();
     WebApplication? _app;
 
@@ -53,6 +56,12 @@ public sealed class EchoServer : IAsyncLifetime
         if (context.Request.Path == "/slow")
         {
             await Task.Delay(Timeout.Infinite, context.RequestAborted);
+        }
+        if (context.Request.Path == "/file")
+        {
+            context.Response.ContentType = "application/pdf";
+            await context.Response.Body.WriteAsync(File, context.RequestAborted);
+            return;
         }
         using var reader = new StreamReader(context.Request.Body);
         context.Response.Cookies.Append("session", "1");

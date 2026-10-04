@@ -47,12 +47,10 @@ public partial class AuthEditor : UserControl
         if (fromWorkflow)
         {
             InheritChoice.SetResourceReference(ContentProperty, "Workflow.AuthInherit");
-            InheritHint.Visibility = Visibility.Collapsed;
         }
         else
         {
             InheritChoice.SetResourceReference(ContentProperty, "Auth.Inherit");
-            InheritHint.ClearValue(VisibilityProperty);
         }
     }
 

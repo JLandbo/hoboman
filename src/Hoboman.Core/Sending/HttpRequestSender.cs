@@ -26,16 +26,18 @@ public sealed class HttpRequestSender(SecretStore secrets, HttpClients clients, 
             var started = Stopwatch.GetTimestamp();
             using var response = await client.SendAsync(message, cancellationToken).ConfigureAwait(false);
             var elapsedMs = (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
-            // The body is already buffered, so its size is read from the buffer instead of from a copy of it.
-            var size = (await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false)).Length;
-            logger.LogInformation("{Method} {Url} answered {StatusCode} in {Elapsed} ms with {Size} bytes", message.Method, LoggableOf(address), (int)response.StatusCode, elapsedMs, size);
+            var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+            logger.LogInformation("{Method} {Url} answered {StatusCode} in {Elapsed} ms with {Size} bytes", message.Method, LoggableOf(address), (int)response.StatusCode, elapsedMs, bytes.Length);
             return new(
                 (int)response.StatusCode,
                 response.ReasonPhrase ?? "",
                 elapsedMs,
-                size,
+                bytes.Length,
                 [.. response.Headers.Concat(response.Content.Headers).SelectMany(header => header.Value.Select(value => new ResponseHeader(header.Key, value)))],
-                await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+                await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false))
+            {
+                Bytes = bytes,
+            };
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -57,7 +59,8 @@ public sealed class HttpRequestSender(SecretStore secrets, HttpClients clients, 
         }
         var message = new HttpRequestMessage(new HttpMethod(request.Method), UrlOf(request, environment))
         {
-            Content = request.BodyKind switch
+            // An empty body is not sent, whatever its kind, so a GET from a new tab goes without a Content-Type.
+            Content = string.IsNullOrEmpty(request.Body) ? null : request.BodyKind switch
             {
                 BodyKind.Json => new StringContent(BodyOf(request, environment), Encoding.UTF8, "application/json"),
                 BodyKind.Xml => new StringContent(BodyOf(request, environment), Encoding.UTF8, "application/xml"),

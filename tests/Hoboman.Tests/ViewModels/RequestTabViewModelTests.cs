@@ -399,6 +399,25 @@ public sealed class RequestTabViewModelTests
         Assert.False(tab.IsDirty);
     }
 
+    [Theory]
+    [InlineData(RequestProblemKind.NetworkFailed, "RequestProblem.NetworkFailed")]
+    [InlineData(RequestProblemKind.MissingOAuthToken, "Response.MissingOAuthToken")]
+    [InlineData(null, null)]
+    public async Task ShowAsync_WhenACallFromTheHistoryFailed_ThenTellsItsProblemInTheLanguage(RequestProblemKind? kind, string? key)
+    {
+        // Arrange
+        using var harness = new Harness();
+        harness.Translator.Use(Translation.Danish);
+        var tab = harness.Tab();
+        var entry = new HistoryEntry(DateTimeOffset.Now, HistorySource.App, "dev.local", ApiRequest.New(), Error: "No such host is known.", Problem: kind);
+
+        // Act
+        await tab.ShowAsync(entry);
+
+        // Assert
+        Assert.Equal(key is null ? "No such host is known." : harness.Translator.Of(key), tab.Problem?.Details);
+    }
+
     [Fact]
     public async Task FetchToken_WhenFetchedByHandForASavedRequest_ThenSavesItAndIsNoEdit()
     {

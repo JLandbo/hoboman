@@ -12,7 +12,7 @@ Hoboman er et skrivebordsværktøj til at bygge, sende og undersøge API-kald. R
 
 ## Det får du
 
-- **Request og svar i separate paneler** – panelerne ligger over hinanden med en justerbar splitter. Brug HTTP-metoder, query-parametre, headers og body som JSON, XML, tekst eller ingen body. Svaret viser status, svartid, størrelse, headers og indhold.
+- **Request og svar i separate paneler** – panelerne ligger over hinanden med en justerbar splitter. Brug HTTP-metoder, query-parametre, headers og body som JSON, XML, tekst eller ingen body. Svaret viser status, svartid, størrelse, headers og indhold, og knappen ved størrelsen gemmer det, præcis som serveren sendte det, som en fil, fx en PDF.
 - **Samlinger med undermapper** – opret requests direkte i en mappe, flyt requests og mapper med drag-and-drop, og gem deres rækkefølge.
 - **Faner og drafts** – se ugemte requests i samlingerne, omdøb faner med dobbeltklik, og træk dem i den ønskede rækkefølge. Gemte faner og deres rækkefølge gendannes ved næste start.
 - **Miljøer og variabler** – brug `{{variabel}}` i URL, parametre, headers og auth-felter. Appen husker det senest valgte miljø.
@@ -66,7 +66,7 @@ Scriptet publicerer appen og `hoboman-cli.exe` til `publish\`, opretter en genve
 
 Opret eksempelvis variablen `host` i et miljø, og brug `https://{{host}}/api/users` som URL. Variabler kan bruges i både navne og værdier for parametre og headers. Ukendte variabler bliver stående som skrevet.
 
-**Brug miljøvariabler i body** er slået fra som standard. Derfor kan en body indeholde eksempelvis `{{this.name}}` fra en Handlebars-template uden at blive ændret. Slår du funktionen til, indsættes miljøvariablerne før eventuel Base64-encoding.
+**Brug environment-variabler i body** er slået fra som standard. Derfor kan en body indeholde eksempelvis `{{this.name}}` fra en Handlebars-template uden at blive ændret. Slår du funktionen til, indsættes miljøvariablerne før eventuel Base64-encoding.
 
 ### Arvet auth
 
@@ -87,15 +87,15 @@ Knapperne **Stringify**, **Parse**, **Base64 Encode** og **Base64 Decode** arbej
 Vælg **Workflows** i sidebaren. Hovedområdet viser så det åbne workflow i stedet for request-fanerne.
 
 - Klik **+** for at oprette et workflow. Højreklik på et workflow for at omdøbe eller slette det.
-- **+ Request** tilføjer et trin med sin egen request. Den redigeres som en request i samlingerne, men hører kun til workflowet. Under **Auth** står workflowets fælles auth, og nye trin bruger den med **Arv fra workflow**. Et trin kan altid have sin egen auth i stedet, fx til et andet API. **Brug miljøvariabler i body** er slået til for nye trin, så `{{navn}}` også virker i bodyen.
+- **+ Request** tilføjer et trin med sin egen request. Den redigeres som en request i samlingerne, men hører kun til workflowet. Under **Auth** står workflowets fælles auth, og nye trin bruger den med **Arv fra workflow**. Et trin kan altid have sin egen auth i stedet, fx til et andet API. **Brug environment-variabler i body** er slået til for nye trin, så `{{navn}}` også virker i bodyen.
 - **+ Script** tilføjer et JavaScript-trin. Scriptet læser værdier som `vars.navn` og returnerer det, trinnet skal gemme fra. Koden redigeres i appen og ligger som en `.js`-fil i workflowets mappe.
 - **+ Vent** tilføjer et trin, der venter et antal sekunder, fx mens et API laver noget færdigt i baggrunden.
-- **Gentag indtil svaret er klar** på et request-trin sender det igen, til svaret er klar: 2xx og med det, trinnet gemmer, og hvis du vil, med en værdi, fx `$.result.status`, der er det, du venter på. Antal forsøg og pausen imellem vælger du selv.
+- **Gentag indtil svaret er klar** på et request-trin sender det igen, til svaret er klar: 2xx og med det, trinnet gemmer, og hvis du vil, med en værdi, fx `$.result.status`, der er det, du venter på. Med **Stop hvis** fejler trinnet med det samme, når en værdi, fx `$.result.status`, er den, der betyder fejl, som `failed`. Antal forsøg og pausen imellem vælger du selv.
 - **Parametre** gives ved start. Har en parameter ingen standardværdi, spørger appen om den, når du kører.
 - Trinnet har faner: Params, Headers, Body, Auth, Gentag og Gemmer, og for et script Kode og Gemmer. Navnet skrives i trinnets titel.
-- I fanen **Gemmer** vælger du, hvad der gemmes i en variabel efter et 2xx-svar: `$.sti` i JSON-svaret, `$` for hele bodyen, `header:Navn`, `status` eller en fast JSON-værdi som `"tekst"` eller `1`. Linjen i svaret, der blev gemt fra, mærkes med "gemt i …", og de næste trin bruger værdien som `{{navn}}`.
+- I fanen **Gemmer** vælger du, hvad der gemmes i en variabel efter et 2xx-svar: `$.sti` i JSON-svaret, `$` for hele bodyen, `header:Navn`, `status` eller en fast JSON-værdi som `"tekst"` eller `1`. Linjen i svaret, der blev gemt fra, får et grønt ikon i højre side, og holder du musen over det, står der "gemt i …". De næste trin bruger værdien som `{{navn}}`.
 - Hvert trin viser de navne, det bruger, og dem, det gemmer, så du kan se, hvordan værdierne går fra trin til trin.
-- **Kør** (`Ctrl+Enter`) tjekker først, at alle `{{navne}}` har en værdi, og kører så trinene i rækkefølge. Fejler et trin, springes resten over. Miljøets variabler kan også bruges, men workflowets egne navne vinder.
+- **Kør** (`Ctrl+Enter`) tjekker først, at alle `{{navne}}` har en værdi, og kører så trinene i rækkefølge. I en body bliver navne, som hverken workflowet eller miljøet har, stående som skrevet, som i en tab, så fx en Handlebars-template kan bruge sine egne `{{navne}}` sammen med workflowets. Fejler et trin, springes resten over. Miljøets variabler kan også bruges, men workflowets egne navne vinder.
 - Kald fra et workflow gemmes ikke i **Historik**, men som en kørsel i `runs\`. Det samme workflow kan køres med `hoboman-cli run`; se [CLI.md](CLI.md).
 
 ## Sådan hænger det sammen
@@ -109,6 +109,7 @@ flowchart LR
     Sender["HttpRequestSender<br/>variabler · Base64 · HTTP"]
     Secrets["SecretStore<br/>Windows DPAPI"]
     History["HistoryStore<br/>kald og svar"]
+    Workflows["WorkflowLibrary · WorkflowRunner<br/>workflows · trin · kørsler"]
     API["Dit API"]
 
     UI --> Runner
@@ -118,11 +119,16 @@ flowchart LR
     Sender --> Secrets
     Sender <--> API
     Runner --> History
+    UI --> Workflows
+    Cli --> Workflows
+    Workflows --> Sender
 ```
 
 `App.xaml.cs` registrerer afhængighederne med dependency injection. Views og viewmodels ligger i `Hoboman`, mens HTTP, OAuth, variabler, Base64 og filbaseret lagring ligger i `Hoboman.Core` uden WPF. `Hoboman.Cli` er et tyndt konsolprogram oven på den samme core.
 
 `RequestRunner` finder den gældende auth, sender kaldet gennem `HttpRequestSender` og gemmer resultatet i historikken. Mangler et token, som kan hentes uden login, henter den et nyt og sender én gang til. `AuthRefreshService` samordner tokenhentning, og `CollectionChanges` sørger for, at appens gemning, flytning og sletning ikke udføres oven i hinanden. En filovervåger opdaterer appen, når lokale data ændres udefra.
+
+`WorkflowLibrary` læser og gemmer workflows og deres scripts i `workflows\`. `WorkflowCheck` tjekker et workflow, før det køres, og `WorkflowRunner` kører trinene gennem den samme `HttpRequestSender` og skriver hver kørsel i `runs\`. Et workflows kald gemmes ikke i historikken.
 
 ## Projektet
 
@@ -155,6 +161,7 @@ Testprojektet bruger xUnit og Microsoft.Testing.Platform, valgt i `global.json`.
 | `Shift+Alt+F` | Formatér JSON/XML, når fokus er i bodyen |
 | `Ctrl+Z` / `Ctrl+Y` | Fortryd/gentag i bodyen, også formatering |
 | `Enter` | Åbn det valgte element i samlinger, historik eller workflows |
+| `Esc` | Luk et vindue eller en menu |
 
 ## Lokale data og hemmeligheder
 

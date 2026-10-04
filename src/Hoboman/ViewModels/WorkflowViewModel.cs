@@ -170,6 +170,16 @@ public sealed class WorkflowViewModel : ObservableObject
         Refresh();
     }
 
+    public void EnvironmentChosen()
+    {
+        Auth.Relabel();
+        foreach (var step in Steps)
+        {
+            step.RelabelRequest();
+        }
+        Refresh();
+    }
+
     // What a run saved for steps that were never saved goes. Secrets of saved steps stay, also when the file is gone, as it may come back.
     public Task CloseAsync()
     {
@@ -377,7 +387,7 @@ public sealed class WorkflowViewModel : ObservableObject
             return;
         }
         var workflow = ToWorkflow();
-        var environment = _services.Environments.Selected ?? ApiEnvironment.None;
+        var environment = _services.Environments.SelectedOrNone;
         var steps = Steps.ToList();
         IsRunning = true;
         using var running = _running = new CancellationTokenSource();
@@ -589,13 +599,22 @@ public sealed class WorkflowViewModel : ObservableObject
     // A token fetched by hand is saved with the secrets, as a run does, so it is no edit.
     async Task FetchByHandAsync(AuthViewModel auth)
     {
-        if (await auth.FetchTokenAsync() && !_closed)
+        if (!await auth.FetchTokenAsync() || _closed)
+        {
+            return;
+        }
+        try
         {
             await SaveSecretsAsync(CancellationToken.None);
             if (IsDirty && !HasUnsavedChanges())
             {
                 IsDirty = false;
             }
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            _services.Logger.LogError(exception, "Could not save the secrets of the workflow {Name}", Name);
+            _services.Dialogs.Tell(_services.Translator.Of("Workflow.SecretsSaveFailed"), _services.Translator.DetailsOf(exception));
         }
     }
 

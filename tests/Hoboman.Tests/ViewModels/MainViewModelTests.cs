@@ -451,6 +451,24 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public async Task EnvironmentChosen_WhenATabHasAResponse_ThenDoesNotShowItAgain()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var main = harness.Main();
+        main.NewTab();
+        main.SelectedTab!.Editor.Url = "https://dev.local";
+        await main.SelectedTab.SendAsync();
+        var formatting = main.SelectedTab.Result.Formatting;
+
+        // Act
+        main.EnvironmentChosen();
+
+        // Assert
+        Assert.Same(formatting, main.SelectedTab.Result.Formatting);
+    }
+
+    [Fact]
     public void EnvironmentChosen_WhenATabIsOpen_ThenTellsItsTokenChanged()
     {
         // Arrange
@@ -719,6 +737,22 @@ public sealed class MainViewModelTests
 
         // Assert
         Assert.Equal(accepted ? ["Users"] : Array.Empty<string>(), main.Tree.Nodes.Select(node => node.Path));
+    }
+
+    [Fact]
+    public async Task NewFolderAsync_WhenTheNameIsTaken_ThenSaysSo()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(answer: "Users"));
+        await harness.Library.CreateFolderAsync("Users", Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+
+        // Act
+        await main.NewFolderAsync();
+
+        // Assert
+        Assert.Equal(harness.Translator.Of("Folder.Exists"), harness.Dialogs.NameQuestion!.Value.ProblemOf("Users"));
     }
 
     [Fact]

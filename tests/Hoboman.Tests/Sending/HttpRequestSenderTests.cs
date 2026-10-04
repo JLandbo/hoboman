@@ -46,6 +46,30 @@ public sealed class HttpRequestSenderTests(EchoServer server) : IClassFixture<Ec
     static Echo EchoOf(ApiResponse response) => JsonSerializer.Deserialize<Echo>(response.Body, JsonSerializerOptions.Web)!;
 
     [Fact]
+    public async Task SendAsync_WhenTheBodyIsEmpty_ThenSendsNoBodyAndNoContentType()
+    {
+        // Act
+        var echo = await SendAndEchoAsync(Request() with { Method = "GET", BodyKind = BodyKind.Json, Body = "" });
+
+        // Assert
+        Assert.Equal(("", false), (echo.Body, echo.Headers.ContainsKey("Content-Type")));
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheAnswerIsAFile_ThenKeepsItsBytesAsSent()
+    {
+        // Arrange
+        var sender = await SenderAsync();
+
+        // Act
+        var response = await SendAsync(sender, ApiRequest.New() with { Url = new Uri(server.Http, "file").ToString() }, Cancellation);
+
+        // Assert
+        Assert.Equal(EchoServer.File, response.Bytes);
+        Assert.Equal(EchoServer.File.Length, response.Size);
+    }
+
+    [Fact]
     public async Task SendAsync_WhenTheUrlHasVariablesAndQuery_ThenSendsTheResolvedAddress()
     {
         // Arrange

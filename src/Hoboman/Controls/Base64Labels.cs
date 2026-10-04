@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media;
 using Hoboman.ViewModels;
 using ICSharpCode.AvalonEdit;
@@ -8,16 +9,16 @@ using ICSharpCode.AvalonEdit.Rendering;
 
 namespace Hoboman.Controls;
 
-// What the marked lines say, right-aligned in a column of its own beside the text, so it never covers the text, also when scrolled or wrapped.
-// The column is as wide as the most a line says in the whole body, so it keeps its width while scrolling, and has none when nothing is said.
+// A thin column beside the text with a filled info icon on each marked line, yellow for Base64 and green for a saved variable.
+// Pointing at an icon unfolds what its line says over the text (Base64Strip), so it covers the text only while asked for.
+// The column is there only while some line says something.
 sealed class Base64Labels : AbstractMargin
 {
-    const double _left = 12;
-    const double _right = 10;
-    const double _gap = 8;
+    const double _width = 22;
+    const double _size = 13;
 
     MarkedEditor? _editor;
-    double _width;
+    bool _shown;
 
     protected override void OnTextViewChanged(TextView oldTextView, TextView newTextView)
     {
@@ -42,15 +43,18 @@ sealed class Base64Labels : AbstractMargin
         Remeasure();
     }
 
-    protected override Size MeasureOverride(Size availableSize) => new(_width, 0);
+    protected override Size MeasureOverride(Size availableSize) => new(_shown ? _width : 0, 0);
 
     protected override void OnRender(DrawingContext drawing)
     {
+        // Transparent rather than empty, so pointing anywhere beside a line shows what it says.
+        drawing.DrawRectangle(Brushes.Transparent, null, new Rect(RenderSize));
         if (_editor is not { ShowsMarks: true } editor || TextView is not { VisualLinesValid: true } textView)
         {
             return;
         }
         var dip = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        var typeface = new Typeface((FontFamily)FindResource("UiFont"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
         drawing.PushOpacity(editor.MarksAreCurrent ? 1 : Base64Margin.Stale);
         foreach (var line in textView.VisualLines)
         {
@@ -58,84 +62,57 @@ sealed class Base64Labels : AbstractMargin
             {
                 continue;
             }
-            // The line's tint goes on under what it says.
+            // The line's tint goes on under its icon.
             var (top, height) = (line.VisualTop - textView.VerticalOffset, line.TextLines[0].Height);
             drawing.DrawRectangle(tint, null, new(0, top, ActualWidth, height));
-            var labels = LabelsOf(mark, dip);
-            var left = ActualWidth - _right - WidthOf(labels);
-            foreach (var label in labels)
-            {
-                left = Write(drawing, label, left, top, height) + _gap;
-            }
+            var center = new Point(ActualWidth / 2, top + height / 2);
+            drawing.DrawEllipse(FillOf(mark), null, center, _size / 2, _size / 2);
+            var sign = new FormattedText("i", CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, typeface, 10, (Brush)FindResource("OnAttention"), dip);
+            drawing.DrawText(sign, new(center.X - sign.Width / 2, center.Y - sign.Height / 2));
         }
         drawing.Pop();
     }
 
-    // Found only when the marks change, as a response can have hundreds of thousands of them,
-    // and each different thing said is measured once, as a list can hold the same property many thousand times.
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        Point(TextView is { VisualLinesValid: true } textView ? textView.GetVisualLineFromVisualTop(e.GetPosition(textView).Y + textView.VerticalOffset) : null);
+    }
+
+    protected override void OnMouseLeave(MouseEventArgs e)
+    {
+        base.OnMouseLeave(e);
+        Point(null);
+    }
+
+    // Only a line with an icon unfolds.
+    internal void Point(VisualLine? line)
+    {
+        if (_editor is { } editor)
+        {
+            editor.Pointed = line?.FirstDocumentLine.LineNumber is { } number && editor.MarkAt(number) is { } mark && editor.TintOf(mark) is not null ? number : null;
+        }
+    }
+
     void Remeasure()
     {
-        _width = 0;
-        if (_editor is { ShowsMarks: true } editor)
-        {
-            var dip = VisualTreeHelper.GetDpi(this).PixelsPerDip;
-            var widest = editor.ShownMarks.Where(mark => editor.TintOf(mark) is not null).Select(mark => mark with { Line = 0, Path = "" }).Distinct()
-                .Select(mark => WidthOf(LabelsOf(mark, dip))).DefaultIfEmpty(0).Max();
-            _width = widest > 0 ? _left + widest + _right : 0;
-        }
+        _shown = _editor is { ShowsMarks: true } editor && editor.ShownMarks.Any(mark => editor.TintOf(mark) is not null);
         InvalidateMeasure();
         InvalidateVisual();
     }
 
-    void TextView_VisualLinesChanged(object? sender, EventArgs e) => InvalidateVisual();
-
-    sealed record Label(FormattedText Text, Brush? Background, double Width);
-
-    static double WidthOf(List<Label> labels) => labels.Count == 0 ? 0 : labels.Sum(label => label.Width) + _gap * (labels.Count - 1);
-
-    // In the order they are read: what happens to the property, a note on it, and what was saved from it.
-    List<Label> LabelsOf(Base64Mark mark, double dip)
+    // The lines move when scrolled, so what was unfolded at one goes until the mouse moves again.
+    void TextView_VisualLinesChanged(object? sender, EventArgs e)
     {
-        var labels = new List<Label>();
-        if (mark.Badge is { } badge)
-        {
-            var (text, back) = mark.State switch
-            {
-                Base64MarkState.Decoded => (Brush("Success"), Brush("SuccessSoft")),
-                Base64MarkState.Failed => (Brush("Error"), Brush("ErrorSoft")),
-                _ => (Brush("Attention"), Base64Highlighter.Tint(Brush("Attention"), 0x29)),
-            };
-            labels.Add(LabelOf(badge, FontWeights.SemiBold, text, back, dip));
-        }
-        if (mark.Note is { } note)
-        {
-            labels.Add(LabelOf(note, FontWeights.Normal, Brush("Muted"), null, dip));
-        }
-        if (mark.Saved is { } saved)
-        {
-            labels.Add(LabelOf(saved, FontWeights.SemiBold, Brush("Success"), Brush("SuccessSoft"), dip));
-        }
-        return labels;
+        Point(null);
+        InvalidateVisual();
     }
 
-    Label LabelOf(string text, FontWeight weight, Brush foreground, Brush? background, double dip)
+    // A line that is both Base64 and saved from is shown as Base64, and what unfolds on pointing tells both.
+    Brush FillOf(Base64Mark mark) => (Brush)FindResource(mark.State switch
     {
-        var typeface = new Typeface((FontFamily)FindResource("UiFont"), FontStyles.Normal, weight, FontStretches.Normal);
-        var formatted = new FormattedText(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, typeface, 10, foreground, dip);
-        return new(formatted, background, formatted.Width + (background is null ? 0 : 12));
-    }
-
-    // No higher than the line, and gives where it ends, so the next one goes after it.
-    static double Write(DrawingContext drawing, Label label, double left, double top, double height)
-    {
-        var box = new Rect(left, top + (height - label.Text.Height) / 2, label.Width, label.Text.Height);
-        if (label.Background is { } background)
-        {
-            drawing.DrawRoundedRectangle(background, null, box, 4, 4);
-        }
-        drawing.DrawText(label.Text, new(box.X + (label.Background is null ? 0 : 6), box.Y));
-        return box.Right;
-    }
-
-    Brush Brush(string key) => (Brush)FindResource(key);
+        Base64MarkState.Failed => "Error",
+        Base64MarkState.Checked or Base64MarkState.Decoded => "Attention",
+        _ => "Success",
+    });
 }

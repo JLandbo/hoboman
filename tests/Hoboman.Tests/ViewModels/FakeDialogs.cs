@@ -16,6 +16,10 @@ public sealed class FakeDialogs(string? answer = null, bool accept = false) : ID
 
     public IReadOnlyDictionary<string, string>? Values { get; set; }
 
+    public string? SavePath { get; set; }
+
+    public string? SaveQuestion { get; private set; }
+
     public IReadOnlyList<string>? AskedValues { get; private set; }
 
     // What happens elsewhere while the values are asked for, as the real dialog lets the app go on.
@@ -40,6 +44,13 @@ public sealed class FakeDialogs(string? answer = null, bool accept = false) : ID
     {
         Asked++;
         Notification = (title, message);
+    }
+
+    public string? AskSavePath(string fileName)
+    {
+        Asked++;
+        SaveQuestion = fileName;
+        return SavePath;
     }
 
     public IReadOnlyDictionary<string, string>? AskValues(string title, IReadOnlyList<string> names, string confirm)

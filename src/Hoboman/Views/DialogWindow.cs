@@ -11,6 +11,11 @@ public class DialogWindow : Window
     {
         SetResourceReference(StyleProperty, "Dialog");
         Owner = Application.Current.MainWindow;
+        // A table in a dialog keeps its divider with the main window's layout.
+        if (Owner is { } owner)
+        {
+            SplitMemory.SetSplits(this, SplitMemory.GetSplits(owner));
+        }
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         CommandBindings.Add(new CommandBinding(SystemCommands.CloseWindowCommand, (_, _) => Close()));
         InputBindings.Add(new KeyBinding(SystemCommands.CloseWindowCommand, Key.Escape, ModifierKeys.None));

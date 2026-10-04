@@ -4,20 +4,12 @@ using Hoboman.ViewModels;
 
 namespace Hoboman.Views;
 
-// The response of a tab or a workflow step. Both have a Result, a Problem and IsSending, and say what is shown before there is a response.
+// The response of a tab or a workflow step. Both have a Result, a Problem and IsSending.
 public partial class ResponseView : UserControl
 {
-    public static readonly DependencyProperty EmptyTextProperty = DependencyProperty.Register(nameof(EmptyText), typeof(string), typeof(ResponseView));
-
     public static readonly DependencyProperty FooterProperty = DependencyProperty.Register(nameof(Footer), typeof(object), typeof(ResponseView));
 
     public ResponseView() => InitializeComponent();
-
-    public string? EmptyText
-    {
-        get => (string?)GetValue(EmptyTextProperty);
-        set => SetValue(EmptyTextProperty, value);
-    }
 
     // Shown under the response, such as what a workflow step saves from it.
     public object? Footer
