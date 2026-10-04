@@ -20,6 +20,8 @@ public sealed class AppFolder(string root)
 
     public string Secrets => Path.Combine(root, "secrets.json");
 
+    public string Credentials => Path.Combine(root, "credentials.json");
+
     public string Settings => Path.Combine(root, "settings.json");
 
     public string RequestOrder => Path.Combine(root, "request-order.json");

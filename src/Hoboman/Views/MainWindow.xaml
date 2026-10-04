@@ -215,6 +215,13 @@
                         </StackPanel>
                     </Border>
                 </Popup>
+                <Button DockPanel.Dock="Right" Style="{StaticResource PillButton}" Background="{DynamicResource Surface}" Padding="12,5" Margin="0,0,8,0" VerticalAlignment="Center"
+                        Click="EditCredentials_Click" AutomationProperties.Name="{DynamicResource Credentials.Title}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE8D7;" FontFamily="{StaticResource IconFont}" FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <TextBlock Text="{DynamicResource Credentials.Title}" FontSize="12" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
                 <!-- The tabs belong to the requests, so they are left out while the workflows are shown. -->
                 <DockPanel HorizontalAlignment="Left" VerticalAlignment="Bottom">
                     <DockPanel.Style>

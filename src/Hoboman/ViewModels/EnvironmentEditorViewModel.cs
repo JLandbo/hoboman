@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
 
-public sealed class EnvironmentEditorViewModel(EnvironmentStore store, EnvironmentsViewModel environments, SecretStore secrets, Translator translator, ILogger<EnvironmentEditorViewModel> logger) : ObservableObject
+public sealed class EnvironmentEditorViewModel(EnvironmentStore store, EnvironmentsViewModel environments, SecretStore secrets, CredentialStore credentials, Translator translator, ILogger<EnvironmentEditorViewModel> logger) : ObservableObject
 {
     string _loadedJson = "";
     IReadOnlySet<Guid> _loadedIds = new HashSet<Guid>();
@@ -89,12 +89,14 @@ public sealed class EnvironmentEditorViewModel(EnvironmentStore store, Environme
             logger.LogInformation("Saved {Count} environments", names.Count);
             try
             {
-                await secrets.ForgetEnvironmentsAsync(_loadedIds.Except(Environments.Select(environment => environment.Id)).ToHashSet(), CancellationToken.None);
+                var removed = _loadedIds.Except(Environments.Select(environment => environment.Id)).ToHashSet();
+                await secrets.ForgetEnvironmentsAsync(removed, CancellationToken.None);
+                await credentials.ForgetEnvironmentsAsync(removed, CancellationToken.None);
             }
             catch (Exception exception) when (FileProblem.Is(exception))
             {
                 // The environments are saved, and the id of a removed one is never used again.
-                logger.LogError(exception, "Could not delete the tokens of removed environments");
+                logger.LogError(exception, "Could not delete the tokens and credentials of removed environments");
             }
             await environments.LoadAsync(CancellationToken.None);
             return true;

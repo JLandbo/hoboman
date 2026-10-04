@@ -8,14 +8,14 @@ using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
 
-public sealed class FolderAuthViewModel(RequestLibrary library, SecretStore secrets, AuthRefreshService refreshes, EnvironmentsViewModel environments, Translator translator, TimeProvider clock, ILogger<FolderAuthViewModel> logger) : ObservableObject
+public sealed class FolderAuthViewModel(RequestLibrary library, SecretStore secrets, AuthRefreshService refreshes, EnvironmentsViewModel environments, CredentialsViewModel credentials, Translator translator, TimeProvider clock, ILogger<FolderAuthViewModel> logger) : ObservableObject
 {
     string _folder = "";
     FolderSettings _settings = new();
 
     public string Title { get; private set => Set(ref field, value); } = "";
 
-    public AuthViewModel Auth { get; } = new(secrets, refreshes, environments, translator, clock, logger);
+    public AuthViewModel Auth { get; } = new(secrets, refreshes, environments, credentials, translator, clock, logger);
 
     public string? Problem { get; private set => Set(ref field, value); }
 

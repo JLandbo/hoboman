@@ -2,7 +2,8 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:controls="clr-namespace:Hoboman.Controls"
                     xmlns:editing="clr-namespace:ICSharpCode.AvalonEdit.Editing;assembly=ICSharpCode.AvalonEdit"
-                    xmlns:converters="clr-namespace:Hoboman.Converters">
+                    xmlns:converters="clr-namespace:Hoboman.Converters"
+                    xmlns:auth="clr-namespace:Hoboman.Core.Auth;assembly=Hoboman.Core">
     <FontFamily x:Key="UiFont">Segoe UI Variable Text, Segoe UI</FontFamily>
     <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
     <FontFamily x:Key="CodeFont">Cascadia Mono, Consolas</FontFamily>
@@ -332,6 +333,22 @@
         <Setter Property="Foreground" Value="{DynamicResource Muted}" />
         <Setter Property="FontSize" Value="12" />
         <Setter Property="Margin" Value="0,0,0,4" />
+    </Style>
+
+    <!-- The kind of a saved credential in the lists of them, given in Tag. -->
+    <Style x:Key="KindBadge" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="10.5" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+        <Setter Property="Text" Value="OAuth" />
+        <Style.Triggers>
+            <Trigger Property="Tag" Value="{x:Static auth:AuthKind.Basic}">
+                <Setter Property="Text" Value="{DynamicResource Auth.Basic}" />
+            </Trigger>
+            <Trigger Property="Tag" Value="{x:Static auth:AuthKind.Bearer}">
+                <Setter Property="Text" Value="{DynamicResource Auth.BearerShort}" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <Style x:Key="Dialog" TargetType="Window">

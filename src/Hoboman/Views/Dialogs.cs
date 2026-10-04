@@ -7,6 +7,8 @@ namespace Hoboman.Views;
 
 public sealed class Dialogs(Translator translator) : IDialogs
 {
+    CredentialsWindow? _credentials;
+
     public string? AskName(string title, string name, string confirm, Func<string, string?> problemOf)
     {
         var dialog = new NameDialog(title, name, confirm, problemOf);
@@ -34,6 +36,19 @@ public sealed class Dialogs(Translator translator) : IDialogs
     public void EditSettings(SettingsViewModel settings) => new SettingsWindow(settings).ShowDialog();
 
     public void EditEnvironments(EnvironmentEditorViewModel editor) => new EnvironmentEditorWindow(editor).ShowDialog();
+
+    public bool ShowOpenCredentials()
+    {
+        _credentials?.Activate();
+        return _credentials is not null;
+    }
+
+    public void ShowCredentials(CredentialEditorViewModel editor)
+    {
+        var window = _credentials = new CredentialsWindow(editor);
+        window.Closed += (_, _) => _credentials = null;
+        window.Show();
+    }
 
     public void EditFolderAuth(FolderAuthViewModel folderAuth) => new FolderAuthWindow(folderAuth).ShowDialog();
 }

@@ -9,7 +9,7 @@ Du kan sende API-kald og køre workflows gennem **Hoboman**, et API-værktøj p�
 ## Opsætning
 
 - Programmet ligger i `C:\sti\til\Hoboman\publish\hoboman-cli.exe`. Kald det altid med fuld sti.
-- Data ligger i samme mappe som programmet: `requests\`, `workflows\`, `runs\`, `history\`, `environments.json`, `settings.json` og `secrets.json`. Det er uden betydning, hvilken mappe du står i.
+- Data ligger i samme mappe som programmet: `requests\`, `workflows\`, `runs\`, `history\`, `environments.json`, `credentials.json`, `settings.json` og `secrets.json`. Det er uden betydning, hvilken mappe du står i.
 - Kører du i Windows PowerShell 5.1, så sæt begge dele før kald. Ellers bliver æ, ø og å forkerte, eller til `?` uden fejl:
 
   ```powershell
@@ -21,7 +21,7 @@ Du kan sende API-kald og køre workflows gennem **Hoboman**, et API-værktøj p�
 
 ## Regler
 
-1. **Rør ikke Hobomans datafiler.** Du må ikke oprette, ændre eller slette noget i `requests\`, `workflows\`, `environments.json`, `settings.json` eller `secrets.json`, medmindre brugeren udtrykkeligt beder om det. Workflows og requests sættes op af brugeren i appen.
+1. **Rør ikke Hobomans datafiler.** Du må ikke oprette, ændre eller slette noget i `requests\`, `workflows\`, `environments.json`, `credentials.json`, `settings.json` eller `secrets.json`, medmindre brugeren udtrykkeligt beder om det. Workflows og requests sættes op af brugeren i appen.
 2. **Læs altid exitkoden** (`$LASTEXITCODE`), før du bruger outputtet. stdout og stderr er JSON, bortset fra `list`, der skriver stierne som tekst.
 3. **Giv følsomme værdier via stdin** med `--vars -` eller `--params -`, aldrig som `--var`/`--param` på kommandolinjen, så de ikke havner i shellens historik. `run` skriver dog parametre og variabler i klartekst på stdout og i run-loggen, så giv kun en hemmelighed som parameter, når brugeren har bedt om det.
 4. **Gentag ikke hemmeligheder** som tokens, passwords og API-nøgler i dine svar til brugeren. Opsummér i stedet, fx "login lykkedes, token gemt".

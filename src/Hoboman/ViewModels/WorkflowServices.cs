@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
 
-public sealed record WorkflowServices(WorkflowLibrary Library, WorkflowCheck Check, WorkflowRunner Runner, EnvironmentsViewModel Environments, IDialogs Dialogs, Translator Translator, TimeProvider Clock, SecretStore Secrets,
+public sealed record WorkflowServices(WorkflowLibrary Library, WorkflowCheck Check, WorkflowRunner Runner, EnvironmentsViewModel Environments, CredentialsViewModel Credentials, IDialogs Dialogs, Translator Translator, TimeProvider Clock, SecretStore Secrets,
     AuthRefreshService AuthRefresh, ILogger<WorkflowViewModel> Logger)
 {
     // A secret is forgotten only when no workflow uses its owner any more, as a copy of a workflow shares the ids of its steps.

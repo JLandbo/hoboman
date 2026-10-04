@@ -18,6 +18,7 @@ public sealed class MainViewModel(
     SettingsViewModel settings,
     SettingsStore settingsStore,
     EnvironmentEditorViewModel environmentEditor,
+    CredentialsViewModel credentials,
     FolderAuthViewModel folderAuth,
     RequestTabServices tabServices,
     RequestLibrary library,
@@ -43,6 +44,8 @@ public sealed class MainViewModel(
     public HistoryViewModel History => history;
 
     public EnvironmentsViewModel Environments => environments;
+
+    public CredentialsViewModel Credentials => credentials;
 
     public WorkflowsViewModel Workflows => workflows;
 
@@ -113,6 +116,7 @@ public sealed class MainViewModel(
         await RequestsChangedAsync();
         await HistoryChangedAsync();
         await EnvironmentsChangedAsync();
+        await credentials.LoadAsync(CancellationToken.None);
         await WorkflowsChangedAsync();
         try
         {
@@ -163,6 +167,7 @@ public sealed class MainViewModel(
             tab.RelabelRequest();
         }
         Workflow?.EnvironmentChosen();
+        credentials.EnvironmentChosen();
     }
 
     public void NewTab()

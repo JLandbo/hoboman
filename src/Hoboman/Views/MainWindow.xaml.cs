@@ -92,6 +92,8 @@ public partial class MainWindow : Window
         await _viewModel.EditEnvironmentsAsync();
     }
 
+    async void EditCredentials_Click(object sender, RoutedEventArgs e) => await _viewModel.Credentials.EditAsync();
+
     Task ChooseAsync(ApiEnvironment? environment)
     {
         CloseEnvironmentMenu();

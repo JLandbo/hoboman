@@ -17,6 +17,7 @@ Hoboman er et skrivebordsværktøj til at bygge, sende og undersøge API-kald. R
 - **Faner og drafts** – se ugemte requests i samlingerne, omdøb faner med dobbeltklik, og træk dem i den ønskede rækkefølge. Gemte faner og deres rækkefølge gendannes ved næste start.
 - **Miljøer og variabler** – brug `{{variabel}}` i URL, parametre, headers og auth-felter. Appen husker det senest valgte miljø.
 - **Auth med nedarvning** – ingen auth, Basic, Bearer og OAuth 2.0. En undermappe kan overtage eller tilsidesætte auth fra sin overmappe.
+- **Gemte credentials** – gem hele auths, Basic, Bearer token eller OAuth 2.0, pr. miljø under **Credentials** ved siden af miljøvælgeren, og vælg dem i Auth i stedet for at skrive dem igen.
 - **OAuth uden omveje** – client credentials eller authorization code med PKCE og browser-login. Hent et nyt token direkte ved Auth-fanen; ved client credentials hentes det automatisk, når det mangler eller er udløbet. Tokens holdes adskilt pr. miljø og følger miljøet, også når det omdøbes. Tokens gemt før miljøerne fik id, skal hentes igen én gang.
 - **Base64 efter dit valg** – markér bestemte JSON-felter til encoding ved afsendelse eller decoding i svaret. Hele bodyen kan også vælges.
 - **Små værktøjer i hverdagen** – JSON/XML-formatering, sammenfoldning af JSON, stringify/parse og Base64 til udklipsholderen samt dansk og engelsk brugerflade.
@@ -73,6 +74,12 @@ Opret eksempelvis variablen `host` i et miljø, og brug `https://{{host}}/api/us
 Vælg **Arv fra mappe** for at bruge auth fra den nærmeste overmappe, der har en selvstændig auth-indstilling. Egen auth på requesten tilsidesætter mappe-auth; **Ingen** stopper nedarvningen.
 
 Auth-fanen viser den effektive auth-type. Ved arvet OAuth henter refresh-knappen tokenet på den mappe, som ejer indstillingen. Flytning til en anden mappe ændrer den arvede auth. Ved client credentials henter Hoboman selv et nyt token og sender igen, når tokenet mangler, er udløbet, eller serveren svarer 401. Ved authorization code skal tokenet hentes med refresh-knappen.
+
+### Credentials
+
+**Credentials** ved siden af miljøvælgeren åbner et vindue, der kan stå åbent ved siden af hovedvinduet. Til venstre er miljøerne, i midten deres credentials, og til højre den valgte med de samme felter som i Auth, kopiknapper og **Hent token**, som prøver den i dens eget miljø uden at gemme tokenet. **Gem** gemmer uden at lukke.
+
+I Auth står feltet med nøglen ved siden af auth-typerne og viser det valgte miljøs credentials; skriv for at søge, og vælg med Enter eller et klik. Typen, felterne og hemmelighederne indsættes, som om du havde skrevet dem, så du kan rette i dem bagefter, og de gemmes med requesten som andre ændringer. Ved OAuth hentes et token med det samme. Feltet viser navnet, så længe auth'en svarer til credentialen, og med miljøets navn i gult, hvis den er fra et andet miljø end det valgte. `{{variabler}}` bliver stående og løses med det valgte miljø.
 
 ### Base64 og udklipsholder
 
@@ -174,7 +181,8 @@ Data gemmes ved siden af den kørende app. Efter `install.ps1` er det i `publish
 | `request-order.json` | Rækkefølgen af requests og mapper |
 | `environments.json` | Miljøer og deres variabler |
 | `settings.json` | Valgt miljø, sprog, tema, **Ignorér certifikatfejl**, vindueslayout og gemte faner. CLI'et bruger også det valgte miljø og **Ignorér certifikatfejl** |
-| `secrets.json` | Krypterede passwords, tokens og client secrets fra auth-felterne |
+| `credentials.json` | Gemte credentials: miljø, navn og auth uden hemmeligheder |
+| `secrets.json` | Krypterede passwords, tokens og client secrets fra auth-felterne og credentials |
 | `pending-secret-cleanup.json` | Ejere, hvis hemmeligheder skal kontrolleres og ryddes op efter sletning |
 | `history\` | Ét JSON-dokument pr. gemt kald med request, svar eller fejl. Trin i et workflow gemmes kun i `runs\` |
 | `workflows\<navn>\workflow.json` | Ét workflow pr. mappe med parametre, variabler og trin. Script-trinenes `.js`-filer ligger i samme mappe |
@@ -182,7 +190,7 @@ Data gemmes ved siden af den kørende app. Efter `install.ps1` er det i `publish
 | `logs\` | Daglige logfiler |
 | `themes\<navn>.json` | Et tema pr. fil, vælges i Indstillinger. Filen holder `{"colors": {"Navn": "#AARRGGBB"}}` med navnene fra `src\Hoboman\Themes\Colors.xaml`; farver, den udelader, er standardtemaets |
 
-Auth-hemmeligheder beskyttes med Windows DPAPI for den aktuelle Windows-bruger. De ligger separat fra request-, mappe- og workflowfilerne. En kopi af `secrets.json` er derfor ikke en almindelig, flytbar eksport af loginoplysninger. Ved sletning ryddes tilhørende hemmeligheder op, når ingen tilbageværende request eller mappe bruger dem; afbrudt oprydning kan genoptages ved næste start. Workflowets egen auth gemmes under workflowets id og glemmes, når workflowet slettes i appen. Et workflow-trins hemmeligheder gemmes under trinnets id og glemmes, når trinnet fjernes, og workflowet gemmes, eller når workflowet slettes i appen, medmindre et andet workflow har et trin med samme id. Har en kørsel gemt hemmeligheder for trin, der aldrig er gemt, glemmes de, når workflowet gemmes uden dem, når du åbner et andet workflow, eller når appen lukkes.
+Auth-hemmeligheder beskyttes med Windows DPAPI for den aktuelle Windows-bruger. De ligger separat fra request-, mappe- og workflowfilerne. En kopi af `secrets.json` er derfor ikke en almindelig, flytbar eksport af loginoplysninger. Ved sletning ryddes tilhørende hemmeligheder op, når ingen tilbageværende request eller mappe bruger dem; afbrudt oprydning kan genoptages ved næste start. Workflowets egen auth gemmes under workflowets id og glemmes, når workflowet slettes i appen. Et workflow-trins hemmeligheder gemmes under trinnets id og glemmes, når trinnet fjernes, og workflowet gemmes, eller når workflowet slettes i appen, medmindre et andet workflow har et trin med samme id. Har en kørsel gemt hemmeligheder for trin, der aldrig er gemt, glemmes de, når workflowet gemmes uden dem, når du åbner et andet workflow, eller når appen lukkes. En credentials hemmeligheder gemmes under dens id og slettes med den eller med dens miljø.
 
 **Resten af dataene er ikke krypterede.** Miljøvariabler, manuelt indtastede headers, bodies, historik, kørsler og logs kan indeholde følsomme oplysninger. Gennemgå dem før deling eller check-in; et token skrevet direkte i en header eller miljøvariabel får ikke automatisk beskyttelsen fra secret-lageret.
 

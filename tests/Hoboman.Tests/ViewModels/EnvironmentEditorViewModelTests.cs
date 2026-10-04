@@ -291,4 +291,21 @@ public sealed class EnvironmentEditorViewModelTests
         // Assert
         Assert.StartsWith("The environments could not be saved", editor.Problem);
     }
+
+    [Fact]
+    public async Task SaveAsync_WhenAnEnvironmentIsRemoved_ThenItsCredentialsAreDeleted()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.SaveCredentialsAsync();
+        var editor = harness.EnvironmentEditor();
+        await editor.LoadAsync(Cancellation);
+        editor.Remove();
+
+        // Act
+        await editor.SaveAsync();
+
+        // Assert
+        Assert.Equal(["Batch"], (await harness.CredentialStore.AllAsync(Cancellation)).Select(credential => credential.Name));
+    }
 }

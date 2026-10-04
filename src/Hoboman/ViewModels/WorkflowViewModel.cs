@@ -37,7 +37,7 @@ public sealed class WorkflowViewModel : ObservableObject
         _services = services;
         Name = name;
         Parameters.Changed += Edited;
-        Auth = new(services.Secrets, services.AuthRefresh, services.Environments, services.Translator, services.Clock, services.Logger);
+        Auth = new(services.Secrets, services.AuthRefresh, services.Environments, services.Credentials, services.Translator, services.Clock, services.Logger);
         Auth.Changed += Edited;
         Auth.OwnerFetch = () => FetchByHandAsync(Auth);
         Send = new AsyncCommand(RunAsync, () => !IsRunning);

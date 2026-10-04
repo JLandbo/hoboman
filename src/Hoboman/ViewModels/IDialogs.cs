@@ -18,5 +18,10 @@ public interface IDialogs
 
     void EditEnvironments(EnvironmentEditorViewModel editor);
 
+    // The credentials window can stay open beside the main window. True when one was open and is brought forward.
+    bool ShowOpenCredentials();
+
+    void ShowCredentials(CredentialEditorViewModel editor);
+
     void EditFolderAuth(FolderAuthViewModel folderAuth);
 }

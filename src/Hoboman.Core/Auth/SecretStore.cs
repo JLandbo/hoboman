@@ -50,6 +50,13 @@ public sealed class SecretStore(AppFolder folder, ILogger<SecretStore> logger)
         logger.LogInformation("Saved the {Kind} for {Id} in {Environment}", kind, id, environment);
     }
 
+    public async Task DeleteAsync(Guid id, SecretKind kind, Guid environment, CancellationToken cancellationToken)
+    {
+        var key = KeyOf(id, kind, environment);
+        await _file.UpdateAsync(secrets => secrets.Where(secret => secret.Key != key).ToDictionary(), cancellationToken).ConfigureAwait(false);
+        logger.LogInformation("Deleted the {Kind} for {Id} in {Environment}", kind, id, environment);
+    }
+
     public async Task ForgetEnvironmentsAsync(IReadOnlySet<Guid> environments, CancellationToken cancellationToken)
     {
         if (environments.Count == 0)

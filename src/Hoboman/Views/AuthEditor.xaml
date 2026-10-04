@@ -3,7 +3,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:Hoboman.Views"
              xmlns:controls="clr-namespace:Hoboman.Controls"
-             xmlns:auth="clr-namespace:Hoboman.Core.Auth;assembly=Hoboman.Core">
+             xmlns:auth="clr-namespace:Hoboman.Core.Auth;assembly=Hoboman.Core"
+             xmlns:viewModels="clr-namespace:Hoboman.ViewModels">
     <UserControl.Resources>
         <Style x:Key="OnlyForAuthorizationCode" TargetType="FrameworkElement">
             <Setter Property="Visibility" Value="Collapsed" />
@@ -13,14 +14,34 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+        <Style x:Key="Copy" TargetType="Button" BasedOn="{StaticResource SmallIconButton}">
+            <Setter Property="Content" Value="&#xE8C8;" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="ToolTip" Value="{DynamicResource Edit.Copy}" />
+            <Setter Property="AutomationProperties.Name" Value="{DynamicResource Edit.Copy}" />
+            <Setter Property="Visibility" Value="{Binding IsCredential, RelativeSource={RelativeSource AncestorType=local:AuthEditor}, Converter={StaticResource VisibleWhenTrue}}" />
+            <EventSetter Event="Click" Handler="Copy_Click" />
+        </Style>
     </UserControl.Resources>
     <DockPanel>
-        <Border DockPanel.Dock="Top" Style="{StaticResource SegmentGroup}" Margin="0,0,0,12">
+        <!-- The credentials are picked beside the kinds, or below them where both do not fit, as in the folder dialog. -->
+        <Grid x:Name="KindRow" DockPanel.Dock="Top" Margin="0,0,0,12" SizeChanged="KindRow_SizeChanged">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+        <Border x:Name="Kinds" Style="{StaticResource SegmentGroup}" VerticalAlignment="Center">
             <StackPanel Orientation="Horizontal">
                 <RadioButton x:Name="InheritChoice" Content="{DynamicResource Auth.Inherit}" Style="{StaticResource Segment}"
                              IsChecked="{Binding Kind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:AuthKind.Inherit}}"
                              Visibility="{Binding CanInherit, RelativeSource={RelativeSource AncestorType=local:AuthEditor}, Converter={StaticResource VisibleWhenTrue}}" />
-                <RadioButton Content="{DynamicResource Auth.None}" Style="{StaticResource Segment}"
+                <RadioButton x:Name="NoneChoice" Content="{DynamicResource Auth.None}" Style="{StaticResource Segment}"
                              IsChecked="{Binding Kind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:AuthKind.None}}" />
                 <RadioButton Content="{DynamicResource Auth.Basic}" Style="{StaticResource Segment}"
                              IsChecked="{Binding Kind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:AuthKind.Basic}}" />
@@ -30,8 +51,95 @@
                              IsChecked="{Binding Kind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:AuthKind.OAuth2}}" />
             </StackPanel>
         </Border>
+            <Grid x:Name="CredentialPicker" Grid.Column="1" Width="240" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Credentials}" Value="{x:Null}">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Credentials.IsEnvironmentChosen}" Value="False">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
+                <Border x:Name="CredentialField" CornerRadius="8" Background="{DynamicResource Input}" BorderThickness="1" PreviewMouseLeftButtonUp="CredentialField_PreviewMouseLeftButtonUp">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="BorderBrush" Value="Transparent" />
+                            <Style.Triggers>
+                                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                    <Setter Property="BorderBrush" Value="{DynamicResource Attention}" />
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Left" Text="&#xE8D7;" FontFamily="{StaticResource IconFont}" FontSize="12" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                        <TextBlock DockPanel.Dock="Right" Text="&#xE70D;" FontFamily="{StaticResource IconFont}" FontSize="9" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" Margin="0,0,9,0" />
+                        <Grid>
+                            <!-- Behind the search: the credential the auth is from, or what the field is for. -->
+                            <TextBlock x:Name="CredentialShown" Margin="8,0" VerticalAlignment="Center" FontSize="12.5" TextTrimming="CharacterEllipsis">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="{Binding CredentialName}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource Text}" />
+                                        <Setter Property="Visibility" Value="Hidden" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CredentialName}" Value="{x:Null}">
+                                                <Setter Property="Text" Value="{DynamicResource OAuth.Credential}" />
+                                                <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsCredentialOfOtherEnvironment}" Value="True">
+                                                <Setter Property="Foreground" Value="{DynamicResource Attention}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Text, ElementName=CredentialSearch}" Value="">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBox x:Name="CredentialSearch" Style="{StaticResource Cell}" FontFamily="{StaticResource UiFont}" FontSize="12.5" Padding="6,5"
+                                     AutomationProperties.Name="{DynamicResource OAuth.Credential}" TextChanged="CredentialSearch_TextChanged" PreviewKeyDown="CredentialSearch_PreviewKeyDown"
+                                     GotKeyboardFocus="CredentialSearch_GotKeyboardFocus" LostKeyboardFocus="CredentialSearch_LostKeyboardFocus" />
+                        </Grid>
+                    </DockPanel>
+                </Border>
+                <Popup x:Name="CredentialPopup" PlacementTarget="{Binding ElementName=CredentialField}" Placement="Bottom" HorizontalOffset="-60" StaysOpen="True" AllowsTransparency="True">
+                    <Border Style="{StaticResource Menu}" Width="300" TextElement.FontSize="12">
+                        <StackPanel>
+                            <ListBox x:Name="CredentialList" ItemsSource="{Binding FoundCredentials}" Style="{StaticResource SideList}" Focusable="False" MaxHeight="300"
+                                     MouseLeftButtonUp="CredentialList_MouseLeftButtonUp">
+                                <ListBox.ItemContainerStyle>
+                                    <!-- The typing stays in the field while the keys move in the list. -->
+                                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource SideListItem}">
+                                        <Setter Property="Focusable" Value="False" />
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type viewModels:CredentialChoice}">
+                                        <DockPanel>
+                                            <Border DockPanel.Dock="Right" CornerRadius="6" Padding="6,0" Background="{DynamicResource Card}" Margin="10,0,0,0" VerticalAlignment="Center">
+                                                <TextBlock Style="{StaticResource KindBadge}" Tag="{Binding Credential.Auth.Kind}" />
+                                            </Border>
+                                            <TextBlock Text="{Binding Credential.Name}" TextTrimming="CharacterEllipsis" />
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <Border BorderBrush="{DynamicResource BoxEdge}" BorderThickness="0,1,0,0" Margin="0,6" />
+                            <Button Style="{StaticResource MenuButton}" Focusable="False" Click="EditCredentials_Click">
+                                <TextBlock Text="{DynamicResource Credentials.Edit}" Foreground="{DynamicResource Muted}" />
+                            </Button>
+                        </StackPanel>
+                    </Border>
+                </Popup>
+            </Grid>
+        </Grid>
         <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
-            <StackPanel HorizontalAlignment="Left" Width="420">
+            <StackPanel>
                 <TextBlock Text="{Binding TokenProblem}" Foreground="{DynamicResource Error}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock">
@@ -43,125 +151,157 @@
                         </Style>
                     </TextBlock.Style>
                 </TextBlock>
-                <StackPanel>
-                    <StackPanel.Style>
-                        <Style TargetType="StackPanel">
-                            <Setter Property="Visibility" Value="Collapsed" />
+                <!-- The fields of the chosen kind, in a box of their own. None and inherited auth have none. -->
+                <Border CornerRadius="8" Background="{DynamicResource Box}" BorderBrush="{DynamicResource BoxEdge}" BorderThickness="1" Padding="12,12,12,2">
+                    <Border.Style>
+                        <Style TargetType="Border">
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding Kind}" Value="{x:Static auth:AuthKind.Basic}">
-                                    <Setter Property="Visibility" Value="Visible" />
+                                <DataTrigger Binding="{Binding Kind}" Value="{x:Static auth:AuthKind.None}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Kind}" Value="{x:Static auth:AuthKind.Inherit}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
-                    </StackPanel.Style>
-                    <TextBlock Text="{DynamicResource Auth.UserName}" Style="{StaticResource Label}" />
-                    <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
-                        <controls:VariableTextBox Text="{Binding UserName, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" />
-                    </Border>
-                    <TextBlock Text="{DynamicResource Auth.Password}" Style="{StaticResource Label}" />
-                    <Border CornerRadius="8" Background="{DynamicResource Input}">
-                        <PasswordBox x:Name="PasswordBox" Style="{StaticResource PasswordCell}" PasswordChanged="PasswordBox_PasswordChanged" />
-                    </Border>
-                </StackPanel>
-                <StackPanel>
-                    <StackPanel.Style>
-                        <Style TargetType="StackPanel">
-                            <Setter Property="Visibility" Value="Collapsed" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding Kind}" Value="{x:Static auth:AuthKind.Bearer}">
-                                    <Setter Property="Visibility" Value="Visible" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </StackPanel.Style>
-                    <TextBlock Text="{DynamicResource Auth.Token}" Style="{StaticResource Label}" />
-                    <Border CornerRadius="8" Background="{DynamicResource Input}">
-                        <controls:VariableTextBox Text="{Binding Token, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" />
-                    </Border>
-                </StackPanel>
-                <StackPanel>
-                    <StackPanel.Style>
-                        <Style TargetType="StackPanel">
-                            <Setter Property="Visibility" Value="Collapsed" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding Kind}" Value="{x:Static auth:AuthKind.OAuth2}">
-                                    <Setter Property="Visibility" Value="Visible" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </StackPanel.Style>
-                    <Border Style="{StaticResource SegmentGroup}" HorizontalAlignment="Left" Margin="0,0,0,10">
-                        <StackPanel Orientation="Horizontal">
-                            <RadioButton Content="{DynamicResource OAuth.ClientCredentials}" Style="{StaticResource Segment}"
-                                         IsChecked="{Binding Grant, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:OAuthGrant.ClientCredentials}}" />
-                            <RadioButton Content="{DynamicResource OAuth.AuthorizationCode}" Style="{StaticResource Segment}"
-                                         IsChecked="{Binding Grant, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:OAuthGrant.AuthorizationCode}}" />
-                        </StackPanel>
-                    </Border>
-                    <!-- The fetch comes first, because the fields below it can be taller than the space the auth gets. -->
-                    <DockPanel Margin="0,0,0,6">
-                        <Button DockPanel.Dock="Left" Content="{DynamicResource OAuth.Fetch}" Command="{Binding FetchToken}" Style="{StaticResource PillButton}" />
-                        <Button DockPanel.Dock="Left" Content="{DynamicResource Common.Cancel}" Click="CancelFetch_Click" Style="{StaticResource PillButton}" Margin="8,0,0,0"
-                                Visibility="{Binding IsFetching, Converter={StaticResource VisibleWhenTrue}}" />
-                        <TextBlock Foreground="{DynamicResource Muted}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="12,0,0,0">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Text" Value="{Binding TokenStatus}" />
+                    </Border.Style>
+                    <StackPanel>
+                        <StackPanel>
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="Visibility" Value="Collapsed" />
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsFetching}" Value="True">
-                                            <Setter Property="Text" Value="{DynamicResource OAuth.Fetching}" />
+                                        <DataTrigger Binding="{Binding Kind}" Value="{x:Static auth:AuthKind.Basic}">
+                                            <Setter Property="Visibility" Value="Visible" />
                                         </DataTrigger>
-                                        <MultiDataTrigger>
-                                            <MultiDataTrigger.Conditions>
-                                                <Condition Binding="{Binding IsFetching}" Value="True" />
-                                                <Condition Binding="{Binding Grant}" Value="{x:Static auth:OAuthGrant.AuthorizationCode}" />
-                                            </MultiDataTrigger.Conditions>
-                                            <Setter Property="Text" Value="{DynamicResource OAuth.Waiting}" />
-                                        </MultiDataTrigger>
                                     </Style.Triggers>
                                 </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-                    </DockPanel>
-                    <StackPanel Style="{StaticResource OnlyForAuthorizationCode}">
-                        <TextBlock Text="{DynamicResource OAuth.AuthorizeUrl}" Style="{StaticResource Label}" />
-                        <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
-                            <controls:VariableTextBox Text="{Binding AuthorizeUrl, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" />
-                        </Border>
-                    </StackPanel>
-                    <TextBlock Text="{DynamicResource OAuth.TokenUrl}" Style="{StaticResource Label}" />
-                    <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
-                        <controls:VariableTextBox Text="{Binding TokenUrl, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" />
-                    </Border>
-                    <TextBlock Text="{DynamicResource OAuth.ClientId}" Style="{StaticResource Label}" />
-                    <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
-                        <controls:VariableTextBox Text="{Binding ClientId, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" />
-                    </Border>
-                    <TextBlock Text="{DynamicResource OAuth.ClientSecret}" Style="{StaticResource Label}" />
-                    <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
-                        <PasswordBox x:Name="ClientSecretBox" Style="{StaticResource PasswordCell}" PasswordChanged="ClientSecretBox_PasswordChanged" />
-                    </Border>
-                    <TextBlock Text="{DynamicResource OAuth.Scope}" Style="{StaticResource Label}" />
-                    <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
-                        <controls:VariableTextBox Text="{Binding Scope, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" />
-                    </Border>
-                    <TextBlock Text="{DynamicResource OAuth.ClientAuthentication}" Style="{StaticResource Label}" />
-                    <Border Style="{StaticResource SegmentGroup}" HorizontalAlignment="Left" Margin="0,0,0,10">
-                        <StackPanel Orientation="Horizontal">
-                            <RadioButton Content="{DynamicResource OAuth.BasicHeader}" Style="{StaticResource Segment}"
-                                         IsChecked="{Binding ClientAuthentication, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:OAuthClientAuthentication.BasicHeader}}" />
-                            <RadioButton Content="{DynamicResource OAuth.RequestBody}" Style="{StaticResource Segment}"
-                                         IsChecked="{Binding ClientAuthentication, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:OAuthClientAuthentication.RequestBody}}" />
+                            </StackPanel.Style>
+                            <TextBlock Text="{DynamicResource Auth.UserName}" Style="{StaticResource Label}" />
+                            <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Style="{StaticResource Copy}" Tag="{Binding UserName}" />
+                                    <controls:VariableTextBox Text="{Binding UserName, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" />
+                                </DockPanel>
+                            </Border>
+                            <TextBlock Text="{DynamicResource Auth.Password}" Style="{StaticResource Label}" />
+                            <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Style="{StaticResource Copy}" Tag="{Binding Password}" />
+                                    <PasswordBox x:Name="PasswordBox" Style="{StaticResource PasswordCell}" PasswordChanged="PasswordBox_PasswordChanged" />
+                                </DockPanel>
+                            </Border>
                         </StackPanel>
-                    </Border>
-                    <StackPanel Style="{StaticResource OnlyForAuthorizationCode}">
-                        <TextBlock Text="{DynamicResource OAuth.RedirectPort}" Style="{StaticResource Label}" />
-                        <Border CornerRadius="8" Background="{DynamicResource Input}" Width="120" HorizontalAlignment="Left">
-                            <TextBox Text="{Binding RedirectPort, UpdateSourceTrigger=PropertyChanged, TargetNullValue=''}" Style="{StaticResource Cell}" Padding="8,6" />
-                        </Border>
-                        <TextBlock Text="{DynamicResource OAuth.RedirectHint}" Foreground="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,10" />
+                        <StackPanel>
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Kind}" Value="{x:Static auth:AuthKind.Bearer}">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
+                            <TextBlock Text="{DynamicResource Auth.Token}" Style="{StaticResource Label}" />
+                            <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Style="{StaticResource Copy}" Tag="{Binding Token}" />
+                                    <controls:VariableTextBox Text="{Binding Token, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" />
+                                </DockPanel>
+                            </Border>
+                        </StackPanel>
+                        <StackPanel>
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Kind}" Value="{x:Static auth:AuthKind.OAuth2}">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
+                            <Border Style="{StaticResource SegmentGroup}" HorizontalAlignment="Left" Margin="0,0,0,10">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton Content="{DynamicResource OAuth.ClientCredentials}" Style="{StaticResource Segment}"
+                                                 IsChecked="{Binding Grant, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:OAuthGrant.ClientCredentials}}" />
+                                    <RadioButton Content="{DynamicResource OAuth.AuthorizationCode}" Style="{StaticResource Segment}"
+                                                 IsChecked="{Binding Grant, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:OAuthGrant.AuthorizationCode}}" />
+                                </StackPanel>
+                            </Border>
+                            <!-- The fetch comes first, because the fields below it can be taller than the space the auth gets. -->
+                            <DockPanel Margin="0,0,0,6">
+                                <Button DockPanel.Dock="Left" Content="{DynamicResource OAuth.Fetch}" Command="{Binding FetchToken}" Style="{StaticResource PillButton}" />
+                                <Button DockPanel.Dock="Left" Content="{DynamicResource Common.Cancel}" Click="CancelFetch_Click" Style="{StaticResource PillButton}" Margin="8,0,0,0"
+                                        Visibility="{Binding IsFetching, Converter={StaticResource VisibleWhenTrue}}" />
+                                <TextBlock Foreground="{DynamicResource Muted}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="12,0,0,0">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="{Binding TokenStatus}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsFetching}" Value="True">
+                                                    <Setter Property="Text" Value="{DynamicResource OAuth.Fetching}" />
+                                                </DataTrigger>
+                                                <MultiDataTrigger>
+                                                    <MultiDataTrigger.Conditions>
+                                                        <Condition Binding="{Binding IsFetching}" Value="True" />
+                                                        <Condition Binding="{Binding Grant}" Value="{x:Static auth:OAuthGrant.AuthorizationCode}" />
+                                                    </MultiDataTrigger.Conditions>
+                                                    <Setter Property="Text" Value="{DynamicResource OAuth.Waiting}" />
+                                                </MultiDataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </DockPanel>
+                            <StackPanel Style="{StaticResource OnlyForAuthorizationCode}">
+                                <TextBlock Text="{DynamicResource OAuth.AuthorizeUrl}" Style="{StaticResource Label}" />
+                                <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
+                                    <controls:VariableTextBox Text="{Binding AuthorizeUrl, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" />
+                                </Border>
+                            </StackPanel>
+                            <TextBlock Text="{DynamicResource OAuth.TokenUrl}" Style="{StaticResource Label}" />
+                            <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
+                                <controls:VariableTextBox Text="{Binding TokenUrl, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" />
+                            </Border>
+                            <TextBlock Text="{DynamicResource OAuth.ClientId}" Style="{StaticResource Label}" />
+                            <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Style="{StaticResource Copy}" Tag="{Binding ClientId}" />
+                                    <controls:VariableTextBox Text="{Binding ClientId, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" />
+                                </DockPanel>
+                            </Border>
+                            <TextBlock Text="{DynamicResource OAuth.ClientSecret}" Style="{StaticResource Label}" />
+                            <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Style="{StaticResource Copy}" Tag="{Binding ClientSecret}" />
+                                    <PasswordBox x:Name="ClientSecretBox" Style="{StaticResource PasswordCell}" PasswordChanged="ClientSecretBox_PasswordChanged" />
+                                </DockPanel>
+                            </Border>
+                            <TextBlock Text="{DynamicResource OAuth.Scope}" Style="{StaticResource Label}" />
+                            <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
+                                <controls:VariableTextBox Text="{Binding Scope, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" />
+                            </Border>
+                            <TextBlock Text="{DynamicResource OAuth.ClientAuthentication}" Style="{StaticResource Label}" />
+                            <Border Style="{StaticResource SegmentGroup}" HorizontalAlignment="Left" Margin="0,0,0,10">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton Content="{DynamicResource OAuth.BasicHeader}" Style="{StaticResource Segment}"
+                                                 IsChecked="{Binding ClientAuthentication, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:OAuthClientAuthentication.BasicHeader}}" />
+                                    <RadioButton Content="{DynamicResource OAuth.RequestBody}" Style="{StaticResource Segment}"
+                                                 IsChecked="{Binding ClientAuthentication, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:OAuthClientAuthentication.RequestBody}}" />
+                                </StackPanel>
+                            </Border>
+                            <StackPanel Style="{StaticResource OnlyForAuthorizationCode}">
+                                <TextBlock Text="{DynamicResource OAuth.RedirectPort}" Style="{StaticResource Label}" />
+                                <Border CornerRadius="8" Background="{DynamicResource Input}" Width="120" HorizontalAlignment="Left">
+                                    <TextBox Text="{Binding RedirectPort, UpdateSourceTrigger=PropertyChanged, TargetNullValue=''}" Style="{StaticResource Cell}" Padding="8,6" />
+                                </Border>
+                                <TextBlock Text="{DynamicResource OAuth.RedirectHint}" Foreground="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,10" />
+                            </StackPanel>
+                        </StackPanel>
                     </StackPanel>
-                </StackPanel>
+                </Border>
             </StackPanel>
         </ScrollViewer>
     </DockPanel>

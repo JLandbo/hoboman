@@ -111,6 +111,7 @@ public partial class App : Application
         services.AddSingleton<EnvironmentStore>();
         services.AddSingleton<RequestLibrary>();
         services.AddSingleton<SecretStore>();
+        services.AddSingleton<CredentialStore>();
         services.AddSingleton<RequestDeletion>();
         services.AddSingleton<CollectionChanges>();
         services.AddSingleton<HttpClients>();
@@ -129,6 +130,8 @@ public partial class App : Application
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<EnvironmentsViewModel>();
         services.AddSingleton<EnvironmentEditorViewModel>();
+        services.AddSingleton<CredentialEditorViewModel>();
+        services.AddSingleton<CredentialsViewModel>();
         services.AddSingleton<FolderAuthViewModel>();
         services.AddSingleton<RequestTreeViewModel>();
         services.AddSingleton<HistoryViewModel>();

@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 namespace Hoboman.ViewModels;
 
 // The auth of a request or a folder. Both use the same editor, and the secrets are saved under the id of whichever it belongs to.
-public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refreshes, EnvironmentsViewModel environments, Translator translator, TimeProvider clock, ILogger logger) : ObservableObject
+public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refreshes, EnvironmentsViewModel environments, CredentialsViewModel? credentials, Translator translator, TimeProvider clock, ILogger logger) : ObservableObject
 {
     Guid _secretsId;
     string? _folder;
@@ -20,6 +20,7 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
     Dictionary<Guid, OAuthToken> _tokens = [];
     Dictionary<Guid, OAuthToken> _savedTokens = [];
     CancellationTokenSource? _fetching;
+    Task _fetchEnded = Task.CompletedTask;
     bool _loading;
 
     public event Action? Changed;
@@ -61,12 +62,59 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
 
     public bool IsFetching { get; private set => Set(ref field, value); }
 
+    // Left out where a credential itself is edited.
+    public CredentialsViewModel? Credentials => credentials;
+
+    public IReadOnlyList<CredentialChoice> FoundCredentials { get; private set => Set(ref field, value); } = [];
+
+    // The credential the auth was filled in from, while nothing in it has changed since. One of another environment says which.
+    public string? CredentialName => Matching() is { } match
+        ? match.Credential.EnvironmentId == ChosenEnvironment ? match.Credential.Name : $"{match.Credential.Name} · {credentials?.EnvironmentNameOf(match.Credential.EnvironmentId)}"
+        : null;
+
+    public bool IsCredentialOfOtherEnvironment => Matching()?.Credential.EnvironmentId is { } environment && environment != ChosenEnvironment;
+
+    // A saved credential belongs to one environment, so its token is fetched there whatever environment is chosen.
+    public ApiEnvironment? OwnEnvironment { get; init; }
+
+    public bool KeepsTokens { get; init; } = true;
+
     public string? TokenProblem { get; private set => Set(ref field, value); }
 
     // An owner that keeps secrets fetches the token itself, so it is saved as when sending or running and is no edit.
     public Func<Task>? OwnerFetch { get; set; }
 
     public AsyncCommand FetchToken => field ??= new(() => OwnerFetch?.Invoke() ?? FetchTokenAsync());
+
+    public void FindCredentials(string text) => FoundCredentials =
+        [.. (credentials?.OfChosenEnvironment ?? []).Where(choice => choice.Credential.Name.Contains(text, StringComparison.CurrentCultureIgnoreCase))];
+
+    // A credential is filled in as if it was typed, so it can be changed after. The tokens of the client before it are dropped, and an OAuth token is fetched at once.
+    public async Task UseAsync(CredentialChoice choice)
+    {
+        CancelFetch();
+        await _fetchEnded;
+        var settings = choice.Credential.Auth;
+        var oauth = settings.OAuth ?? new();
+        Kind = settings.Kind;
+        UserName = settings.UserName;
+        Grant = oauth.Grant;
+        AuthorizeUrl = oauth.AuthorizeUrl;
+        TokenUrl = oauth.TokenUrl;
+        ClientId = oauth.ClientId;
+        Scope = oauth.Scope;
+        ClientAuthentication = oauth.ClientAuthentication;
+        RedirectPort = oauth.RedirectPort;
+        Password = choice.Password;
+        Token = choice.Token;
+        ClientSecret = choice.ClientSecret;
+        _tokens.Clear();
+        Relabel();
+        if (Kind == AuthKind.OAuth2)
+        {
+            await FetchTokenAsync();
+        }
+    }
 
     public static string HeaderOf(AuthKind? kind, Translator translator) => $"{translator.Of("Editor.Auth")} ({kind switch
     {
@@ -86,7 +134,8 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
     };
 
     public bool HasUnsavedSecrets =>
-        Password != _savedPassword || Token != _savedToken || ClientSecret != _savedClientSecret || _tokens.Any(token => _savedTokens.GetValueOrDefault(token.Key) != token.Value);
+        Password != _savedPassword || Token != _savedToken || ClientSecret != _savedClientSecret || _tokens.Any(token => _savedTokens.GetValueOrDefault(token.Key) != token.Value)
+        || _savedTokens.Keys.Any(environment => !_tokens.ContainsKey(environment));
 
     public void Load(AuthSettings settings)
     {
@@ -185,13 +234,19 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
             await secrets.SaveAsync(id, SecretKind.ClientSecret, clientSecret, cancellationToken);
             _savedClientSecret = clientSecret;
         }
-        foreach (var (environment, fetched) in _tokens)
+        foreach (var (environment, fetched) in KeepsTokens ? _tokens.ToArray() : [])
         {
             if (_savedTokens.GetValueOrDefault(environment) != fetched)
             {
                 await secrets.SaveAsync(id, SecretKind.OAuthToken, environment, fetched.ToJson(), cancellationToken);
                 _savedTokens[environment] = fetched;
             }
+        }
+        // Tokens dropped when another credential was picked belong to the client before it.
+        foreach (var environment in _savedTokens.Keys.Where(environment => !_tokens.ContainsKey(environment)).ToList())
+        {
+            await secrets.DeleteAsync(id, SecretKind.OAuthToken, environment, cancellationToken);
+            _savedTokens.Remove(environment);
         }
     }
 
@@ -204,7 +259,7 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
 
     // The token is kept with the other secrets, so it is saved the same way and under the same id, when the request is sent or saved.
     // It belongs to the environment chosen when the fetch started, even if another is chosen while the login is open.
-    public Task<bool> FetchTokenAsync() => FetchTokenAsync(environments.SelectedOrNone, saveSecrets: false, CancellationToken.None);
+    public Task<bool> FetchTokenAsync() => FetchTokenAsync(OwnEnvironment ?? environments.SelectedOrNone, saveSecrets: false, CancellationToken.None);
 
     public async Task<bool> FetchTokenAsync(ApiEnvironment environment, bool saveSecrets, CancellationToken cancellationToken)
     {
@@ -214,6 +269,8 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
         }
         TokenProblem = null;
         IsFetching = true;
+        var ended = new TaskCompletionSource();
+        _fetchEnded = ended.Task;
         using var fetching = _fetching = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var settings = ToSettings();
         var clientSecret = ClientSecret;
@@ -248,6 +305,7 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
         {
             _fetching = null;
             IsFetching = false;
+            ended.SetResult();
         }
         return false;
     }
@@ -271,9 +329,27 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
     {
         OnPropertyChanged(nameof(AccessToken));
         OnPropertyChanged(nameof(TokenStatus));
+        RelabelCredential();
     }
 
-    Guid ChosenEnvironment => environments.SelectedOrNone.Id;
+    public void RelabelCredential()
+    {
+        OnPropertyChanged(nameof(CredentialName));
+        OnPropertyChanged(nameof(IsCredentialOfOtherEnvironment));
+    }
+
+    Guid ChosenEnvironment => (OwnEnvironment ?? environments.SelectedOrNone).Id;
+
+    // The chosen environment's credential first, when another environment has the same.
+    CredentialChoice? Matching() => credentials?.All.Where(Matches).OrderBy(choice => choice.Credential.EnvironmentId != ChosenEnvironment).FirstOrDefault();
+
+    bool Matches(CredentialChoice choice) => choice.Credential.Auth is var settings && settings.Kind == Kind && Kind switch
+    {
+        AuthKind.Basic => UserName == settings.UserName && Password == choice.Password,
+        AuthKind.Bearer => Token == choice.Token,
+        AuthKind.OAuth2 => EditedOAuth() == (settings.OAuth ?? new()) && ClientSecret == choice.ClientSecret,
+        _ => false,
+    };
 
     OAuthSettings EditedOAuth() => new()
     {
@@ -311,6 +387,7 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
         }
         TokenProblem = null;
         CancelFetch();
+        RelabelCredential();
         if (!_loading)
         {
             Changed?.Invoke();

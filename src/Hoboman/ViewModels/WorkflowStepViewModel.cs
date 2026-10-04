@@ -50,7 +50,7 @@ public sealed class WorkflowStepViewModel : ObservableObject
             Request = new(services.Translator, services.Clock, services.Environments);
             Request.Load(request.ToApiRequest());
             Request.Changed += OnChanged;
-            Auth = new(services.Secrets, services.AuthRefresh, services.Environments, services.Translator, services.Clock, services.Logger);
+            Auth = new(services.Secrets, services.AuthRefresh, services.Environments, services.Credentials, services.Translator, services.Clock, services.Logger);
             Auth.UseOwner(_id);
             Auth.Load(request.ToApiRequest().Auth);
             Auth.Changed += OnChanged;

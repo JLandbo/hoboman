@@ -265,4 +265,19 @@ public sealed class SecretStoreTests : IDisposable
     {
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => Store().CopyAsync(Guid.NewGuid(), Guid.Empty, Cancellation));
     }
+
+    [Fact]
+    public async Task DeleteAsync_WhenOneEnvironmentsTokenIsDeleted_ThenTheOtherStays()
+    {
+        // Arrange
+        var id = Guid.NewGuid();
+        await Store().SaveAsync(id, SecretKind.OAuthToken, _dev, "dev token", Cancellation);
+        await Store().SaveAsync(id, SecretKind.OAuthToken, _prod, "prod token", Cancellation);
+
+        // Act
+        await Store().DeleteAsync(id, SecretKind.OAuthToken, _dev, Cancellation);
+
+        // Assert
+        Assert.Equal((null, "prod token"), (await Store().OfAsync(id, SecretKind.OAuthToken, _dev, Cancellation), await Store().OfAsync(id, SecretKind.OAuthToken, _prod, Cancellation)));
+    }
 }

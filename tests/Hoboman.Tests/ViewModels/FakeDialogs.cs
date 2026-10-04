@@ -65,5 +65,9 @@ public sealed class FakeDialogs(string? answer = null, bool accept = false) : ID
 
     public void EditEnvironments(EnvironmentEditorViewModel editor) => Shown = editor;
 
+    public bool ShowOpenCredentials() => false;
+
+    public void ShowCredentials(CredentialEditorViewModel editor) => Shown = editor;
+
     public void EditFolderAuth(FolderAuthViewModel folderAuth) => Shown = folderAuth;
 }
