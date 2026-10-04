@@ -17,10 +17,11 @@ Hoboman er et skrivebordsværktøj til at bygge, sende og undersøge API-kald. R
 - **Faner og drafts** – se ugemte requests i samlingerne, omdøb faner med dobbeltklik, og træk dem i den ønskede rækkefølge. Gemte faner og deres rækkefølge gendannes ved næste start.
 - **Miljøer og variabler** – brug `{{variabel}}` i URL, parametre, headers og auth-felter. Appen husker det senest valgte miljø.
 - **Auth med nedarvning** – ingen auth, Basic, Bearer og OAuth 2.0. En undermappe kan overtage eller tilsidesætte auth fra sin overmappe.
-- **OAuth uden omveje** – client credentials eller authorization code med PKCE og browser-login. Hent et nyt token direkte ved Auth-fanen; ved client credentials hentes det automatisk, når det mangler eller er udløbet. Tokens holdes adskilt pr. miljø.
+- **OAuth uden omveje** – client credentials eller authorization code med PKCE og browser-login. Hent et nyt token direkte ved Auth-fanen; ved client credentials hentes det automatisk, når det mangler eller er udløbet. Tokens holdes adskilt pr. miljø og følger miljøet, også når det omdøbes. Tokens gemt før miljøerne fik id, skal hentes igen én gang.
 - **Base64 efter dit valg** – markér bestemte JSON-felter til encoding ved afsendelse eller decoding i svaret. Hele bodyen kan også vælges.
 - **Små værktøjer i hverdagen** – JSON/XML-formatering, sammenfoldning af JSON, stringify/parse og Base64 til udklipsholderen samt dansk og engelsk brugerflade.
-- **Kommandolinje** – send gemte og direkte requests fra scripts og AI-agenter med `hoboman-cli.exe`. Se [CLI.md](CLI.md).
+- **Workflows** – kæd requests og scripts sammen i `workflows\<navn>\workflow.json` uden at røre samlingerne, giv værdier fra ét svar videre til de næste trin, og kør det hele under **Workflows** i appen eller med `hoboman-cli run`. Hver kørsel skrives som JSON-linjer, som en AI kan følge.
+- **Kommandolinje** – send gemte og direkte requests og kør workflows fra scripts og AI-agenter med `hoboman-cli.exe`. Se [CLI.md](CLI.md).
 
 ## Kom hurtigt i gang
 
@@ -133,8 +134,8 @@ Testprojektet bruger xUnit og Microsoft.Testing.Platform, valgt i `global.json`.
 
 | Genvej | Handling |
 |---|---|
-| `Ctrl+Enter` | Send den aktuelle request |
-| `Ctrl+S` | Gem den aktuelle request |
+| `Ctrl+Enter` | Send den aktuelle request, eller kør det viste workflow |
+| `Ctrl+S` | Gem den aktuelle request eller det viste workflow |
 | `Shift+Alt+F` | Formatér JSON/XML, når fokus er i bodyen |
 | `Ctrl+Z` / `Ctrl+Y` | Fortryd/gentag i bodyen, også formatering |
 | `Enter` | Åbn det valgte element i samlinger eller historik |
@@ -153,12 +154,14 @@ Data gemmes ved siden af den kørende app. Efter `install.ps1` er det i `publish
 | `secrets.json` | Krypterede passwords, tokens og client secrets fra auth-felterne |
 | `pending-secret-cleanup.json` | Ejere, hvis hemmeligheder skal kontrolleres og ryddes op efter sletning |
 | `history\` | Ét JSON-dokument pr. gemt kald med request, svar eller fejl |
+| `workflows\<navn>\workflow.json` | Ét workflow pr. mappe med parametre, variabler og trin |
+| `runs\<workflow-id>\` | Én JSON-linjefil pr. kørsel af et workflow med events, svar og gemte værdier |
 | `logs\` | Daglige logfiler |
 
 Auth-hemmeligheder beskyttes med Windows DPAPI for den aktuelle Windows-bruger. De ligger separat fra request- og mappefilerne. En kopi af `secrets.json` er derfor ikke en almindelig, flytbar eksport af loginoplysninger. Ved sletning ryddes tilhørende hemmeligheder op, når ingen tilbageværende request eller mappe bruger dem; afbrudt oprydning kan genoptages ved næste start.
 
-**Resten af dataene er ikke krypterede.** Miljøvariabler, manuelt indtastede headers, bodies, historik og logs kan indeholde følsomme oplysninger. Gennemgå dem før deling eller check-in; et token skrevet direkte i en header eller miljøvariabel får ikke automatisk beskyttelsen fra secret-lageret.
+**Resten af dataene er ikke krypterede.** Miljøvariabler, manuelt indtastede headers, bodies, historik, kørsler og logs kan indeholde følsomme oplysninger. Gennemgå dem før deling eller check-in; et token skrevet direkte i en header eller miljøvariabel får ikke automatisk beskyttelsen fra secret-lageret.
 
 ## Kommandolinjeværktøj
 
-`hoboman-cli.exe` sender gemte og direkte requests uden GUI'en og skriver svaret som JSON. Kommandoer, variabler, exitkoder, auth og et eksempel på at kæde kald sammen i PowerShell står i [CLI.md](CLI.md).
+`hoboman-cli.exe` sender gemte og direkte requests og kører workflows uden GUI'en og skriver resultatet som JSON. Kommandoer, variabler, workflows, events, exitkoder, auth og et eksempel på at kæde kald sammen i PowerShell står i [CLI.md](CLI.md).
