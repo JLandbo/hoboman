@@ -39,6 +39,7 @@ public sealed class WorkflowViewModel : ObservableObject
         Parameters.Changed += Edited;
         Auth = new(services.Secrets, services.AuthRefresh, services.Environments, services.Translator, services.Clock, services.Logger);
         Auth.Changed += Edited;
+        Auth.OwnerFetch = () => FetchByHandAsync(Auth);
         Send = new AsyncCommand(RunAsync, () => !IsRunning);
         Save = new AsyncCommand(SaveAsync);
     }
@@ -541,6 +542,8 @@ public sealed class WorkflowViewModel : ObservableObject
             var used = step.Kind switch
             {
                 StepKind.Script => WorkflowCheck.VarsIn(_code.GetValueOrDefault(step.Script!, "")).Distinct(),
+                // A step that inherits uses the names in the workflow's auth too.
+                _ when step.Auth?.Kind == AuthKind.Inherit => step.Used.Union(Auth.Texts.SelectMany(WorkflowCheck.NamesIn)),
                 _ => step.Used,
             };
             step.UsedNames = [.. used.Where(declared.Contains).Order(StringComparer.Ordinal)];
@@ -576,7 +579,24 @@ public sealed class WorkflowViewModel : ObservableObject
     WorkflowStepViewModel Follow(WorkflowStepViewModel step)
     {
         step.Changed += Edited;
+        if (step.Auth is { } auth)
+        {
+            auth.OwnerFetch = () => FetchByHandAsync(auth);
+        }
         return step;
+    }
+
+    // A token fetched by hand is saved with the secrets, as a run does, so it is no edit.
+    async Task FetchByHandAsync(AuthViewModel auth)
+    {
+        if (await auth.FetchTokenAsync() && !_closed)
+        {
+            await SaveSecretsAsync(CancellationToken.None);
+            if (IsDirty && !HasUnsavedChanges())
+            {
+                IsDirty = false;
+            }
+        }
     }
 
     // A step that is gone must not go on fetching a token.

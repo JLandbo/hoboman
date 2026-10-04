@@ -37,6 +37,8 @@ public sealed class WorkflowStepViewModel : ObservableObject
         Retries = step.Retry is not null;
         RetryUntil = step.Retry?.Until ?? "";
         RetryEquals = step.Retry?.Value ?? "";
+        RetryStopIf = step.Retry?.StopIf ?? "";
+        RetryStopEquals = step.Retry?.StopEquals ?? "";
         var retry = step.Retry ?? new();
         RetryTimes = retry.Times;
         RetryWaitSeconds = retry.WaitSeconds;
@@ -144,6 +146,10 @@ public sealed class WorkflowStepViewModel : ObservableObject
 
     public string RetryEquals { get; set => Edit(ref field, value); } = "";
 
+    public string RetryStopIf { get; set => Edit(ref field, value); } = "";
+
+    public string RetryStopEquals { get; set => Edit(ref field, value); } = "";
+
     public int RetryTimes { get; set => Edit(ref field, value); }
 
     public int RetryWaitSeconds { get; set => Edit(ref field, value); }
@@ -188,12 +194,7 @@ public sealed class WorkflowStepViewModel : ObservableObject
     internal IReadOnlySet<string> Used => Request is { } request ? WorkflowCheck.NamesUsedBy(request.ToRequest(), AuthTexts) : new HashSet<string>();
 
     // The auth is filled in like the rest of the request, so its user name and secret can use names too.
-    IEnumerable<string> AuthTexts => Auth?.Kind switch
-    {
-        AuthKind.Basic => [Auth.UserName, Auth.Password],
-        AuthKind.Bearer => [Auth.Token],
-        _ => [],
-    };
+    IEnumerable<string> AuthTexts => Auth?.Texts ?? [];
 
     // The workflow's own names the step uses, and the variables it saves, shown with the step in the list.
     public IReadOnlyList<string> UsedNames { get; internal set => Set(ref field, value); } = [];
@@ -243,12 +244,22 @@ public sealed class WorkflowStepViewModel : ObservableObject
         Script = Script,
         DelaySeconds = IsDelay ? DelaySeconds : _step.DelaySeconds,
         Retry = !IsRequest ? _step.Retry
-            : Retries ? new() { Until = RetryUntil.Trim() is { Length: > 0 } until ? until : null, Value = RetryEquals.Trim() is { Length: > 0 } value ? value : null, Times = RetryTimes, WaitSeconds = RetryWaitSeconds }
+            : Retries ? new()
+            {
+                Until = Blank(RetryUntil),
+                Value = Blank(RetryEquals),
+                StopIf = Blank(RetryStopIf),
+                StopEquals = Blank(RetryStopEquals),
+                Times = RetryTimes,
+                WaitSeconds = RetryWaitSeconds,
+            }
             : null,
         Saves = [.. Saves.ToList().Select(save => new WorkflowSave(save.Name, save.Value))],
     };
 
     void OnChanged() => Changed?.Invoke();
+
+    static string? Blank(string text) => text.Trim() is { Length: > 0 } trimmed ? trimmed : null;
 
     void Edit<T>(ref T field, T value, [CallerMemberName] string? name = null)
     {
@@ -336,6 +347,7 @@ public sealed class WorkflowStepViewModel : ObservableObject
     {
         { MissingSave: { } path } => _translator.Format("Workflow.MissingSave", path),
         { NotReady: true } => _translator.Format("Workflow.NotReady", finished.Attempts),
+        { Stopped: var (path, value) } => _translator.Format("Workflow.Stopped", path, value),
         { Problem: RequestProblemKind.Cancelled } => _translator.Of("RequestProblem.Cancelled"),
         { Problem: RequestProblemKind.TimedOut } => _translator.Of("RequestProblem.TimedOut"),
         { Problem: RequestProblemKind.MissingOAuthToken } when Auth?.Kind == AuthKind.Inherit => _translator.Of("Workflow.MissingOAuthToken"),

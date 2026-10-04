@@ -251,6 +251,8 @@
     "Workflow.Auth": "Auth",
     "Workflow.Retry": "Retry until the answer is ready",
     "Workflow.RetryWhen": "Ready when",
+    "Workflow.RetryStop": "Stop if",
+    "Workflow.Stopped": "Stopped, as {0} was {1}.",
     "Workflow.RetryTimes": "At most",
     "Workflow.RetryWait": "attempts, with",
     "Workflow.RetrySeconds": "seconds between",
@@ -298,13 +300,13 @@
     "WorkflowProblem.MissingParameter": "The parameter {0} has no value.",
     "WorkflowProblem.MissingUrl": "The step has no URL.",
     "WorkflowProblem.NotAVariable": "{0} is not a variable, so nothing can be saved in it.",
-    "WorkflowProblem.InvalidSource": "Nothing can be saved from \"{0}\". Use $.path, $, header:Name or status.",
+    "WorkflowProblem.InvalidSource": "Nothing can be saved from \"{0}\". Use $.path, $, header:Name, status or a JSON value such as \"text\" or 1.",
     "WorkflowProblem.UsedBeforeSaved": "{0} is used before an earlier step has saved a value into it.",
     "WorkflowProblem.UnknownName": "{0} is neither in the workflow nor in the chosen environment.",
     "WorkflowProblem.ScriptNotFound": "The script {0} is not in the workflow's folder.",
     "WorkflowProblem.InvalidScript": "Syntax error in the script: {0}",
     "WorkflowProblem.MixedStep": "The step has more than one of a request, a script and a wait. A step can only be one of them.",
     "WorkflowProblem.InvalidDelay": "A wait step must wait between 1 and {0} seconds and cannot save anything.",
-    "WorkflowProblem.InvalidRetry": "Retry works only on a request and needs both Ready when and a value or neither, a valid path, 1-{0} attempts and 0-{1} seconds between."
+    "WorkflowProblem.InvalidRetry": "Retry works only on a request and needs paths and values in pairs, valid paths, 1-{0} attempts and 0-{1} seconds between."
   }
 }

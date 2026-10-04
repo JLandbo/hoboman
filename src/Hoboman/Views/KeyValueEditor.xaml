@@ -4,19 +4,57 @@
              xmlns:local="clr-namespace:Hoboman.Views"
              xmlns:controls="clr-namespace:Hoboman.Controls"
              xmlns:viewModels="clr-namespace:Hoboman.ViewModels">
+    <UserControl.Resources>
+        <!-- The line between the name and the value, dragged to move it in every row at once. -->
+        <Style x:Key="Divider" TargetType="Thumb">
+            <Setter Property="Grid.Column" Value="2" />
+            <Setter Property="Width" Value="7" />
+            <Setter Property="Margin" Value="-4,0,0,0" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="Cursor" Value="SizeWE" />
+            <EventSetter Event="DragDelta" Handler="Divider_DragDelta" />
+            <EventSetter Event="DragCompleted" Handler="Divider_DragCompleted" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border Background="Transparent">
+                            <Rectangle x:Name="Line" Width="1" Fill="{DynamicResource BoxEdge}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Line" Property="Fill" Value="{DynamicResource Muted}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
     <Border CornerRadius="8" Background="{DynamicResource Box}" BorderBrush="{DynamicResource BoxEdge}" BorderThickness="1">
         <DockPanel>
-            <Grid DockPanel.Dock="Top" Margin="8,6,8,4">
+            <Grid DockPanel.Dock="Top">
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Setter Property="Margin" Value="8,6,8,4" />
+                        <Style.Triggers>
+                            <!-- The rows lose the scrollbar's 6 px when it shows, so the header gives up the same and the dividers stay in line. -->
+                            <DataTrigger Binding="{Binding ComputedVerticalScrollBarVisibility, ElementName=RowsScroller}" Value="Visible">
+                                <Setter Property="Margin" Value="8,6,14,4" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="30" />
-                    <ColumnDefinition />
-                    <ColumnDefinition />
+                    <ColumnDefinition Width="{Binding NameWidth, RelativeSource={RelativeSource AncestorType=local:KeyValueEditor}}" />
+                    <ColumnDefinition Width="{Binding ValueWidth, RelativeSource={RelativeSource AncestorType=local:KeyValueEditor}}" />
                     <ColumnDefinition Width="28" />
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="1" Text="{Binding NameHeader, RelativeSource={RelativeSource AncestorType=local:KeyValueEditor}}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="4,0" />
                 <TextBlock Grid.Column="2" Text="{Binding ValueHeader, RelativeSource={RelativeSource AncestorType=local:KeyValueEditor}}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="4,0" />
+                <Thumb Style="{StaticResource Divider}" />
             </Grid>
-            <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+            <ScrollViewer x:Name="RowsScroller" VerticalScrollBarVisibility="Auto" Focusable="False">
                 <ItemsControl ItemsSource="{Binding Rows}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate DataType="{x:Type viewModels:KeyValueRowViewModel}">
@@ -24,16 +62,19 @@
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="30" />
-                                        <ColumnDefinition />
-                                        <ColumnDefinition />
+                                        <ColumnDefinition Width="{Binding NameWidth, RelativeSource={RelativeSource AncestorType=local:KeyValueEditor}}" />
+                                        <ColumnDefinition Width="{Binding ValueWidth, RelativeSource={RelativeSource AncestorType=local:KeyValueEditor}}" />
                                         <ColumnDefinition Width="28" />
                                     </Grid.ColumnDefinitions>
-                                    <CheckBox x:Name="Enabled" IsChecked="{Binding Enabled}" VerticalAlignment="Center" />
+                                    <!-- Everything stays at the row's first line when a long value makes the row taller. -->
+                                    <CheckBox x:Name="Enabled" IsChecked="{Binding Enabled}" VerticalAlignment="Top" Margin="0,5,0,0" />
                                     <TextBlock x:Name="Placeholder" Grid.Column="1" Text="{DynamicResource Table.Add}" Foreground="{DynamicResource Muted}" FontSize="12"
                                                Margin="6,0" VerticalAlignment="Center" Visibility="Collapsed" />
-                                    <controls:VariableTextBox x:Name="NameBox" Grid.Column="1" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" Padding="4,6" />
-                                    <controls:VariableTextBox x:Name="ValueBox" Grid.Column="2" Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" Padding="4,6" />
-                                    <Button x:Name="Remove" Grid.Column="3" Content="&#xE711;" ToolTip="{DynamicResource Table.Remove}" Click="Remove_Click" Style="{StaticResource CloseButton}" VerticalAlignment="Center" />
+                                    <!-- A long name or value wraps, so the row grows instead of hiding the rest. -->
+                                    <controls:VariableTextBox x:Name="NameBox" Grid.Column="1" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" VerticalContentAlignment="Top" Background="Transparent" Padding="4,6" />
+                                    <controls:VariableTextBox x:Name="ValueBox" Grid.Column="2" Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" VerticalContentAlignment="Top" Background="Transparent" Padding="4,6" />
+                                    <Thumb Style="{StaticResource Divider}" />
+                                    <Button x:Name="Remove" Grid.Column="3" Content="&#xE711;" ToolTip="{DynamicResource Table.Remove}" Click="Remove_Click" Style="{StaticResource CloseButton}" VerticalAlignment="Top" />
                                 </Grid>
                             </Border>
                             <DataTemplate.Triggers>

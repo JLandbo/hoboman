@@ -118,6 +118,10 @@ public sealed class WorkflowRunner(IRequestSender sender, AppFolder folder, Time
                 try
                 {
                     var response = await SendAsync(step.Request!, used);
+                    if (retry.StopIf is { } stopIf && RunValues.ValueOf(stopIf, response) is { } stop && string.Equals(RunValues.TextOf(stop), retry.StopEquals, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return StepFinished.StoppedOf(index, response, stopIf, RunValues.TextOf(stop)) with { Attempts = attempt };
+                    }
                     var value = retry.Until is { } until && RunValues.ValueOf(until, response) is { } found ? RunValues.TextOf(found) : null;
                     var finished = !response.IsSuccess ? StepFinished.Of(index, response, null, null)
                         : retry.Until is not null && !string.Equals(value, retry.Value, StringComparison.OrdinalIgnoreCase) ? StepFinished.NotReadyOf(index, response, attempt)

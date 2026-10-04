@@ -28,6 +28,9 @@ sealed class Base64Margin(MarkedEditor editor) : AbstractMargin
 
     public Base64Mark? MarkAt(int line) => editor.IsReadOnly ? FirstOn(editor.Marks, line) : _byLine.GetValueOrDefault(line);
 
+    // The marks that have a line of their own to be shown on.
+    public IEnumerable<Base64Mark> Shown => editor.IsReadOnly ? editor.Marks.Where((mark, index) => index == 0 || editor.Marks[index - 1].Line != mark.Line) : _byLine.Values;
+
     public void Refresh()
     {
         _anchored.Clear();
@@ -47,7 +50,7 @@ sealed class Base64Margin(MarkedEditor editor) : AbstractMargin
         Redraw();
     }
 
-    // The editor's own layer with what the lines say is drawn again too.
+    // The column with what the lines say is drawn again too.
     public event Action? Redrawn;
 
     public void Redraw()

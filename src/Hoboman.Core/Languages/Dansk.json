@@ -251,6 +251,8 @@
     "Workflow.Auth": "Auth",
     "Workflow.Retry": "Gentag indtil svaret er klar",
     "Workflow.RetryWhen": "Klar når",
+    "Workflow.RetryStop": "Stop hvis",
+    "Workflow.Stopped": "Stoppede, fordi {0} var {1}.",
     "Workflow.RetryTimes": "Højst",
     "Workflow.RetryWait": "forsøg, med",
     "Workflow.RetrySeconds": "sekunder imellem",
@@ -298,13 +300,13 @@
     "WorkflowProblem.MissingParameter": "Parameteren {0} mangler en værdi.",
     "WorkflowProblem.MissingUrl": "Trinnet har ingen URL.",
     "WorkflowProblem.NotAVariable": "{0} er ikke en variabel, så der kan ikke gemmes i den.",
-    "WorkflowProblem.InvalidSource": "\"{0}\" kan der ikke gemmes fra. Brug $.sti, $, header:Navn eller status.",
+    "WorkflowProblem.InvalidSource": "\"{0}\" kan der ikke gemmes fra. Brug $.sti, $, header:Navn, status eller en JSON-værdi som \"tekst\" eller 1.",
     "WorkflowProblem.UsedBeforeSaved": "{0} bruges, før et tidligere trin har gemt en værdi i det.",
     "WorkflowProblem.UnknownName": "{0} findes hverken i workflowet eller i det valgte environment.",
     "WorkflowProblem.ScriptNotFound": "Scriptet {0} findes ikke i workflowets mappe.",
     "WorkflowProblem.InvalidScript": "Syntaksfejl i scriptet: {0}",
     "WorkflowProblem.MixedStep": "Trinnet har mere end én af request, script og ventetid. Et trin kan kun være én af delene.",
     "WorkflowProblem.InvalidDelay": "Et vente-trin skal vente mellem 1 og {0} sekunder og kan ikke gemme noget.",
-    "WorkflowProblem.InvalidRetry": "Gentag virker kun på en request og skal have både Klar når og en værdi eller ingen af dem, en gyldig sti, 1-{0} forsøg og 0-{1} sekunder imellem."
+    "WorkflowProblem.InvalidRetry": "Gentag virker kun på en request og skal have sti og værdi i par, gyldige stier, 1-{0} forsøg og 0-{1} sekunder imellem."
   }
 }

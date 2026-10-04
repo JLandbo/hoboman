@@ -281,12 +281,14 @@ public sealed class WorkflowEditorTests
         var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request() }] }, harness);
         var step = workflow.Steps.Single();
         (step.Retries, step.RetryUntil, step.RetryEquals, step.RetryTimes, step.RetryWaitSeconds) = (true, " $.result.status ", "succeeded", 60, 5);
+        (step.RetryStopIf, step.RetryStopEquals) = (" $.result.status ", "failed");
 
         // Act
         await workflow.SaveAsync();
 
         // Assert
-        Assert.Equal(new WorkflowRetry { Until = "$.result.status", Value = "succeeded", Times = 60, WaitSeconds = 5 }, (await harness.WorkflowLibrary.LoadAsync("Flow", Cancellation))!.Steps.Single().Retry);
+        var expected = new WorkflowRetry { Until = "$.result.status", Value = "succeeded", StopIf = "$.result.status", StopEquals = "failed", Times = 60, WaitSeconds = 5 };
+        Assert.Equal(expected, (await harness.WorkflowLibrary.LoadAsync("Flow", Cancellation))!.Steps.Single().Retry);
     }
 
     [Fact]
@@ -332,6 +334,37 @@ public sealed class WorkflowEditorTests
 
         // Assert
         Assert.Equal(harness.Translator.Format("Workflow.NotReady", 2), workflow.Steps.Single().Error);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAStepStops_ThenTheStepTellsWhy()
+    {
+        // Arrange
+        using var harness = new Harness(send: () => Task.FromResult(Ok("""{"status":"failed"}""")));
+        harness.Translator.Use(Translation.Danish);
+        var retry = new WorkflowRetry { StopIf = "$.status", StopEquals = "failed", Times = 2, WaitSeconds = 0 };
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request(), Retry = retry }] }, harness);
+
+        // Act
+        await workflow.RunAsync();
+
+        // Assert
+        Assert.Equal(harness.Translator.Format("Workflow.Stopped", "$.status", "failed"), workflow.Steps.Single().Error);
+    }
+
+    [Fact]
+    public async Task OpenWorkflowAsync_WhenAStepInheritsAuthThatUsesNames_ThenTheStepShowsThemAsUsed()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var step = new WorkflowStep { Request = Request() with { Auth = new(AuthKind.Inherit) } };
+        var flow = new Workflow { Id = Guid.NewGuid(), Auth = new(AuthKind.Basic, "{{user}}"), Parameters = [new("user"), new("other")], Steps = [step] };
+
+        // Act
+        var workflow = await OpenAsync(harness.Main(), "Flow", flow, harness);
+
+        // Assert
+        Assert.Equal(["user"], workflow.Steps.Single().UsedNames);
     }
 
     [Fact]
@@ -417,6 +450,26 @@ public sealed class WorkflowEditorTests
 
         // Assert
         Assert.Equal(AuthKind.Inherit, (await harness.WorkflowLibrary.LoadAsync("Flow", Cancellation))!.Steps.Single().Request!.Auth!.Kind);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FetchToken_WhenFetchedByHand_ThenSavesItAndIsNoEdit(bool onStep)
+    {
+        // Arrange
+        using var harness = new Harness();
+        var (id, stepId) = (Guid.NewGuid(), Guid.NewGuid());
+        var step = new WorkflowStep { Request = Request() with { Id = stepId, Auth = onStep ? ClientCredentials : new(AuthKind.Inherit) } };
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = id, Auth = onStep ? null : ClientCredentials, Steps = [step] }, harness);
+        var auth = onStep ? workflow.Steps.Single().Auth! : workflow.Auth;
+
+        // Act
+        await auth.OwnerFetch!();
+
+        // Assert
+        var saved = await harness.Secrets.OfEachEnvironmentAsync(onStep ? stepId : id, SecretKind.OAuthToken, Cancellation);
+        Assert.Equal((false, 1), (workflow.IsDirty, saved.Count));
     }
 
     [Fact]

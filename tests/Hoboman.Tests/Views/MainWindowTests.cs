@@ -350,6 +350,30 @@ public sealed class MainWindowTests
     }
 
     [Fact]
+    public async Task HistoryView_WhenACallIsShown_ThenItsStatusSitsInTheMiddleOfTheRow()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.History().AddAsync(new(DateTimeOffset.Now, HistorySource.App, "dev.local/users", ApiRequest.New(), Response: new(200, "OK", 5, 2, [], "{}")), Cancellation);
+        await Ui.RunAsync(async () =>
+        {
+            var main = harness.Main();
+            await main.LoadAsync();
+
+            // Act
+            main.Section = SidebarSection.History;
+            var window = await Ui.ShowAsync(harness, main);
+            await Ui.UntilAsync(() => Ui.Descendants<Border>(window).Any(border => border.Name == "Status" && border.IsVisible));
+
+            // Assert
+            var status = Ui.Descendants<Border>(window).Single(border => border.Name == "Status");
+            var row = (FrameworkElement)status.Parent;
+            Assert.True(status.ActualHeight < row.ActualHeight);
+            Assert.Equal((row.ActualHeight - status.ActualHeight) / 2, status.TranslatePoint(new(0, 0), row).Y, 1);
+        });
+    }
+
+    [Fact]
     public async Task ScriptTab_WhenTheWheelTurnsOverALongScript_ThenScrollsTheScript()
     {
         // Arrange

@@ -84,8 +84,8 @@
             </StackPanel>
 
             <Grid>
-                <local:KeyValueEditor DataContext="{Binding Editor.Query}" Visibility="{Binding IsChecked, ElementName=ParamsSection, Converter={StaticResource VisibleWhenTrue}}" />
-                <local:KeyValueEditor DataContext="{Binding Editor.Headers}" Visibility="{Binding IsChecked, ElementName=HeadersSection, Converter={StaticResource VisibleWhenTrue}}" />
+                <local:KeyValueEditor DataContext="{Binding Editor.Query}" local:SplitMemory.Columns="Params" Visibility="{Binding IsChecked, ElementName=ParamsSection, Converter={StaticResource VisibleWhenTrue}}" />
+                <local:KeyValueEditor DataContext="{Binding Editor.Headers}" local:SplitMemory.Columns="Headers" Visibility="{Binding IsChecked, ElementName=HeadersSection, Converter={StaticResource VisibleWhenTrue}}" />
 
                 <local:RequestBodyEditor DataContext="{Binding Editor}" Visibility="{Binding IsChecked, ElementName=BodySection, Converter={StaticResource VisibleWhenTrue}}" />
 

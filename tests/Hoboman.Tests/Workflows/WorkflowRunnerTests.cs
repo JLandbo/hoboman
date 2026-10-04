@@ -143,6 +143,22 @@ public sealed class WorkflowRunnerTests : IDisposable
         Assert.Equal((RunOutcome.Failed, "The answer was not ready after 3 attempts.", 2), (outcome, Single<StepFinished>().Error, _events.OfType<StepRetrying>().Count()));
     }
 
+    [Theory]
+    [InlineData(200)]
+    [InlineData(500)]
+    public async Task RunAsync_WhenTheAnswerTellsItFailed_ThenStopsAtOnce(int status)
+    {
+        // Arrange
+        var retry = new WorkflowRetry { Until = "$.status", Value = "succeeded", StopIf = "$.status", StopEquals = "failed", Times = 5, WaitSeconds = 0 };
+        var failed = new ApiResponse(status, "", 1, 0, [], """{"status":"Failed"}""");
+
+        // Act
+        var outcome = await RunAsync(Retrying(retry), Answering(Ok("""{"status":"processing"}"""), failed, Ok("""{"status":"succeeded"}""")));
+
+        // Assert
+        Assert.Equal((RunOutcome.Failed, 2, "Stopped as $.status was Failed."), (outcome, Single<StepFinished>().Attempts, Single<StepFinished>().Error));
+    }
+
     [Fact]
     public async Task RunAsync_WhenASaveIsNotThereYet_ThenTriesAgainUntilItIs()
     {
@@ -470,6 +486,24 @@ public sealed class WorkflowRunnerTests : IDisposable
 
         // Assert
         Assert.Equal("""{"location":"/imports/901","status":200,"text":"Oprettet"}""", JsonSerializer.Serialize(Single<StepFinished>().Saved));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenASaveIsAJsonValue_ThenSavesItAsIs()
+    {
+        // Arrange
+        var workflow = new Workflow
+        {
+            Id = Guid.NewGuid(),
+            Variables = [new("text"), new("number")],
+            Steps = [new() { Request = Request("https://dev.local/import"), Saves = [new("text", "\"1\""), new("number", "2")] }],
+        };
+
+        // Act
+        await RunAsync(workflow, Answering(Ok("{}")));
+
+        // Assert
+        Assert.Equal("""{"text":"1","number":2}""", JsonSerializer.Serialize(Single<StepFinished>().Saved));
     }
 
     [Fact]

@@ -63,7 +63,10 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
 
     public string? TokenProblem { get; private set => Set(ref field, value); }
 
-    public AsyncCommand FetchToken => field ??= new(FetchTokenAsync);
+    // An owner that keeps secrets fetches the token itself, so it is saved as when sending or running and is no edit.
+    public Func<Task>? OwnerFetch { get; set; }
+
+    public AsyncCommand FetchToken => field ??= new(() => OwnerFetch?.Invoke() ?? FetchTokenAsync());
 
     public static string HeaderOf(AuthKind? kind, Translator translator) => $"{translator.Of("Editor.Auth")} ({kind switch
     {
@@ -73,6 +76,14 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
         AuthKind.OAuth2 => "OAuth",
         _ => "…",
     }})";
+
+    // What is filled in like the rest of a request, so its user name and secret can use names too.
+    public IEnumerable<string> Texts => Kind switch
+    {
+        AuthKind.Basic => [UserName, Password],
+        AuthKind.Bearer => [Token],
+        _ => [],
+    };
 
     public bool HasUnsavedSecrets =>
         Password != _savedPassword || Token != _savedToken || ClientSecret != _savedClientSecret || _tokens.Any(token => _savedTokens.GetValueOrDefault(token.Key) != token.Value);

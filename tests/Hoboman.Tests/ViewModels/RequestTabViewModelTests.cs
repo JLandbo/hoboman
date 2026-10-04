@@ -400,6 +400,21 @@ public sealed class RequestTabViewModelTests
     }
 
     [Fact]
+    public async Task FetchToken_WhenFetchedByHandForASavedRequest_ThenSavesItAndIsNoEdit()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync("Ping", ApiRequest.New() with { Url = "https://dev.local", Auth = new(AuthKind.OAuth2) }, Cancellation);
+        var tab = harness.Tab(await harness.Library.LoadAsync("Ping", Cancellation), "Ping");
+
+        // Act
+        await tab.Auth.OwnerFetch!();
+
+        // Assert
+        Assert.Equal((false, 1), (tab.IsDirty, (await harness.Secrets.OfEachEnvironmentAsync(tab.Id, SecretKind.OAuthToken, Cancellation)).Count));
+    }
+
+    [Fact]
     public async Task SendAsync_WhenAnotherEnvironmentIsChosenWhileSaving_ThenSendsWithTheOneChosenAtSend()
     {
         // Arrange

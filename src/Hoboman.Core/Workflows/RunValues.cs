@@ -37,6 +37,9 @@ public sealed class RunValues
     // "$" is the whole body, also when it is not JSON, a path is a value in it, "header:Name" the first value of a header and "status" the status code.
     public static bool IsSource(string from) => from == _status || from.StartsWith(_header, StringComparison.Ordinal) && from.Length > _header.Length || JsonPath.CanSelect(from);
 
+    // A save can also be a JSON value of its own, saved as it is, so "1" is a text and 1 a number.
+    public static bool CanSave(string from) => IsSource(from) || FixedValueOf(from) is not null;
+
     // Text goes in as it is, and any other value as compact JSON, so an object put in a body without quotes is JSON there too.
     public static string TextOf(JsonElement value) => value.ValueKind == JsonValueKind.String ? value.GetString()! : JsonSerializer.Serialize(value, CompactJson.Options);
 
@@ -67,7 +70,7 @@ public sealed class RunValues
             var saved = new Dictionary<string, JsonElement>();
             foreach (var save in saves)
             {
-                if (ValueOf(save.From, response, body) is not { } value)
+                if ((IsSource(save.From) ? ValueOf(save.From, response, body) : FixedValueOf(save.From)) is not { } value)
                 {
                     missing = save.From;
                     return null;
@@ -109,6 +112,18 @@ public sealed class RunValues
             return from == JsonPath.Root ? JsonSerializer.SerializeToElement(response.Body) : null;
         }
         return JsonPath.TrySelect(body.Value.RootElement, from, out var value) ? value.Clone() : null;
+    }
+
+    static JsonElement? FixedValueOf(string from)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<JsonElement>(from);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     static JsonDocument? DocumentOf(string text)

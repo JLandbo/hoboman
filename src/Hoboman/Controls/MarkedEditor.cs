@@ -1,7 +1,8 @@
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
 using Hoboman.ViewModels;
 using ICSharpCode.AvalonEdit;
-using ICSharpCode.AvalonEdit.Rendering;
 
 namespace Hoboman.Controls;
 
@@ -19,6 +20,7 @@ public abstract class MarkedEditor : TextEditor
         new(true, (editor, _) => ((MarkedEditor)editor)._margin.Redraw()));
 
     readonly Base64Margin _margin;
+    readonly Base64Highlighter _highlighter;
     readonly BodyFolding _folding;
 
     protected MarkedEditor()
@@ -26,13 +28,10 @@ public abstract class MarkedEditor : TextEditor
         Colorings.Theme(this);
         _margin = new(this);
         TextArea.LeftMargins.Insert(0, _margin);
-        TextArea.TextView.BackgroundRenderers.Add(new Base64Highlighter(this, _margin, labels: false));
-        var labels = new Base64LabelLayer(TextArea.TextView, new Base64Highlighter(this, _margin, labels: true)) { IsHitTestVisible = false };
-        TextArea.TextView.InsertLayer(labels, KnownLayer.Caret, LayerInsertionPosition.Below);
-        TextArea.TextView.VisualLinesChanged += (_, _) => labels.InvalidateVisual();
-        TextArea.TextView.ScrollOffsetChanged += (_, _) => labels.InvalidateVisual();
-        TextArea.TextView.SizeChanged += (_, _) => labels.InvalidateVisual();
-        _margin.Redrawn += labels.InvalidateVisual;
+        _highlighter = new(this, _margin);
+        TextArea.TextView.BackgroundRenderers.Add(_highlighter);
+        // The text area's own template with a column on the right for what the marked lines say, so the text gets narrower instead of covered.
+        TextArea.Template = (ControlTemplate)FindResource("MarkedTextArea");
         _folding = new(this);
     }
 
@@ -61,6 +60,19 @@ public abstract class MarkedEditor : TextEditor
     internal bool ShowsMarks => Coloring == BodyFormat.Json;
 
     internal void Toggle(string path) => MarkToggled?.Invoke(this, path);
+
+    internal Base64Mark? MarkAt(int line) => _margin.MarkAt(line);
+
+    internal IEnumerable<Base64Mark> ShownMarks => _margin.Shown;
+
+    internal Brush? TintOf(Base64Mark mark) => _highlighter.TintOf(mark);
+
+    // The marks changed or are drawn otherwise, so the column with what they say may need another width.
+    internal event Action? MarksRedrawn
+    {
+        add => _margin.Redrawn += value;
+        remove => _margin.Redrawn -= value;
+    }
 
     void Recolor()
     {

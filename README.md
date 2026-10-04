@@ -93,7 +93,7 @@ Vælg **Workflows** i sidebaren. Hovedområdet viser så det åbne workflow i st
 - **Gentag indtil svaret er klar** på et request-trin sender det igen, til svaret er klar: 2xx og med det, trinnet gemmer, og hvis du vil, med en værdi, fx `$.result.status`, der er det, du venter på. Antal forsøg og pausen imellem vælger du selv.
 - **Parametre** gives ved start. Har en parameter ingen standardværdi, spørger appen om den, når du kører.
 - Trinnet har faner: Params, Headers, Body, Auth, Gentag og Gemmer, og for et script Kode og Gemmer. Navnet skrives i trinnets titel.
-- I fanen **Gemmer** vælger du, hvad der gemmes i en variabel efter et 2xx-svar: `$.sti` i JSON-svaret, `$` for hele bodyen, `header:Navn` eller `status`. Linjen i svaret, der blev gemt fra, mærkes med "gemt i …", og de næste trin bruger værdien som `{{navn}}`.
+- I fanen **Gemmer** vælger du, hvad der gemmes i en variabel efter et 2xx-svar: `$.sti` i JSON-svaret, `$` for hele bodyen, `header:Navn`, `status` eller en fast JSON-værdi som `"tekst"` eller `1`. Linjen i svaret, der blev gemt fra, mærkes med "gemt i …", og de næste trin bruger værdien som `{{navn}}`.
 - Hvert trin viser de navne, det bruger, og dem, det gemmer, så du kan se, hvordan værdierne går fra trin til trin.
 - **Kør** (`Ctrl+Enter`) tjekker først, at alle `{{navne}}` har en værdi, og kører så trinene i rækkefølge. Fejler et trin, springes resten over. Miljøets variabler kan også bruges, men workflowets egne navne vinder.
 - Kald fra et workflow gemmes ikke i **Historik**, men som en kørsel i `runs\`. Det samme workflow kan køres med `hoboman-cli run`; se [CLI.md](CLI.md).

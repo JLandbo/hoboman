@@ -152,7 +152,7 @@
                             </StackPanel>
                         </Border>
                     </DockPanel>
-                    <local:KeyValueEditor DockPanel.Dock="Top" DataContext="{Binding Parameters}" ValueHeader="{DynamicResource Workflow.Default}" CanDisable="False" MaxHeight="180" Margin="0,0,0,12"
+                    <local:KeyValueEditor DockPanel.Dock="Top" DataContext="{Binding Parameters}" ValueHeader="{DynamicResource Workflow.Default}" CanDisable="False" MaxHeight="180" Margin="0,0,0,12" local:SplitMemory.Columns="Parameters"
                                           Visibility="{Binding IsChecked, ElementName=ParametersChoice, Converter={StaticResource VisibleWhenTrue}}">
                         <local:KeyValueEditor.Resources>
                             <!-- A default is a literal JSON value, not a reference to other names. -->
@@ -480,8 +480,8 @@
                                         </Style.Triggers>
                                     </Style>
                                 </Grid.Style>
-                                <local:KeyValueEditor DataContext="{Binding Request.Query}" Visibility="{Binding IsChecked, ElementName=StepParamsSection, Converter={StaticResource VisibleWhenTrue}}" />
-                                <local:KeyValueEditor DataContext="{Binding Request.Headers}" Visibility="{Binding IsChecked, ElementName=StepHeadersSection, Converter={StaticResource VisibleWhenTrue}}" />
+                                <local:KeyValueEditor DataContext="{Binding Request.Query}" local:SplitMemory.Columns="Params" Visibility="{Binding IsChecked, ElementName=StepParamsSection, Converter={StaticResource VisibleWhenTrue}}" />
+                                <local:KeyValueEditor DataContext="{Binding Request.Headers}" local:SplitMemory.Columns="Headers" Visibility="{Binding IsChecked, ElementName=StepHeadersSection, Converter={StaticResource VisibleWhenTrue}}" />
                                 <local:RequestBodyEditor DataContext="{Binding Request}" Visibility="{Binding IsChecked, ElementName=StepBodySection, Converter={StaticResource VisibleWhenTrue}}" />
                                 <local:AuthEditor DataContext="{Binding Auth}" InheritsFromWorkflow="True" Visibility="{Binding IsChecked, ElementName=StepAuthSection, Converter={StaticResource VisibleWhenTrue}}" />
                                 <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False" Visibility="{Binding IsChecked, ElementName=StepRetrySection, Converter={StaticResource VisibleWhenTrue}}">
@@ -496,6 +496,16 @@
                                                 <TextBlock Text="&#x3D;" VerticalAlignment="Center" Margin="0,0,6,6" />
                                                 <Border CornerRadius="8" Background="{DynamicResource Input}" Width="140" Margin="0,0,0,6">
                                                     <TextBox Text="{Binding RetryEquals, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
+                                                </Border>
+                                            </WrapPanel>
+                                            <WrapPanel>
+                                                <TextBlock Text="{DynamicResource Workflow.RetryStop}" VerticalAlignment="Center" Margin="0,0,8,6" />
+                                                <Border CornerRadius="8" Background="{DynamicResource Input}" Width="200" Margin="0,0,6,6">
+                                                    <TextBox Text="{Binding RetryStopIf, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
+                                                </Border>
+                                                <TextBlock Text="&#x3D;" VerticalAlignment="Center" Margin="0,0,6,6" />
+                                                <Border CornerRadius="8" Background="{DynamicResource Input}" Width="140" Margin="0,0,0,6">
+                                                    <TextBox Text="{Binding RetryStopEquals, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
                                                 </Border>
                                             </WrapPanel>
                                             <WrapPanel>
@@ -517,7 +527,7 @@
                                 </Border>
                                 <DockPanel Visibility="{Binding IsChecked, ElementName=StepSavesSection, Converter={StaticResource VisibleWhenTrue}}">
                                     <!-- What a step saves is picked from its response, where the saved lines are marked. -->
-                                    <local:KeyValueEditor DataContext="{Binding Saves}" NameHeader="{DynamicResource Workflow.Variable}" ValueHeader="{DynamicResource Workflow.From}" CanDisable="False">
+                                    <local:KeyValueEditor DataContext="{Binding Saves}" local:SplitMemory.Columns="Saves" NameHeader="{DynamicResource Workflow.Variable}" ValueHeader="{DynamicResource Workflow.From}" CanDisable="False">
                                         <local:KeyValueEditor.Resources>
                                             <!-- Where to save from is a path such as $.id, not a reference to other names. -->
                                             <Style TargetType="controls:VariableTextBox" BasedOn="{StaticResource Cell}" />

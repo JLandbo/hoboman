@@ -61,7 +61,7 @@ public sealed partial class WorkflowCheck(WorkflowLibrary workflows, SecretStore
         foreach (var (index, step) in workflow.Steps.Index())
         {
             problems.AddRange(step.Saves.Where(save => !variableNames.Contains(save.Variable)).Select(save => new WorkflowProblem(WorkflowProblemKind.NotAVariable, index, save.Variable)));
-            problems.AddRange(step.Saves.Where(save => !RunValues.IsSource(save.From)).Select(save => new WorkflowProblem(WorkflowProblemKind.InvalidSource, index, save.From)));
+            problems.AddRange(step.Saves.Where(save => !RunValues.CanSave(save.From)).Select(save => new WorkflowProblem(WorkflowProblemKind.InvalidSource, index, save.From)));
             if (step.IsMixed)
             {
                 problems.Add(new(WorkflowProblemKind.MixedStep, index, ""));
@@ -114,6 +114,7 @@ public sealed partial class WorkflowCheck(WorkflowLibrary workflows, SecretStore
     // Only a call can give another answer the next time, so a script or a wait is not tried again.
     static bool IsValid(WorkflowRetry retry, StepKind kind) =>
         kind == StepKind.Request && (retry.Until is null) == (retry.Value is null) && (retry.Until is null || RunValues.IsSource(retry.Until))
+        && (retry.StopIf is null) == (retry.StopEquals is null) && (retry.StopIf is null || RunValues.IsSource(retry.StopIf))
         && retry.Times is >= 1 and <= MaxRetryTimes && retry.WaitSeconds is >= 0 and <= MaxDelaySeconds;
 
     public static bool IsValidName(string name) => name.Length > 0 && name.IndexOfAny(['{', '}']) < 0;

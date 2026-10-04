@@ -37,6 +37,7 @@ public sealed class RequestTabViewModel : ObservableObject
         OwnsId = historyName is null;
         Auth = new(services.Secrets, services.AuthRefresh, services.Environments, services.Translator, services.Clock, services.Logger);
         Auth.Changed += MarkDirty;
+        Auth.OwnerFetch = RefreshAuthAsync;
         // A login open in the browser belongs to this tab, so the next call from the history must not take its place.
         Auth.PropertyChanged += (_, e) =>
         {

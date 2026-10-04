@@ -106,6 +106,7 @@ public sealed class WorkflowCheckTests
     [Theory]
     [InlineData("$.status", null, 5, 0, false)]
     [InlineData("nope", "x", 5, 0, false)]
+    [InlineData("\"done\"", "done", 5, 0, false)]
     [InlineData(null, null, 0, 0, false)]
     [InlineData(null, null, 101, 0, false)]
     [InlineData(null, null, 5, 301, false)]
@@ -120,6 +121,19 @@ public sealed class WorkflowCheckTests
 
         // Assert
         Assert.Equal([new(WorkflowProblemKind.InvalidRetry, 0, until ?? "")], checkedWorkflow.Problems);
+    }
+
+    [Theory]
+    [InlineData("$.status", null)]
+    [InlineData(null, "failed")]
+    [InlineData("nope", "failed")]
+    public void Check_WhenAStopIsNotValid_ThenReportsIt(string? stopIf, string? stopEquals)
+    {
+        // Act
+        var checkedWorkflow = Check(OrderSync(new WorkflowStep { Request = Login, Retry = new() { StopIf = stopIf, StopEquals = stopEquals } }));
+
+        // Assert
+        Assert.Equal([new(WorkflowProblemKind.InvalidRetry, 0, "")], checkedWorkflow.Problems);
     }
 
     [Fact]
@@ -291,6 +305,20 @@ public sealed class WorkflowCheckTests
 
         // Assert
         Assert.Equal([new(WorkflowProblemKind.InvalidSource, 1, from)], checkedWorkflow.Problems);
+    }
+
+    [Theory]
+    [InlineData("\"1\"")]
+    [InlineData("2")]
+    [InlineData("null")]
+    [InlineData("""{"a":[true]}""")]
+    public void Check_WhenASaveIsAJsonValue_ThenAcceptsIt(string from)
+    {
+        // Act
+        var checkedWorkflow = Check(OrderSync(LoginStep, LoginStep with { Saves = [new("token", from)] }, OrderStep));
+
+        // Assert
+        Assert.Empty(checkedWorkflow.Problems);
     }
 
     [Theory]

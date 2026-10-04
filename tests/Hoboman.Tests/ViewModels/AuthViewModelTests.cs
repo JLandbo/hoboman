@@ -103,6 +103,26 @@ public sealed class AuthViewModelTests
     }
 
     [Fact]
+    public void FetchToken_WhenTheOwnerFetches_ThenLeavesItToTheOwner()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var auth = harness.Tab().Auth;
+        var asked = false;
+        auth.OwnerFetch = () =>
+        {
+            asked = true;
+            return Task.CompletedTask;
+        };
+
+        // Act
+        auth.FetchToken.Execute(null);
+
+        // Assert
+        Assert.Equal((true, null), (asked, harness.OAuth.Asked));
+    }
+
+    [Fact]
     public async Task FetchTokenAsync_WhenTheSecretsAreReloadedDuringTheLogin_ThenKeepsTheToken()
     {
         // Arrange
