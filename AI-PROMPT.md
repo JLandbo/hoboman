@@ -61,13 +61,13 @@ Et svar skrives som én JSON-linje på stdout, også ved 4xx og 5xx:
 
 ## Workflows
 
-Et workflow er en række trin, der hver sender sin egen request eller kører et script. Værdier fra et svar, fx et token, gemmes i variabler, som de næste trin bruger.
+Et workflow er en række trin, der hver sender sin egen request, kører et script eller venter et antal sekunder. Værdier fra et svar, fx et token, gemmes i variabler, som de næste trin bruger.
 
 **Find workflows og deres parametre.** Der er ingen `list`-kommando for workflows.
 - Hvert workflow er en mappe `workflows\<navn>\` med en `workflow.json`. Mappens navn er det, du giver til `run`.
 - Læs `parameters` i `workflow.json`. En parameter uden `default` er påkrævet og skal gives med `--param navn=værdi` eller `--params`.
 - `--param` giver altid tekst. Skal en værdi være et tal eller et objekt, så brug `--params` med et JSON-objekt.
-- Hvert trin har sin `request` (metode, URL, query, headers, body og auth) direkte i `workflow.json`. Hemmeligheder til auth ligger ikke i filen.
+- Hvert trin har sin `request` (metode, URL, query, headers, body og auth) direkte i `workflow.json`. Et trin med `"auth": { "kind": "Inherit" }` bruger workflowets fælles `auth`, ellers har det sin egen. Hemmeligheder til auth ligger ikke i filen.
 
 **Kør et workflow:**
 
@@ -90,7 +90,8 @@ Med parametre fra stdin:
 |---|---|
 | `run.started` | Første linje. `runId`, `workflowId`, `workflow`, `environment`, `runFile` (fuld sti til kørslens logfil) og `parameters` |
 | `step.started` | `index` (første trin er 0), `name` (trinnets navn), `method`, `address` |
-| `step.finished` | `outcome` (`Succeeded`/`Failed`), `status`, `reason`, `elapsedMs`, `size`, `error` (ved fejl), `saved` (gemte værdier), `headers`, `body` |
+| `step.finished` | `outcome` (`Succeeded`/`Failed`), `status`, `reason`, `elapsedMs`, `size`, `attempts` (ved `retry`), `error` (ved fejl), `saved` (gemte værdier), `headers`, `body` |
+| `step.retrying` | Et trin med `retry` fik et svar, der ikke var klar, og prøves igen: `index`, `attempt`, `status`, `value` eller `error`. Vent på `step.finished` |
 | `step.skipped` | Et trin, der ikke blev kørt, fordi et tidligere trin fejlede |
 | `step.cancelled` | Trinnet, der kørte, da kørslen blev afbrudt |
 | `run.finished` | Sidste linje. `outcome` (`Succeeded`/`Failed`/`Cancelled`), `elapsedMs`, `steps` (`index`, `outcome`, `status`) og `variables` (slutværdier) |
@@ -134,8 +135,8 @@ Ved `run` står de samme tekster som `error` i et trins `step.finished` (exitkod
 | `Saved request could not be loaded.` | Stien findes ikke. Kør `list`, og brug en sti derfra |
 | `Selected environment was not found.` | Miljøet findes ikke. Spørg brugeren om det rigtige navn |
 | `Environment settings could not be read.` | Bed brugeren åbne Hoboman og tjekke miljøerne |
-| `Fetch a new OAuth token in Hoboman before sending this request.` | Tokenet kræver login. Bed brugeren hente et nyt token i Hoboman (Auth-fanen) og prøv igen |
-| `Required authentication secret is missing.` | Bed brugeren udfylde auth på requesten, mappen eller workflow-trinnet i Hoboman |
+| `Fetch a new OAuth token in Hoboman before sending this request.` | Tokenet kunne ikke hentes. Ved authorization code kræver det login: bed brugeren hente et nyt token i Hoboman (Auth-fanen). Ved client credentials mangler client secret typisk: bed brugeren udfylde den under Auth på requesten, mappen, workflowet eller trinnet og gemme |
+| `Required authentication secret is missing.` | Bed brugeren udfylde auth på requesten, mappen, workflowet eller workflow-trinnet i Hoboman og gemme |
 | `Network request failed.` / `Request timed out.` | Serveren kunne ikke nås. Fortæl det, og prøv højst én gang til efter aftale |
 | `Invalid request URL.` / `Invalid request input.` | Tjek URL, headers og variabler |
 | `Input could not be read.` | En fil kunne ikke læses, typisk `@fil`, `--vars fil` eller `--params fil`. Tjek stien. En relativ sti læses fra den mappe, du står i |
@@ -154,10 +155,12 @@ Ved `run` står de samme tekster som `error` i et trins `step.finished` (exitkod
 | `UnknownParameter` | Fjern eller ret parameteren. Se `parameters` i `workflow.json` |
 | `UsedBeforeSaved` | Et trin bruger en variabel, før et tidligere trin har gemt den. Workflowet skal rettes i Hoboman |
 | `UnknownName` | Navnet findes hverken i workflowet eller i det valgte miljø. Tjek, at det rigtige miljø er valgt (`--env`). Ellers skal workflowet eller miljøet rettes i Hoboman |
-| `MissingId`, `MissingUrl`, `InvalidName`, `DuplicateName`, `NotAVariable`, `InvalidSource` | Workflowet er sat forkert op. Bed brugeren rette det i Hoboman |
+| `MissingId`, `MissingUrl`, `InvalidName`, `DuplicateName`, `NotAVariable`, `InvalidSource`, `MixedStep`, `InvalidDelay`, `InvalidRetry` | Workflowet er sat forkert op. Bed brugeren rette det i Hoboman |
 | `ScriptNotFound`, `InvalidScript` | Et script-trins `.js`-fil mangler eller har en syntaksfejl (`detail` viser fil og linje). Bed brugeren rette den |
 
 Et trin, hvor en værdi i `saves` mangler i svaret, fejler med `error` = `Nothing to save was found at <sti>`. Svaret havde ikke den forventede form.
+
+Et trin med `retry`, hvis svar aldrig blev klar, fejler med det sidste svar, og `attempts` viser antallet af forsøg. Passede `until`-værdien ikke, er `error` `The answer was not ready after <n> attempts.` Ellers er det sidste svars `status` eller `error` som ved et almindeligt trin. Stoppede trinnet, fordi det, der ventes på, fejlede, er `error` `Stopped as <sti> was <værdi>.` Det, API'et ventede på, blev ikke færdigt i tide. Fortæl brugeren, hvad det sidste svar sagde, fx en status.
 
 Et script-trin har `JS` som `method` og scriptets filnavn som `name`, hvis det intet navn har. Fejler det, er `error` fil, linje og scriptets fejltekst, fx `map.js:2: No order`.
 

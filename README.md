@@ -87,10 +87,13 @@ Knapperne **Stringify**, **Parse**, **Base64 Encode** og **Base64 Decode** arbej
 Vælg **Workflows** i sidebaren. Hovedområdet viser så det åbne workflow i stedet for request-fanerne.
 
 - Klik **+** for at oprette et workflow. Højreklik på et workflow for at omdøbe eller slette det.
-- **+ Request** tilføjer et trin med sin egen request. Den redigeres som en request i samlingerne, men hører kun til workflowet, og auth arves ikke fra en mappe. **Brug miljøvariabler i body** er slået til for nye trin, så `{{navn}}` også virker i bodyen.
+- **+ Request** tilføjer et trin med sin egen request. Den redigeres som en request i samlingerne, men hører kun til workflowet. Under **Auth** står workflowets fælles auth, og nye trin bruger den med **Arv fra workflow**. Et trin kan altid have sin egen auth i stedet, fx til et andet API. **Brug miljøvariabler i body** er slået til for nye trin, så `{{navn}}` også virker i bodyen.
 - **+ Script** tilføjer et JavaScript-trin. Scriptet læser værdier som `vars.navn` og returnerer det, trinnet skal gemme fra. Koden redigeres i appen og ligger som en `.js`-fil i workflowets mappe.
+- **+ Vent** tilføjer et trin, der venter et antal sekunder, fx mens et API laver noget færdigt i baggrunden.
+- **Gentag indtil svaret er klar** på et request-trin sender det igen, til svaret er klar: 2xx og med det, trinnet gemmer, og hvis du vil, med en værdi, fx `$.result.status`, der er det, du venter på. Antal forsøg og pausen imellem vælger du selv.
 - **Parametre** gives ved start. Har en parameter ingen standardværdi, spørger appen om den, når du kører.
-- I **Gemmer** under trinnets svar vælger du, hvad der gemmes i en variabel efter et 2xx-svar: `$.sti` i JSON-svaret, `$` for hele bodyen, `header:Navn` eller `status`. Linjen i svaret, der blev gemt fra, mærkes med "gemt i …", og de næste trin bruger værdien som `{{navn}}`.
+- Trinnet har faner: Params, Headers, Body, Auth, Gentag og Gemmer, og for et script Kode og Gemmer. Navnet skrives i trinnets titel.
+- I fanen **Gemmer** vælger du, hvad der gemmes i en variabel efter et 2xx-svar: `$.sti` i JSON-svaret, `$` for hele bodyen, `header:Navn` eller `status`. Linjen i svaret, der blev gemt fra, mærkes med "gemt i …", og de næste trin bruger værdien som `{{navn}}`.
 - Hvert trin viser de navne, det bruger, og dem, det gemmer, så du kan se, hvordan værdierne går fra trin til trin.
 - **Kør** (`Ctrl+Enter`) tjekker først, at alle `{{navne}}` har en værdi, og kører så trinene i rækkefølge. Fejler et trin, springes resten over. Miljøets variabler kan også bruges, men workflowets egne navne vinder.
 - Kald fra et workflow gemmes ikke i **Historik**, men som en kørsel i `runs\`. Det samme workflow kan køres med `hoboman-cli run`; se [CLI.md](CLI.md).
@@ -171,7 +174,7 @@ Data gemmes ved siden af den kørende app. Efter `install.ps1` er det i `publish
 | `runs\<workflow-id>\` | Én JSON-linjefil pr. kørsel af et workflow med events, svar og gemte værdier |
 | `logs\` | Daglige logfiler |
 
-Auth-hemmeligheder beskyttes med Windows DPAPI for den aktuelle Windows-bruger. De ligger separat fra request-, mappe- og workflowfilerne. En kopi af `secrets.json` er derfor ikke en almindelig, flytbar eksport af loginoplysninger. Ved sletning ryddes tilhørende hemmeligheder op, når ingen tilbageværende request eller mappe bruger dem; afbrudt oprydning kan genoptages ved næste start. Et workflow-trins hemmeligheder gemmes under trinnets id og glemmes, når trinnet fjernes, og workflowet gemmes, eller når workflowet slettes i appen, medmindre et andet workflow har et trin med samme id. Har en kørsel gemt hemmeligheder for trin, der aldrig er gemt, glemmes de, når workflowet gemmes uden dem, når du åbner et andet workflow, eller når appen lukkes.
+Auth-hemmeligheder beskyttes med Windows DPAPI for den aktuelle Windows-bruger. De ligger separat fra request-, mappe- og workflowfilerne. En kopi af `secrets.json` er derfor ikke en almindelig, flytbar eksport af loginoplysninger. Ved sletning ryddes tilhørende hemmeligheder op, når ingen tilbageværende request eller mappe bruger dem; afbrudt oprydning kan genoptages ved næste start. Workflowets egen auth gemmes under workflowets id og glemmes, når workflowet slettes i appen. Et workflow-trins hemmeligheder gemmes under trinnets id og glemmes, når trinnet fjernes, og workflowet gemmes, eller når workflowet slettes i appen, medmindre et andet workflow har et trin med samme id. Har en kørsel gemt hemmeligheder for trin, der aldrig er gemt, glemmes de, når workflowet gemmes uden dem, når du åbner et andet workflow, eller når appen lukkes.
 
 **Resten af dataene er ikke krypterede.** Miljøvariabler, manuelt indtastede headers, bodies, historik, kørsler og logs kan indeholde følsomme oplysninger. Gennemgå dem før deling eller check-in; et token skrevet direkte i en header eller miljøvariabel får ikke automatisk beskyttelsen fra secret-lageret.
 
