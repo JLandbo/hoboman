@@ -14,4 +14,7 @@ public enum WorkflowProblemKind
     UnknownName,
     ScriptNotFound,
     InvalidScript,
+    MixedStep,
+    InvalidDelay,
+    InvalidRetry,
 }

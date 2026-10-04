@@ -52,7 +52,7 @@
             </Setter>
         </Style>
         <DataTemplate DataType="{x:Type viewModels:RequestTabViewModel}">
-            <Grid>
+            <Grid local:SplitMemory.Rows="Request">
                 <Grid.RowDefinitions>
                     <RowDefinition MinHeight="200" />
                     <RowDefinition Height="12" />

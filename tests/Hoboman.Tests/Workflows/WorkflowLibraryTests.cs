@@ -20,6 +20,22 @@ public sealed class WorkflowLibraryTests : IDisposable
 
     public void Dispose() => _temporary.Dispose();
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void SecretOwnersOf_WhenTheWorkflowHasAuthOrNot_ThenHasItsIdOnlyWithAuth(bool hasAuth)
+    {
+        // Arrange
+        var step = Guid.NewGuid();
+        var workflow = new Workflow { Id = Guid.NewGuid(), Auth = hasAuth ? new(AuthKind.Bearer) : null, Steps = [new() { Request = new() { Id = step, Url = "https://dev.local" } }] };
+
+        // Act
+        var owners = WorkflowLibrary.SecretOwnersOf(workflow);
+
+        // Assert
+        Assert.Equal(hasAuth ? [step, workflow.Id] : [step], owners);
+    }
+
     [Fact]
     public async Task LoadAsync_WhenTheWorkflowWasSaved_ThenGivesItBack()
     {

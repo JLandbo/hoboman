@@ -6,6 +6,7 @@ namespace Hoboman.Core.Workflows;
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(RunStarted), "run.started")]
 [JsonDerivedType(typeof(StepStarted), "step.started")]
+[JsonDerivedType(typeof(StepRetrying), "step.retrying")]
 [JsonDerivedType(typeof(StepFinished), "step.finished")]
 [JsonDerivedType(typeof(StepSkipped), "step.skipped")]
 [JsonDerivedType(typeof(StepCancelled), "step.cancelled")]

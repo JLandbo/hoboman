@@ -9,6 +9,10 @@ public partial class AuthEditor : UserControl
 {
     public static readonly DependencyProperty CanInheritProperty = DependencyProperty.Register(nameof(CanInherit), typeof(bool), typeof(AuthEditor), new(true));
 
+    // A workflow step inherits from its workflow instead of a folder.
+    public static readonly DependencyProperty InheritsFromWorkflowProperty = DependencyProperty.Register(nameof(InheritsFromWorkflow), typeof(bool), typeof(AuthEditor),
+        new(false, (target, e) => ((AuthEditor)target).ShowInheritance((bool)e.NewValue)));
+
     AuthViewModel? _auth;
 
     // Listening only while shown keeps a closed dialog from being held in memory by the view model it edited.
@@ -30,6 +34,26 @@ public partial class AuthEditor : UserControl
     {
         get => (bool)GetValue(CanInheritProperty);
         set => SetValue(CanInheritProperty, value);
+    }
+
+    public bool InheritsFromWorkflow
+    {
+        get => (bool)GetValue(InheritsFromWorkflowProperty);
+        set => SetValue(InheritsFromWorkflowProperty, value);
+    }
+
+    void ShowInheritance(bool fromWorkflow)
+    {
+        if (fromWorkflow)
+        {
+            InheritChoice.SetResourceReference(ContentProperty, "Workflow.AuthInherit");
+            InheritHint.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            InheritChoice.SetResourceReference(ContentProperty, "Auth.Inherit");
+            InheritHint.ClearValue(VisibilityProperty);
+        }
     }
 
     void Follow(AuthViewModel? auth)

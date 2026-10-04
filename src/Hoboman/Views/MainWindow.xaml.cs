@@ -22,6 +22,7 @@ public partial class MainWindow : Window
     readonly SettingsStore _settings;
     readonly ILogger<MainWindow> _logger;
     readonly Dictionary<Button, int> _clipboardFeedback = [];
+    readonly Dictionary<string, double> _splits = [];
     int _clipboardFeedbackVersion;
 
     public MainWindow(MainViewModel viewModel, SettingsStore settings, ILogger<MainWindow> logger)
@@ -30,6 +31,7 @@ public partial class MainWindow : Window
         DataContext = _viewModel = viewModel;
         _settings = settings;
         _logger = logger;
+        SplitMemory.SetSplits(this, _splits);
     }
 
     // Called before the window is shown, so it opens as it was left instead of jumping there. A screen that got smaller since caps the size.
@@ -44,6 +46,10 @@ public partial class MainWindow : Window
             Width = Math.Min(layout.Width, SystemParameters.WorkArea.Width);
             Height = Math.Min(layout.Height, SystemParameters.WorkArea.Height);
             SidebarColumn.Width = new GridLength(layout.SidebarWidth);
+            foreach (var (place, share) in layout.Splits ?? new Dictionary<string, double>())
+            {
+                _splits[place] = share;
+            }
             WindowState = layout.IsMaximized ? WindowState.Maximized : WindowState.Normal;
         }
         // WPF refuses sizes like a negative one, which a hand-edited file can hold.
@@ -156,7 +162,7 @@ public partial class MainWindow : Window
     void SaveLayout()
     {
         var size = WindowState == WindowState.Normal ? new Size(ActualWidth, ActualHeight) : RestoreBounds.Size;
-        var layout = new WindowLayout(size.Width, size.Height, WindowState == WindowState.Maximized, SidebarColumn.ActualWidth);
+        var layout = new WindowLayout(size.Width, size.Height, WindowState == WindowState.Maximized, SidebarColumn.ActualWidth, new Dictionary<string, double>(_splits));
         try
         {
             var session = _viewModel.Session;

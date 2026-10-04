@@ -40,6 +40,23 @@ public sealed class RunValues
     // Text goes in as it is, and any other value as compact JSON, so an object put in a body without quotes is JSON there too.
     public static string TextOf(JsonElement value) => value.ValueKind == JsonValueKind.String ? value.GetString()! : JsonSerializer.Serialize(value, CompactJson.Options);
 
+    // The value a source picks out of an answer, or null when it is not there.
+    public static JsonElement? ValueOf(string from, ApiResponse response)
+    {
+        var body = new Lazy<JsonDocument?>(() => DocumentOf(response.Body));
+        try
+        {
+            return ValueOf(from, response, body);
+        }
+        finally
+        {
+            if (body.IsValueCreated)
+            {
+                body.Value?.Dispose();
+            }
+        }
+    }
+
     // All values are found before any is set, so a step saves all or nothing.
     public IReadOnlyDictionary<string, JsonElement>? TrySave(IReadOnlyList<WorkflowSave> saves, ApiResponse response, out string? missing)
     {

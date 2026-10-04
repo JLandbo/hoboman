@@ -17,22 +17,22 @@
     <DockPanel>
         <Border DockPanel.Dock="Top" Style="{StaticResource SegmentGroup}" Margin="0,0,0,12">
             <StackPanel Orientation="Horizontal">
-                <RadioButton Content="{DynamicResource Auth.Inherit}" GroupName="AuthKind" Style="{StaticResource Segment}"
+                <RadioButton x:Name="InheritChoice" Content="{DynamicResource Auth.Inherit}" Style="{StaticResource Segment}"
                              IsChecked="{Binding Kind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:AuthKind.Inherit}}"
                              Visibility="{Binding CanInherit, RelativeSource={RelativeSource AncestorType=local:AuthEditor}, Converter={StaticResource VisibleWhenTrue}}" />
-                <RadioButton Content="{DynamicResource Auth.None}" GroupName="AuthKind" Style="{StaticResource Segment}"
+                <RadioButton Content="{DynamicResource Auth.None}" Style="{StaticResource Segment}"
                              IsChecked="{Binding Kind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:AuthKind.None}}" />
-                <RadioButton Content="{DynamicResource Auth.Basic}" GroupName="AuthKind" Style="{StaticResource Segment}"
+                <RadioButton Content="{DynamicResource Auth.Basic}" Style="{StaticResource Segment}"
                              IsChecked="{Binding Kind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:AuthKind.Basic}}" />
-                <RadioButton Content="{DynamicResource Auth.Bearer}" GroupName="AuthKind" Style="{StaticResource Segment}"
+                <RadioButton Content="{DynamicResource Auth.Bearer}" Style="{StaticResource Segment}"
                              IsChecked="{Binding Kind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:AuthKind.Bearer}}" />
-                <RadioButton Content="{DynamicResource Auth.OAuth2}" GroupName="AuthKind" Style="{StaticResource Segment}"
+                <RadioButton Content="{DynamicResource Auth.OAuth2}" Style="{StaticResource Segment}"
                              IsChecked="{Binding Kind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:AuthKind.OAuth2}}" />
             </StackPanel>
         </Border>
         <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
             <StackPanel HorizontalAlignment="Left" Width="420">
-                <TextBlock Text="{DynamicResource Auth.InheritHint}" Foreground="{DynamicResource Muted}" TextWrapping="Wrap">
+                <TextBlock x:Name="InheritHint" Text="{DynamicResource Auth.InheritHint}" Foreground="{DynamicResource Muted}" TextWrapping="Wrap">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock">
                             <Setter Property="Visibility" Value="Collapsed" />
@@ -104,9 +104,9 @@
                     </StackPanel.Style>
                     <Border Style="{StaticResource SegmentGroup}" HorizontalAlignment="Left" Margin="0,0,0,10">
                         <StackPanel Orientation="Horizontal">
-                            <RadioButton Content="{DynamicResource OAuth.ClientCredentials}" GroupName="OAuthGrant" Style="{StaticResource Segment}"
+                            <RadioButton Content="{DynamicResource OAuth.ClientCredentials}" Style="{StaticResource Segment}"
                                          IsChecked="{Binding Grant, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:OAuthGrant.ClientCredentials}}" />
-                            <RadioButton Content="{DynamicResource OAuth.AuthorizationCode}" GroupName="OAuthGrant" Style="{StaticResource Segment}"
+                            <RadioButton Content="{DynamicResource OAuth.AuthorizationCode}" Style="{StaticResource Segment}"
                                          IsChecked="{Binding Grant, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:OAuthGrant.AuthorizationCode}}" />
                         </StackPanel>
                     </Border>
@@ -165,9 +165,9 @@
                     <TextBlock Text="{DynamicResource OAuth.ClientAuthentication}" Style="{StaticResource Label}" />
                     <Border Style="{StaticResource SegmentGroup}" HorizontalAlignment="Left" Margin="0,0,0,10">
                         <StackPanel Orientation="Horizontal">
-                            <RadioButton Content="{DynamicResource OAuth.BasicHeader}" GroupName="ClientAuthentication" Style="{StaticResource Segment}"
+                            <RadioButton Content="{DynamicResource OAuth.BasicHeader}" Style="{StaticResource Segment}"
                                          IsChecked="{Binding ClientAuthentication, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:OAuthClientAuthentication.BasicHeader}}" />
-                            <RadioButton Content="{DynamicResource OAuth.RequestBody}" GroupName="ClientAuthentication" Style="{StaticResource Segment}"
+                            <RadioButton Content="{DynamicResource OAuth.RequestBody}" Style="{StaticResource Segment}"
                                          IsChecked="{Binding ClientAuthentication, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:OAuthClientAuthentication.RequestBody}}" />
                         </StackPanel>
                     </Border>

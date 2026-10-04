@@ -89,8 +89,9 @@ public sealed class WorkflowLibrary(AppFolder folder, ILogger<WorkflowLibrary> l
         logger.LogInformation("Saved the script {Script} of the workflow {Name}", script, name);
     }
 
-    // A request step's secrets are saved under its id.
-    public static IEnumerable<Guid> SecretOwnersOf(Workflow workflow) => workflow.Steps.Select(step => step.Request?.Id ?? Guid.Empty).Where(id => id != Guid.Empty);
+    // A request step's secrets are saved under its id, and the workflow's own auth under the workflow's id.
+    public static IEnumerable<Guid> SecretOwnersOf(Workflow workflow) =>
+        workflow.Steps.Select(step => step.Request?.Id ?? Guid.Empty).Append(workflow.Auth is null ? Guid.Empty : workflow.Id).Where(id => id != Guid.Empty);
 
     // A workflow that cannot be read may use any id, so then there is no answer.
     public async Task<IReadOnlySet<Guid>?> SecretOwnersAsync(CancellationToken cancellationToken)

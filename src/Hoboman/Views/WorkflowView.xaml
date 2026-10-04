@@ -3,8 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:Hoboman.Views"
              xmlns:controls="clr-namespace:Hoboman.Controls"
-             xmlns:viewModels="clr-namespace:Hoboman.ViewModels"
-             xmlns:requests="clr-namespace:Hoboman.Core.Requests;assembly=Hoboman.Core">
+             xmlns:viewModels="clr-namespace:Hoboman.ViewModels">
     <UserControl.Resources>
         <Style x:Key="Chip" TargetType="Border">
             <Setter Property="CornerRadius" Value="6" />
@@ -29,12 +28,6 @@
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
-        <Style x:Key="Hint" TargetType="TextBlock">
-            <Setter Property="DockPanel.Dock" Value="Right" />
-            <Setter Property="Foreground" Value="{DynamicResource Muted}" />
-            <Setter Property="FontSize" Value="11" />
-            <Setter Property="VerticalAlignment" Value="Center" />
-        </Style>
         <Style x:Key="Badge" TargetType="Border">
             <Setter Property="CornerRadius" Value="6" />
             <Setter Property="Padding" Value="7,1" />
@@ -55,6 +48,29 @@
             <Style.Triggers>
                 <DataTrigger Binding="{Binding IsSuccess}" Value="False">
                     <Setter Property="Foreground" Value="{DynamicResource Error}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <!-- A step's tab that holds something says so in the accent colour, turned around on the chosen tab. -->
+        <Style x:Key="UsedBadge" TargetType="Border">
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="5,0" />
+            <Setter Property="Margin" Value="6,0,0,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Background" Value="{DynamicResource Attention}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=RadioButton}}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource OnAttention}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="UsedBadgeText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource OnAttention}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=RadioButton}}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource Attention}" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -118,7 +134,7 @@
             </DockPanel>
         </Border>
 
-        <Grid Grid.Row="2">
+        <Grid Grid.Row="2" local:SplitMemory.Columns="WorkflowSteps">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="2*" MinWidth="260" />
                 <ColumnDefinition Width="12" />
@@ -127,16 +143,24 @@
 
             <Border Style="{StaticResource Panel}">
                 <DockPanel>
-                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
-                        <TextBlock Text="{DynamicResource Workflow.ParametersHint}" Style="{StaticResource Hint}" />
-                        <TextBlock Text="{DynamicResource Workflow.Parameters}" Style="{StaticResource Heading}" />
+                    <!-- The parameters and the auth the steps inherit share one place, so the steps keep the room below. -->
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <Border Style="{StaticResource SegmentGroup}" HorizontalAlignment="Left">
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="ParametersChoice" Content="{DynamicResource Workflow.Parameters}" GroupName="WorkflowSettings" IsChecked="True" Style="{StaticResource Segment}" />
+                                <RadioButton x:Name="WorkflowAuthChoice" Content="{DynamicResource Workflow.Auth}" GroupName="WorkflowSettings" Style="{StaticResource Segment}" />
+                            </StackPanel>
+                        </Border>
                     </DockPanel>
-                    <local:KeyValueEditor DockPanel.Dock="Top" DataContext="{Binding Parameters}" ValueHeader="{DynamicResource Workflow.Default}" CanDisable="False" MaxHeight="180" Margin="0,0,0,12">
+                    <local:KeyValueEditor DockPanel.Dock="Top" DataContext="{Binding Parameters}" ValueHeader="{DynamicResource Workflow.Default}" CanDisable="False" MaxHeight="180" Margin="0,0,0,12"
+                                          Visibility="{Binding IsChecked, ElementName=ParametersChoice, Converter={StaticResource VisibleWhenTrue}}">
                         <local:KeyValueEditor.Resources>
                             <!-- A default is a literal JSON value, not a reference to other names. -->
                             <Style TargetType="controls:VariableTextBox" BasedOn="{StaticResource Cell}" />
                         </local:KeyValueEditor.Resources>
                     </local:KeyValueEditor>
+                    <local:AuthEditor DockPanel.Dock="Top" DataContext="{Binding Auth}" CanInherit="False" Margin="0,0,0,12"
+                                      Visibility="{Binding IsChecked, ElementName=WorkflowAuthChoice, Converter={StaticResource VisibleWhenTrue}}" />
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
                         <Button DockPanel.Dock="Right" Style="{StaticResource PillButton}" FontSize="12" Padding="10,3" Click="AddRequest_Click">
                             <StackPanel Orientation="Horizontal">
@@ -148,6 +172,12 @@
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="&#xE710;" FontFamily="{StaticResource IconFont}" FontSize="10" VerticalAlignment="Center" Margin="0,0,6,0" />
                                 <TextBlock Text="{DynamicResource Workflow.AddScript}" />
+                            </StackPanel>
+                        </Button>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource PillButton}" FontSize="12" Padding="10,3" Margin="0,0,6,0" Click="AddDelay_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE710;" FontFamily="{StaticResource IconFont}" FontSize="10" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                <TextBlock Text="{DynamicResource Workflow.AddDelay}" />
                             </StackPanel>
                         </Button>
                         <TextBlock Text="{DynamicResource Workflow.Steps}" Style="{StaticResource Heading}" />
@@ -185,6 +215,8 @@
                                             <StackPanel>
                                                 <DockPanel>
                                                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
+                                                        <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFont}" FontSize="11" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0"
+                                                                   ToolTip="{DynamicResource Workflow.Retry}" Visibility="{Binding HasRetry, Converter={StaticResource VisibleWhenTrue}}" />
                                                         <Border Style="{StaticResource Badge}">
                                                             <TextBlock Text="{Binding Status}" Style="{StaticResource BadgeText}" />
                                                         </Border>
@@ -245,7 +277,7 @@
                                             <Setter TargetName="Circle" Property="BorderBrush" Value="{DynamicResource Error}" />
                                             <Setter TargetName="Number" Property="Foreground" Value="{DynamicResource Error}" />
                                         </DataTrigger>
-                                        <DataTrigger Binding="{Binding IsSending}" Value="True">
+                                        <DataTrigger Binding="{Binding IsRunning}" Value="True">
                                             <Setter TargetName="Circle" Property="BorderBrush" Value="{DynamicResource Attention}" />
                                             <Setter TargetName="Number" Property="Foreground" Value="{DynamicResource Attention}" />
                                         </DataTrigger>
@@ -290,11 +322,11 @@
 
             <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" Background="Transparent" />
 
-            <Grid Grid.Column="2">
+            <Grid Grid.Column="2" local:SplitMemory.Rows="WorkflowStep">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" MinHeight="200" />
                     <RowDefinition Height="12" />
-                    <RowDefinition Height="1.35*" MinHeight="260" />
+                    <RowDefinition Height="*" MinHeight="200" />
                 </Grid.RowDefinitions>
 
                 <Border Style="{StaticResource Panel}">
@@ -316,82 +348,183 @@
                                         Click="MoveDown_Click" Style="{StaticResource CloseButton}" VerticalAlignment="Center" />
                                 <Button DockPanel.Dock="Right" Content="&#xE74A;" ToolTip="{DynamicResource Workflow.MoveUp}" AutomationProperties.Name="{DynamicResource Workflow.MoveUp}"
                                         Click="MoveUp_Click" Style="{StaticResource CloseButton}" VerticalAlignment="Center" />
-                                <Button DockPanel.Dock="Right" Content="{DynamicResource Workflow.ShowScript}" Click="ShowScript_Click" FontSize="12" Padding="10,3" Margin="0,0,6,0" VerticalAlignment="Center">
-                                    <Button.Style>
-                                        <Style TargetType="Button" BasedOn="{StaticResource PillButton}">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Script}" Value="{x:Null}">
-                                                    <Setter Property="Visibility" Value="Collapsed" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Button.Style>
-                                </Button>
-                                <TextBlock VerticalAlignment="Center" FontSize="12" TextTrimming="CharacterEllipsis">
-                                    <Run Text="{DynamicResource Workflow.Step}" Foreground="{DynamicResource Muted}" />
-                                    <Run Text="{Binding Number, Mode=OneWay}" Foreground="{DynamicResource Muted}" />
-                                    <Run Text="&#x00B7;" Foreground="{DynamicResource Muted}" />
-                                    <Run Text="{Binding Title, Mode=OneWay}" FontWeight="SemiBold" />
+                                <Button DockPanel.Dock="Right" Content="{DynamicResource Workflow.ShowScript}" Click="ShowScript_Click" FontSize="12" Padding="10,3" Margin="0,0,6,0" VerticalAlignment="Center"
+                                        Style="{StaticResource PillButton}" Visibility="{Binding IsScript, Converter={StaticResource VisibleWhenTrue}}" />
+                                <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource Muted}" Margin="0,0,6,0">
+                                    <Run Text="{DynamicResource Workflow.Step}" />
+                                    <Run Text="{Binding Number, Mode=OneWay}" />
+                                    <Run Text="&#x00B7;" />
                                 </TextBlock>
-                            </DockPanel>
-                            <ScrollViewer x:Name="StepDetail" VerticalScrollBarVisibility="Auto" Focusable="False" PreviewMouseWheel="StepDetail_PreviewMouseWheel">
-                                <StackPanel>
-                                    <TextBlock Text="{DynamicResource Common.Name}" Style="{StaticResource Heading}" Margin="0,0,0,6" />
-                                    <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,12">
-                                        <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
-                                    </Border>
-                                    <StackPanel Visibility="{Binding IsRequest, Converter={StaticResource VisibleWhenTrue}}">
-                                        <local:RequestLineEditor DataContext="{Binding Request}" Margin="0,0,0,12" />
-                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                            <RadioButton x:Name="StepParamsSection" GroupName="StepSection" IsChecked="{Binding Section, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:RequestSection.Params}}" Style="{StaticResource Segment}">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <TextBlock Text="{DynamicResource Editor.Params}" />
-                                                    <TextBlock Text="{Binding Request.Query.EnabledCount}" Style="{StaticResource Count}" />
-                                                </StackPanel>
-                                            </RadioButton>
-                                            <RadioButton x:Name="StepHeadersSection" GroupName="StepSection" IsChecked="{Binding Section, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:RequestSection.Headers}}" Style="{StaticResource Segment}">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <TextBlock Text="{DynamicResource Editor.Headers}" />
-                                                    <TextBlock Text="{Binding Request.Headers.EnabledCount}" Style="{StaticResource Count}" />
-                                                </StackPanel>
-                                            </RadioButton>
-                                            <RadioButton x:Name="StepBodySection" Content="{DynamicResource Editor.Body}" GroupName="StepSection" IsChecked="{Binding Section, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:RequestSection.Body}}" Style="{StaticResource Segment}" />
-                                            <RadioButton x:Name="StepAuthSection" Content="{Binding AuthHeader}" GroupName="StepSection" IsChecked="{Binding Section, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:RequestSection.Auth}}" Style="{StaticResource Segment}" />
-                                        </StackPanel>
-                                        <local:KeyValueEditor DataContext="{Binding Request.Query}" Margin="0,0,0,12" Visibility="{Binding IsChecked, ElementName=StepParamsSection, Converter={StaticResource VisibleWhenTrue}}" />
-                                        <local:KeyValueEditor DataContext="{Binding Request.Headers}" Margin="0,0,0,12" Visibility="{Binding IsChecked, ElementName=StepHeadersSection, Converter={StaticResource VisibleWhenTrue}}" />
-                                        <local:RequestBodyEditor DataContext="{Binding Request}" MaxHeight="480" Margin="0,0,0,12" Visibility="{Binding IsChecked, ElementName=StepBodySection, Converter={StaticResource VisibleWhenTrue}}">
-                                            <!-- Room to write in only when there is a body. -->
-                                            <local:RequestBodyEditor.Style>
-                                                <Style TargetType="local:RequestBodyEditor">
-                                                    <Setter Property="MinHeight" Value="160" />
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding BodyKind}" Value="{x:Static requests:BodyKind.None}">
-                                                            <Setter Property="MinHeight" Value="0" />
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </local:RequestBodyEditor.Style>
-                                        </local:RequestBodyEditor>
-                                        <local:AuthEditor DataContext="{Binding Auth}" CanInherit="False" Margin="0,0,0,12" Visibility="{Binding IsChecked, ElementName=StepAuthSection, Converter={StaticResource VisibleWhenTrue}}" />
-                                    </StackPanel>
-                                    <StackPanel>
-                                        <StackPanel.Style>
-                                            <Style TargetType="StackPanel">
+                                <!-- The name is written in the title. Without one, the step is known by what it calls. -->
+                                <Grid VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Title}" Foreground="{DynamicResource Muted}" FontSize="13.5" FontWeight="SemiBold" Margin="2,0,0,0" TextTrimming="CharacterEllipsis" IsHitTestVisible="False">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed" />
                                                 <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Script}" Value="{x:Null}">
-                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                    <DataTrigger Binding="{Binding Name}" Value="">
+                                                        <Setter Property="Visibility" Value="Visible" />
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
-                                        </StackPanel.Style>
-                                        <TextBlock Text="{DynamicResource Workflow.Code}" Style="{StaticResource Heading}" Margin="0,0,0,6" />
-                                        <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,12">
-                                            <controls:ScriptEditor MinHeight="200" MaxHeight="480" Code="{Binding DataContext.Code, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" FontFamily="{StaticResource UiFont}" FontSize="13.5" FontWeight="SemiBold" Padding="0" Background="Transparent"
+                                             AutomationProperties.Name="{DynamicResource Common.Name}" />
+                                </Grid>
+                            </DockPanel>
+                            <StackPanel DockPanel.Dock="Top" Visibility="{Binding IsDelay, Converter={StaticResource VisibleWhenTrue}}">
+                                <TextBlock Text="{DynamicResource Workflow.DelaySeconds}" Style="{StaticResource Heading}" Margin="0,0,0,6" />
+                                <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,12" Width="120" HorizontalAlignment="Left">
+                                    <TextBox Text="{Binding DelaySeconds, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
+                                </Border>
+                            </StackPanel>
+                            <local:RequestLineEditor DockPanel.Dock="Top" DataContext="{Binding Request}" Margin="0,0,0,10" Visibility="{Binding DataContext.IsRequest, RelativeSource={RelativeSource AncestorType=DockPanel}, Converter={StaticResource VisibleWhenTrue}}" />
+                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                                <StackPanel.Style>
+                                    <Style TargetType="StackPanel">
+                                        <Style.Triggers>
+                                            <!-- A wait has no tabs, unless a file gave it saves to remove. -->
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding IsDelay}" Value="True" />
+                                                    <Condition Binding="{Binding HasSaves}" Value="False" />
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </MultiDataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </StackPanel.Style>
+                                <RadioButton x:Name="StepParamsSection" GroupName="StepSection" Style="{StaticResource Segment}" Visibility="{Binding IsRequest, Converter={StaticResource VisibleWhenTrue}}"
+                                             IsChecked="{Binding Section, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:StepSection.Params}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{DynamicResource Editor.Params}" />
+                                        <Border>
+                                            <Border.Style>
+                                                <Style TargetType="Border" BasedOn="{StaticResource UsedBadge}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Request.Query.EnabledCount}" Value="0">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="{Binding Request.Query.EnabledCount}" Style="{StaticResource UsedBadgeText}" />
                                         </Border>
                                     </StackPanel>
-                                </StackPanel>
-                            </ScrollViewer>
+                                </RadioButton>
+                                <RadioButton x:Name="StepHeadersSection" GroupName="StepSection" Style="{StaticResource Segment}" Visibility="{Binding IsRequest, Converter={StaticResource VisibleWhenTrue}}"
+                                             IsChecked="{Binding Section, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:StepSection.Headers}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{DynamicResource Editor.Headers}" />
+                                        <Border>
+                                            <Border.Style>
+                                                <Style TargetType="Border" BasedOn="{StaticResource UsedBadge}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Request.Headers.EnabledCount}" Value="0">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="{Binding Request.Headers.EnabledCount}" Style="{StaticResource UsedBadgeText}" />
+                                        </Border>
+                                    </StackPanel>
+                                </RadioButton>
+                                <RadioButton x:Name="StepBodySection" Content="{DynamicResource Editor.Body}" GroupName="StepSection" Style="{StaticResource Segment}" Visibility="{Binding IsRequest, Converter={StaticResource VisibleWhenTrue}}"
+                                             IsChecked="{Binding Section, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:StepSection.Body}}" />
+                                <RadioButton x:Name="StepAuthSection" Content="{Binding AuthHeader}" GroupName="StepSection" Style="{StaticResource Segment}" Visibility="{Binding IsRequest, Converter={StaticResource VisibleWhenTrue}}"
+                                             IsChecked="{Binding Section, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:StepSection.Auth}}" />
+                                <RadioButton x:Name="StepRetrySection" GroupName="StepSection" Style="{StaticResource Segment}" Visibility="{Binding IsRequest, Converter={StaticResource VisibleWhenTrue}}"
+                                             IsChecked="{Binding Section, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:StepSection.Retry}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{DynamicResource Workflow.RetryTab}" />
+                                        <Border Style="{StaticResource UsedBadge}" Visibility="{Binding HasRetry, Converter={StaticResource VisibleWhenTrue}}">
+                                            <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFont}" FontSize="10" Style="{StaticResource UsedBadgeText}" Margin="0,2" />
+                                        </Border>
+                                    </StackPanel>
+                                </RadioButton>
+                                <RadioButton x:Name="StepCodeSection" Content="{DynamicResource Workflow.Code}" GroupName="StepSection" Style="{StaticResource Segment}" Visibility="{Binding IsScript, Converter={StaticResource VisibleWhenTrue}}"
+                                             IsChecked="{Binding Section, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:StepSection.Code}}" />
+                                <RadioButton x:Name="StepSavesSection" GroupName="StepSection" Style="{StaticResource Segment}"
+                                             IsChecked="{Binding Section, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:StepSection.Saves}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{DynamicResource Workflow.Saves}" />
+                                        <Border>
+                                            <Border.Style>
+                                                <Style TargetType="Border" BasedOn="{StaticResource UsedBadge}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Saves.EnabledCount}" Value="0">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="{Binding Saves.EnabledCount}" Style="{StaticResource UsedBadgeText}" />
+                                        </Border>
+                                    </StackPanel>
+                                </RadioButton>
+                            </StackPanel>
+                            <!-- Only the chosen tab is shown, and it fills the panel, so only its own content scrolls. -->
+                            <Grid>
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Style.Triggers>
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding IsDelay}" Value="True" />
+                                                    <Condition Binding="{Binding HasSaves}" Value="False" />
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </MultiDataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <local:KeyValueEditor DataContext="{Binding Request.Query}" Visibility="{Binding IsChecked, ElementName=StepParamsSection, Converter={StaticResource VisibleWhenTrue}}" />
+                                <local:KeyValueEditor DataContext="{Binding Request.Headers}" Visibility="{Binding IsChecked, ElementName=StepHeadersSection, Converter={StaticResource VisibleWhenTrue}}" />
+                                <local:RequestBodyEditor DataContext="{Binding Request}" Visibility="{Binding IsChecked, ElementName=StepBodySection, Converter={StaticResource VisibleWhenTrue}}" />
+                                <local:AuthEditor DataContext="{Binding Auth}" InheritsFromWorkflow="True" Visibility="{Binding IsChecked, ElementName=StepAuthSection, Converter={StaticResource VisibleWhenTrue}}" />
+                                <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False" Visibility="{Binding IsChecked, ElementName=StepRetrySection, Converter={StaticResource VisibleWhenTrue}}">
+                                    <StackPanel>
+                                        <ToggleButton Content="{DynamicResource Workflow.Retry}" IsChecked="{Binding Retries}" Style="{StaticResource Switch}" HorizontalAlignment="Left" Margin="0,0,0,8" />
+                                        <StackPanel Visibility="{Binding Retries, Converter={StaticResource VisibleWhenTrue}}">
+                                            <WrapPanel>
+                                                <TextBlock Text="{DynamicResource Workflow.RetryWhen}" VerticalAlignment="Center" Margin="0,0,8,6" />
+                                                <Border CornerRadius="8" Background="{DynamicResource Input}" Width="200" Margin="0,0,6,6">
+                                                    <TextBox Text="{Binding RetryUntil, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
+                                                </Border>
+                                                <TextBlock Text="&#x3D;" VerticalAlignment="Center" Margin="0,0,6,6" />
+                                                <Border CornerRadius="8" Background="{DynamicResource Input}" Width="140" Margin="0,0,0,6">
+                                                    <TextBox Text="{Binding RetryEquals, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
+                                                </Border>
+                                            </WrapPanel>
+                                            <WrapPanel>
+                                                <TextBlock Text="{DynamicResource Workflow.RetryTimes}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                                <Border CornerRadius="8" Background="{DynamicResource Input}" Width="60" Margin="0,0,8,0">
+                                                    <TextBox Text="{Binding RetryTimes, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
+                                                </Border>
+                                                <TextBlock Text="{DynamicResource Workflow.RetryWait}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                                <Border CornerRadius="8" Background="{DynamicResource Input}" Width="60" Margin="0,0,8,0">
+                                                    <TextBox Text="{Binding RetryWaitSeconds, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
+                                                </Border>
+                                                <TextBlock Text="{DynamicResource Workflow.RetrySeconds}" VerticalAlignment="Center" />
+                                            </WrapPanel>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </ScrollViewer>
+                                <Border CornerRadius="8" Background="{DynamicResource Input}" Visibility="{Binding IsChecked, ElementName=StepCodeSection, Converter={StaticResource VisibleWhenTrue}}">
+                                    <controls:ScriptEditor Code="{Binding DataContext.Code, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                </Border>
+                                <DockPanel Visibility="{Binding IsChecked, ElementName=StepSavesSection, Converter={StaticResource VisibleWhenTrue}}">
+                                    <!-- What a step saves is picked from its response, where the saved lines are marked. -->
+                                    <local:KeyValueEditor DataContext="{Binding Saves}" NameHeader="{DynamicResource Workflow.Variable}" ValueHeader="{DynamicResource Workflow.From}" CanDisable="False">
+                                        <local:KeyValueEditor.Resources>
+                                            <!-- Where to save from is a path such as $.id, not a reference to other names. -->
+                                            <Style TargetType="controls:VariableTextBox" BasedOn="{StaticResource Cell}" />
+                                        </local:KeyValueEditor.Resources>
+                                    </local:KeyValueEditor>
+                                </DockPanel>
+                            </Grid>
                         </DockPanel>
                         <TextBlock Text="{DynamicResource Workflow.NoSteps}" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center">
                             <TextBlock.Style>
@@ -410,30 +543,50 @@
 
                 <GridSplitter Grid.Row="1" HorizontalAlignment="Stretch" Background="Transparent" />
 
-                <local:ResponseView Grid.Row="2" DataContext="{Binding SelectedStep}" EmptyText="{DynamicResource Workflow.ResponseEmpty}">
-                    <!-- What a step saves is picked from its response, so it sits under it, where the saved lines are marked. -->
+                <local:ResponseView Grid.Row="2" DataContext="{Binding SelectedStep}">
+                    <local:ResponseView.Style>
+                        <Style TargetType="local:ResponseView">
+                            <Setter Property="EmptyText" Value="{DynamicResource Workflow.ResponseEmpty}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsDelay}" Value="True">
+                                    <Setter Property="EmptyText" Value="{DynamicResource Workflow.DelayNoResponse}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </local:ResponseView.Style>
                     <local:ResponseView.Footer>
-                        <StackPanel Margin="0,10,0,0">
-                            <StackPanel.Style>
-                                <Style TargetType="StackPanel">
+                        <WrapPanel Margin="0,8,0,0">
+                            <WrapPanel.Style>
+                                <Style TargetType="WrapPanel">
                                     <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SavedValues.Count}" Value="0">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
                                         <DataTrigger Binding="{Binding}" Value="{x:Null}">
                                             <Setter Property="Visibility" Value="Collapsed" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
-                            </StackPanel.Style>
-                            <DockPanel Margin="0,0,0,6">
-                                <TextBlock Text="{DynamicResource Workflow.SavesHint}" Style="{StaticResource Hint}" />
-                                <TextBlock Text="{DynamicResource Workflow.Saves}" Style="{StaticResource Heading}" />
-                            </DockPanel>
-                            <local:KeyValueEditor DataContext="{Binding Saves}" NameHeader="{DynamicResource Workflow.Variable}" ValueHeader="{DynamicResource Workflow.From}" CanDisable="False" MaxHeight="180">
-                                <local:KeyValueEditor.Resources>
-                                    <!-- Where to save from is a path such as $.id, not a reference to other names. -->
-                                    <Style TargetType="controls:VariableTextBox" BasedOn="{StaticResource Cell}" />
-                                </local:KeyValueEditor.Resources>
-                            </local:KeyValueEditor>
-                        </StackPanel>
+                            </WrapPanel.Style>
+                            <TextBlock Text="{DynamicResource Workflow.SavedValues}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <ItemsControl ItemsSource="{Binding SavedValues}" Focusable="False">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,12,0">
+                                            <Border Style="{StaticResource SavedChip}">
+                                                <TextBlock Text="{Binding Name}" Style="{StaticResource SavedChipText}" />
+                                            </Border>
+                                            <TextBlock Text="{Binding Value}" FontFamily="{StaticResource CodeFont}" FontSize="11" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </WrapPanel>
                     </local:ResponseView.Footer>
                 </local:ResponseView>
             </Grid>

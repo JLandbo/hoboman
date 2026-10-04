@@ -41,6 +41,24 @@ public sealed class WorkflowCheckTests
     }
 
     [Fact]
+    public async Task CheckAsync_WhenTheWorkflowsSecretUsesAName_ThenChecksItForAStepThatInherits()
+    {
+        // Arrange
+        using var temporary = new TemporaryFolder();
+        var folder = new AppFolder(temporary.Path);
+        var secrets = new SecretStore(folder, NullLogger<SecretStore>.Instance);
+        var workflow = OrderSync(new WorkflowStep { Request = Login with { Auth = new(AuthKind.Inherit) } }, LoginStep) with { Auth = new(AuthKind.Bearer) };
+        await secrets.SaveAsync(workflow.Id, SecretKind.Token, "{{token}}", TestContext.Current.CancellationToken);
+        var check = new WorkflowCheck(new WorkflowLibrary(folder, NullLogger<WorkflowLibrary>.Instance), secrets, NullLogger<WorkflowCheck>.Instance);
+
+        // Act
+        var checkedWorkflow = await check.CheckAsync("Ordre-sync", workflow, ApiEnvironment.None, Parameters("orderId"), TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal([new(WorkflowProblemKind.UsedBeforeSaved, 0, "token")], checkedWorkflow.Problems);
+    }
+
+    [Fact]
     public void Check_WhenAScriptSavesAVariable_ThenALaterStepCanUseIt()
     {
         // Act
@@ -70,6 +88,48 @@ public sealed class WorkflowCheckTests
 
         // Assert
         Assert.Equal((0, "POST dev.local/login, Hent ordre"), (checkedWorkflow.Problems.Count, string.Join(", ", checkedWorkflow.Steps.Select(step => step.Title))));
+    }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(301, false)]
+    [InlineData(30, true)]
+    public void Check_WhenAWaitIsOutOfRangeOrSaves_ThenReportsIt(int seconds, bool saves)
+    {
+        // Act
+        var checkedWorkflow = Check(OrderSync(new WorkflowStep { DelaySeconds = seconds, Saves = saves ? [new("token", "$")] : [] }));
+
+        // Assert
+        Assert.Equal([new(WorkflowProblemKind.InvalidDelay, 0, $"{seconds}")], checkedWorkflow.Problems);
+    }
+
+    [Theory]
+    [InlineData("$.status", null, 5, 0, false)]
+    [InlineData("nope", "x", 5, 0, false)]
+    [InlineData(null, null, 0, 0, false)]
+    [InlineData(null, null, 101, 0, false)]
+    [InlineData(null, null, 5, 301, false)]
+    [InlineData(null, null, 5, 0, true)]
+    public void Check_WhenARetryIsNotValid_ThenReportsIt(string? until, string? equals, int times, int waitSeconds, bool script)
+    {
+        // Arrange
+        var step = script ? new WorkflowStep { Script = "token.js" } : new WorkflowStep { Request = Login };
+
+        // Act
+        var checkedWorkflow = Check(OrderSync(step with { Retry = new() { Until = until, Value = equals, Times = times, WaitSeconds = waitSeconds } }), scripts: new() { ["token.js"] = "return 1;" });
+
+        // Assert
+        Assert.Equal([new(WorkflowProblemKind.InvalidRetry, 0, until ?? "")], checkedWorkflow.Problems);
+    }
+
+    [Fact]
+    public void Check_WhenAStepHasBothARequestAndAScript_ThenReportsIt()
+    {
+        // Act
+        var checkedWorkflow = Check(OrderSync(new WorkflowStep { Request = Login, Script = "token.js" }), scripts: new() { ["token.js"] = "return 'abc';" });
+
+        // Assert
+        Assert.Equal([new(WorkflowProblemKind.MixedStep, 0, "")], checkedWorkflow.Problems);
     }
 
     [Theory]

@@ -5,7 +5,7 @@ using Hoboman.Core.Requests;
 
 namespace Hoboman.Core.Workflows;
 
-// The call of a step is kept in the workflow itself, so a workflow needs nothing from the collections. It has what a request has, but there is no folder to inherit auth from.
+// The call of a step is kept in the workflow itself, so a workflow needs nothing from the collections. It has what a request has, and inherits auth from the workflow instead of a folder.
 public sealed record WorkflowRequest
 {
     // The owner of the step's secrets, such as a password or a token, which are kept in secrets.json and never in the workflow.
@@ -43,7 +43,7 @@ public sealed record WorkflowRequest
         Body = request.Body,
         UseEnvironmentVariablesInBody = request.UseEnvironmentVariablesInBody,
         Base64 = request.Base64,
-        Auth = request.Auth.Kind is AuthKind.None or AuthKind.Inherit ? null : request.Auth,
+        Auth = request.Auth.Kind is AuthKind.None ? null : request.Auth,
     };
 
     public ApiRequest ToApiRequest() => new()
@@ -57,6 +57,6 @@ public sealed record WorkflowRequest
         Body = Body,
         UseEnvironmentVariablesInBody = UseEnvironmentVariablesInBody,
         Base64 = Base64,
-        Auth = Auth is { Kind: not AuthKind.Inherit } auth ? auth : AuthSettings.None,
+        Auth = Auth ?? AuthSettings.None,
     };
 }

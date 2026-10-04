@@ -1,6 +1,8 @@
+using System.Text.Json.Serialization;
+
 namespace Hoboman.Core.Workflows;
 
-// A step sends its own request or runs a script in the workflow's folder. A step without a URL is told of by the check instead of failing the whole file.
+// A step sends its own request, runs a script in the workflow's folder or waits a number of seconds. A step without a URL is told of by the check instead of failing the whole file.
 public sealed record WorkflowStep
 {
     public string? Name { get; init; }
@@ -9,5 +11,16 @@ public sealed record WorkflowStep
 
     public string? Script { get; init; }
 
+    public int? DelaySeconds { get; init; }
+
+    public WorkflowRetry? Retry { get; init; }
+
     public IReadOnlyList<WorkflowSave> Saves { get; init; } = [];
+
+    // What the step does follows from what it holds. One that holds more than one thing is told of by the check, and runs its script as before.
+    [JsonIgnore]
+    public StepKind Kind => Script is not null ? StepKind.Script : DelaySeconds is not null ? StepKind.Delay : StepKind.Request;
+
+    [JsonIgnore]
+    public bool IsMixed => (Request is null ? 0 : 1) + (Script is null ? 0 : 1) + (DelaySeconds is null ? 0 : 1) > 1;
 }

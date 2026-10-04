@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Hoboman.Core.Auth;
@@ -25,9 +26,11 @@ public sealed partial class WorkflowCheck(WorkflowLibrary workflows, SecretStore
         var authTexts = new Dictionary<int, IReadOnlyList<string>>();
         foreach (var (index, step) in workflow.Steps.Index())
         {
-            if (step.Script is null && step.Request is { } request)
+            if (step.Kind == StepKind.Request && step.Request is { } request)
             {
-                authTexts[index] = await AuthTextsAsync(request, cancellationToken).ConfigureAwait(false);
+                authTexts[index] = request.Auth is { Kind: AuthKind.Inherit }
+                    ? await AuthTextsAsync(workflow.Id, workflow.Auth, cancellationToken).ConfigureAwait(false)
+                    : await AuthTextsAsync(request.Id, request.Auth, cancellationToken).ConfigureAwait(false);
             }
         }
         return Check(name, workflow, environment, parameters, scripts, authTexts);
@@ -59,37 +62,59 @@ public sealed partial class WorkflowCheck(WorkflowLibrary workflows, SecretStore
         {
             problems.AddRange(step.Saves.Where(save => !variableNames.Contains(save.Variable)).Select(save => new WorkflowProblem(WorkflowProblemKind.NotAVariable, index, save.Variable)));
             problems.AddRange(step.Saves.Where(save => !RunValues.IsSource(save.From)).Select(save => new WorkflowProblem(WorkflowProblemKind.InvalidSource, index, save.From)));
-            if (step.Script is { } script)
+            if (step.IsMixed)
             {
-                if (scripts?.GetValueOrDefault(script) is not { } code)
-                {
-                    problems.Add(new(WorkflowProblemKind.ScriptNotFound, index, script));
-                }
-                else if (ScriptHost.SyntaxErrorIn(script, code) is { } error)
-                {
-                    problems.Add(new(WorkflowProblemKind.InvalidScript, index, error));
-                }
-                else
-                {
-                    steps.Add(new(step, null, code));
-                }
-                set.UnionWith(step.Saves.Select(save => save.Variable).Where(variableNames.Contains));
-                continue;
+                problems.Add(new(WorkflowProblemKind.MixedStep, index, ""));
             }
-            if (step.Request is not { } request || string.IsNullOrWhiteSpace(request.Url))
+            if (step.Retry is { } retry && !IsValid(retry, step.Kind))
             {
-                problems.Add(new(WorkflowProblemKind.MissingUrl, index, ""));
+                problems.Add(new(WorkflowProblemKind.InvalidRetry, index, retry.Until ?? ""));
             }
-            else
+            switch (step.Kind)
             {
-                var sent = request.ToApiRequest();
-                steps.Add(new(step, sent));
-                problems.AddRange(UnavailableIn(index, NamesUsedBy(sent, authTexts?.GetValueOrDefault(index) ?? []), declaredNames, set, environment));
+                case StepKind.Script:
+                    if (scripts?.GetValueOrDefault(step.Script!) is not { } code)
+                    {
+                        problems.Add(new(WorkflowProblemKind.ScriptNotFound, index, step.Script!));
+                    }
+                    else if (ScriptHost.SyntaxErrorIn(step.Script!, code) is { } error)
+                    {
+                        problems.Add(new(WorkflowProblemKind.InvalidScript, index, error));
+                    }
+                    else
+                    {
+                        steps.Add(new(step, null, code));
+                    }
+                    break;
+                // A wait has no answer to save from.
+                case StepKind.Delay when step.DelaySeconds is < 1 or > MaxDelaySeconds || step.Saves.Count > 0:
+                    problems.Add(new(WorkflowProblemKind.InvalidDelay, index, step.DelaySeconds!.Value.ToString(CultureInfo.InvariantCulture)));
+                    break;
+                case StepKind.Delay:
+                    steps.Add(new(step, null));
+                    break;
+                case StepKind.Request when step.Request is { } request && !string.IsNullOrWhiteSpace(request.Url):
+                    var sent = request.ToApiRequest();
+                    steps.Add(new(step, sent));
+                    problems.AddRange(UnavailableIn(index, NamesUsedBy(sent, authTexts?.GetValueOrDefault(index) ?? []), declaredNames, set, environment));
+                    break;
+                default:
+                    problems.Add(new(WorkflowProblemKind.MissingUrl, index, ""));
+                    break;
             }
             set.UnionWith(step.Saves.Select(save => save.Variable).Where(variableNames.Contains));
         }
         return new(name, workflow, parameters, steps, problems);
     }
+
+    public const int MaxDelaySeconds = 300;
+
+    public const int MaxRetryTimes = 100;
+
+    // Only a call can give another answer the next time, so a script or a wait is not tried again.
+    static bool IsValid(WorkflowRetry retry, StepKind kind) =>
+        kind == StepKind.Request && (retry.Until is null) == (retry.Value is null) && (retry.Until is null || RunValues.IsSource(retry.Until))
+        && retry.Times is >= 1 and <= MaxRetryTimes && retry.WaitSeconds is >= 0 and <= MaxDelaySeconds;
 
     public static bool IsValidName(string name) => name.Length > 0 && name.IndexOfAny(['{', '}']) < 0;
 
@@ -113,14 +138,14 @@ public sealed partial class WorkflowCheck(WorkflowLibrary workflows, SecretStore
     private static partial Regex ScriptVars();
 
     // The auth is filled in like the rest of the request, so its user name and saved secret can use names too.
-    async Task<IReadOnlyList<string>> AuthTextsAsync(WorkflowRequest request, CancellationToken cancellationToken)
+    async Task<IReadOnlyList<string>> AuthTextsAsync(Guid owner, AuthSettings? settings, CancellationToken cancellationToken)
     {
         try
         {
-            return request.Auth switch
+            return settings switch
             {
-                { Kind: AuthKind.Basic } auth => [auth.UserName, .. await SecretOfAsync(request.Id, SecretKind.Password, cancellationToken).ConfigureAwait(false)],
-                { Kind: AuthKind.Bearer } => await SecretOfAsync(request.Id, SecretKind.Token, cancellationToken).ConfigureAwait(false),
+                { Kind: AuthKind.Basic } auth => [auth.UserName, .. await SecretOfAsync(owner, SecretKind.Password, cancellationToken).ConfigureAwait(false)],
+                { Kind: AuthKind.Bearer } => await SecretOfAsync(owner, SecretKind.Token, cancellationToken).ConfigureAwait(false),
                 _ => [],
             };
         }

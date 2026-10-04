@@ -13,14 +13,21 @@ public sealed record StepFinished(
     string? Reason = null,
     long? ElapsedMs = null,
     long? Size = null,
+    int? Attempts = null,
     string? Error = null,
     IReadOnlyDictionary<string, JsonElement>? Saved = null,
     IReadOnlyList<ResponseHeader>? Headers = null,
     string? Body = null,
     [property: JsonIgnore] RequestProblemKind? Problem = null,
-    [property: JsonIgnore] string? MissingSave = null) : WorkflowEvent
+    [property: JsonIgnore] string? MissingSave = null,
+    [property: JsonIgnore] bool NotReady = false) : WorkflowEvent
 {
     public static StepFinished Of(int index, ApiResponse response, IReadOnlyDictionary<string, JsonElement>? saved, string? missingSave) =>
         new(index, response.IsSuccess && missingSave is null ? StepOutcome.Succeeded : StepOutcome.Failed, response.StatusCode, response.Reason, response.ElapsedMs, response.Size,
-            missingSave is null ? null : $"Nothing to save was found at {missingSave}.", saved is { Count: > 0 } ? saved : null, response.Headers, response.Body, MissingSave: missingSave);
+            Error: missingSave is null ? null : $"Nothing to save was found at {missingSave}.", Saved: saved is { Count: > 0 } ? saved : null, Headers: response.Headers, Body: response.Body,
+            MissingSave: missingSave);
+
+    // An answer came, but not the one that was waited for.
+    public static StepFinished NotReadyOf(int index, ApiResponse response, int attempts) =>
+        Of(index, response, null, null) with { Outcome = StepOutcome.Failed, Error = $"The answer was not ready after {attempts} attempts.", NotReady = true };
 }

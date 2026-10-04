@@ -37,6 +37,8 @@ public sealed class WorkflowViewModel : ObservableObject
         _services = services;
         Name = name;
         Parameters.Changed += Edited;
+        Auth = new(services.Secrets, services.AuthRefresh, services.Environments, services.Translator, services.Clock, services.Logger);
+        Auth.Changed += Edited;
         Send = new AsyncCommand(RunAsync, () => !IsRunning);
         Save = new AsyncCommand(SaveAsync);
     }
@@ -44,6 +46,9 @@ public sealed class WorkflowViewModel : ObservableObject
     public string Name { get; private set => Set(ref field, value); }
 
     public KeyValueListViewModel Parameters { get; } = new();
+
+    // The auth the steps that inherit use, as a folder's auth is for its requests.
+    public AuthViewModel Auth { get; }
 
 
     public ObservableCollection<WorkflowStepViewModel> Steps { get; } = [];
@@ -156,6 +161,7 @@ public sealed class WorkflowViewModel : ObservableObject
 
     public void Relabel()
     {
+        Auth.Relabel();
         foreach (var step in Steps)
         {
             step.Relabel();
@@ -168,6 +174,7 @@ public sealed class WorkflowViewModel : ObservableObject
     {
         _closed = true;
         Cancel();
+        Auth.CancelFetch();
         foreach (var step in Steps)
         {
             step.Close();
@@ -177,8 +184,10 @@ public sealed class WorkflowViewModel : ObservableObject
 
     public void Cancel() => _running?.Cancel();
 
-    // A new step starts with a JSON body, as a new tab does.
-    public void AddRequest() => Add(new() { Request = new() { BodyKind = BodyKind.Json } });
+    // A new step starts with a JSON body and the workflow's auth, as a new tab starts with its folder's.
+    public void AddRequest() => Add(new() { Request = new() { BodyKind = BodyKind.Json, Auth = new(AuthKind.Inherit) } });
+
+    public void AddDelay() => Add(new() { DelaySeconds = 5 });
 
     // The file is made at once with a small start, so it can be opened in an editor. A file that is already there is used as it is.
     public async Task AddScriptAsync()
@@ -318,6 +327,10 @@ public sealed class WorkflowViewModel : ObservableObject
             _unsavedOwners.ExceptWith(owners);
             _unsavedOwners.ExceptWith(removed);
             await _services.ForgetSecretsAsync(removed);
+            if (removed.Contains(_id))
+            {
+                Auth.ForgetSavedSecrets();
+            }
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
@@ -416,6 +429,9 @@ public sealed class WorkflowViewModel : ObservableObject
             case StepFinished finished:
                 await steps[finished.Index].FinishedAsync(finished, run[finished.Index].Saves);
                 break;
+            case StepRetrying retrying:
+                steps[retrying.Index].Retrying(retrying.Attempt, run[retrying.Index].Retry?.Times ?? retrying.Attempt);
+                break;
             case StepSkipped skipped:
                 steps[skipped.Index].Ended(StepOutcome.Skipped);
                 break;
@@ -430,7 +446,10 @@ public sealed class WorkflowViewModel : ObservableObject
     // A cancelled fetch cancels the step, as the run was cancelled. A step removed during the run gets no token, as nothing would forget it.
     async Task<bool> FetchTokenAsync(AuthSource auth, ApiEnvironment environment, IReadOnlyList<WorkflowStepViewModel> steps, CancellationToken cancellationToken)
     {
-        if (steps.FirstOrDefault(step => step.SecretsId == auth.SecretsId) is not { Auth: { } owner } step || !Steps.Contains(step))
+        var owner = auth.SecretsId == _id ? Auth
+            : steps.FirstOrDefault(step => step.SecretsId == auth.SecretsId) is { Auth: { } stepAuth } step && Steps.Contains(step) ? stepAuth
+            : null;
+        if (owner is null)
         {
             return false;
         }
@@ -444,11 +463,17 @@ public sealed class WorkflowViewModel : ObservableObject
         return fetched;
     }
 
-    IReadOnlySet<Guid> SecretOwners => Steps.Select(step => step.SecretsId).OfType<Guid>().ToHashSet();
+    // Every request the workflow holds, also one kept in a step of another kind.
+    IReadOnlySet<Guid> SecretOwners => WorkflowLibrary.SecretOwnersOf(ToWorkflow()).ToHashSet();
 
     async Task SaveSecretsAsync(CancellationToken cancellationToken)
     {
         _unsavedOwners.UnionWith(SecretOwners.Except(_savedOwners));
+        // Secrets typed for a kind of auth the workflow no longer has would belong to nothing.
+        if (_id != Guid.Empty && Auth.Kind is not (AuthKind.None or AuthKind.Inherit) && Auth.HasUnsavedSecrets)
+        {
+            await Auth.SaveSecretsAsync(_id, cancellationToken);
+        }
         foreach (var step in Steps.ToList())
         {
             await step.SaveSecretsAsync(cancellationToken);
@@ -460,6 +485,7 @@ public sealed class WorkflowViewModel : ObservableObject
     {
         try
         {
+            await Auth.LoadSecretsAsync(_id, CancellationToken.None);
             foreach (var step in Steps.ToList())
             {
                 await step.LoadSecretsAsync(CancellationToken.None);
@@ -489,6 +515,9 @@ public sealed class WorkflowViewModel : ObservableObject
             WorkflowProblemKind.UsedBeforeSaved => translator.Format("WorkflowProblem.UsedBeforeSaved", problem.Detail),
             WorkflowProblemKind.ScriptNotFound => translator.Format("WorkflowProblem.ScriptNotFound", problem.Detail),
             WorkflowProblemKind.InvalidScript => translator.Format("WorkflowProblem.InvalidScript", problem.Detail),
+            WorkflowProblemKind.MixedStep => translator.Of("WorkflowProblem.MixedStep"),
+            WorkflowProblemKind.InvalidDelay => translator.Format("WorkflowProblem.InvalidDelay", WorkflowCheck.MaxDelaySeconds),
+            WorkflowProblemKind.InvalidRetry => translator.Format("WorkflowProblem.InvalidRetry", WorkflowCheck.MaxRetryTimes, WorkflowCheck.MaxDelaySeconds),
             _ => translator.Format("WorkflowProblem.UnknownName", problem.Detail),
         };
         return problem.Step is { } step ? translator.Format("Workflow.StepProblem", step + 1, text) : text;
@@ -509,7 +538,11 @@ public sealed class WorkflowViewModel : ObservableObject
         var declared = parameters.Concat(_variables).ToHashSet();
         foreach (var step in Steps)
         {
-            var used = step.Script is { } script ? WorkflowCheck.VarsIn(_code.GetValueOrDefault(script, "")).Distinct() : step.Used;
+            var used = step.Kind switch
+            {
+                StepKind.Script => WorkflowCheck.VarsIn(_code.GetValueOrDefault(step.Script!, "")).Distinct(),
+                _ => step.Used,
+            };
             step.UsedNames = [.. used.Where(declared.Contains).Order(StringComparer.Ordinal)];
         }
     }
@@ -520,6 +553,8 @@ public sealed class WorkflowViewModel : ObservableObject
         _savedOwners = WorkflowLibrary.SecretOwnersOf(workflow).ToHashSet();
         _variableDefaults = workflow.Variables.Where(variable => variable.HasDefault).DistinctBy(variable => variable.Name).ToDictionary(variable => variable.Name, variable => variable.Default);
         _savedJson = JsonOf(workflow);
+        Auth.UseOwner(workflow.Id);
+        Auth.Load(workflow.Auth ?? AuthSettings.None);
         _code.Clear();
         _savedCode.Clear();
         Parameters.Load(workflow.Parameters.Select(EntryOf));
@@ -564,9 +599,10 @@ public sealed class WorkflowViewModel : ObservableObject
         Parameters = ValuesOf(Parameters),
         Variables = [.. _variables.Select(name => new WorkflowValue(name) { Default = _variableDefaults.GetValueOrDefault(name) })],
         Steps = [.. Steps.Select(step => step.ToStep())],
+        Auth = Auth.ToSettings() is { Kind: not (AuthKind.None or AuthKind.Inherit) } auth ? auth : null,
     };
 
-    bool HasUnsavedChanges() => JsonOf(ToWorkflow()) != _savedJson || _code.Any(pair => _savedCode.GetValueOrDefault(pair.Key) != pair.Value) || Steps.Any(step => step.Auth?.HasUnsavedSecrets == true);
+    bool HasUnsavedChanges() => JsonOf(ToWorkflow()) != _savedJson || _code.Any(pair => _savedCode.GetValueOrDefault(pair.Key) != pair.Value) || Auth.HasUnsavedSecrets || Steps.Any(step => step.Auth?.HasUnsavedSecrets == true);
 
     string? InvalidDefault() => Parameters.ToList().FirstOrDefault(value => !TryDefaultOf(value.Value, out _))?.Name;
 

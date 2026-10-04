@@ -19,7 +19,11 @@ sealed class Base64Margin(MarkedEditor editor) : AbstractMargin
     // A line of code is about 15 px high, so the checkboxes leave a little room between them.
     const double _size = 12;
 
+    // An unchosen checkbox is faint until its line is pointed at.
+    const double _faint = 0.3;
+
     readonly Dictionary<int, Base64Mark> _byLine = [];
+    int? _pointed;
     readonly List<(TextAnchor Anchor, Base64Mark Mark)> _anchored = [];
 
     public Base64Mark? MarkAt(int line) => editor.IsReadOnly ? FirstOn(editor.Marks, line) : _byLine.GetValueOrDefault(line);
@@ -43,10 +47,14 @@ sealed class Base64Margin(MarkedEditor editor) : AbstractMargin
         Redraw();
     }
 
+    // The editor's own layer with what the lines say is drawn again too.
+    public event Action? Redrawn;
+
     public void Redraw()
     {
         InvalidateVisual();
         TextView?.InvalidateLayer(KnownLayer.Background);
+        Redrawn?.Invoke();
     }
 
     protected override void OnDocumentChanged(TextDocument oldDocument, TextDocument newDocument)
@@ -93,7 +101,7 @@ sealed class Base64Margin(MarkedEditor editor) : AbstractMargin
             if (MarkAt(line.FirstDocumentLine.LineNumber) is { } mark)
             {
                 var middle = line.GetTextLineVisualYPosition(line.TextLines[0], VisualYPosition.TextMiddle) - textView.VerticalOffset;
-                Draw(drawing, new((_width - _size) / 2, middle - _size / 2, _size, _size), mark.State);
+                Draw(drawing, new((_width - _size) / 2, middle - _size / 2, _size, _size), mark.State, line.FirstDocumentLine.LineNumber == _pointed);
             }
         }
         drawing.Pop();
@@ -116,6 +124,22 @@ sealed class Base64Margin(MarkedEditor editor) : AbstractMargin
         // The path tells what a checkbox picks, such as every element of a list.
         ToolTip = mark?.Path;
         Cursor = Clickable(mark) is null ? null : Cursors.Hand;
+        Point(mark?.Line);
+    }
+
+    protected override void OnMouseLeave(MouseEventArgs e)
+    {
+        base.OnMouseLeave(e);
+        Point(null);
+    }
+
+    void Point(int? line)
+    {
+        if (line != _pointed)
+        {
+            _pointed = line;
+            InvalidateVisual();
+        }
     }
 
     void Document_Changed(object? sender, DocumentChangeEventArgs e)
@@ -169,9 +193,14 @@ sealed class Base64Margin(MarkedEditor editor) : AbstractMargin
             ? MarkAt(line.FirstDocumentLine.LineNumber)
             : null;
 
-    void Draw(DrawingContext drawing, Rect box, Base64MarkState state)
+    void Draw(DrawingContext drawing, Rect box, Base64MarkState state, bool pointed)
     {
-        drawing.PushOpacity(state == Base64MarkState.Inside ? 0.35 : 1);
+        drawing.PushOpacity(state switch
+        {
+            Base64MarkState.Inside => 0.35,
+            Base64MarkState.Unchecked when !pointed => _faint,
+            _ => 1,
+        });
         switch (state)
         {
             case Base64MarkState.Checked or Base64MarkState.Decoded:

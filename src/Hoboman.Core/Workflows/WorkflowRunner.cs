@@ -14,8 +14,8 @@ namespace Hoboman.Core.Workflows;
 // One step at a time in the order of the list, and the first that fails skips the rest.
 // The calls are awaited without ConfigureAwait(false), so an event is told where the caller called from, such as the UI thread.
 // Each event is awaited before the next, as Progress<T> can change the order of the lines in a console.
-// A step sends with its own auth, and a token for client credentials is fetched as from a tab. A step has no place in the history, as the run log holds every call.
-public sealed class WorkflowRunner(IRequestSender sender, AppFolder folder, ILogger<WorkflowRunner> logger)
+// A step sends with its own auth or the workflow's, and a token for client credentials is fetched as from a tab. A step has no place in the history, as the run log holds every call.
+public sealed class WorkflowRunner(IRequestSender sender, AppFolder folder, TimeProvider clock, ILogger<WorkflowRunner> logger)
 {
     public async Task<RunOutcome> RunAsync(CheckedWorkflow workflow, ApiEnvironment environment, Func<AuthSource, Task<bool>> fetchToken, Func<WorkflowEvent, Task> report,
         CancellationToken cancellationToken)
@@ -54,14 +54,21 @@ public sealed class WorkflowRunner(IRequestSender sender, AppFolder folder, ILog
         {
             // The overlay is built from the environment for every step, so the values of one step never pile up on those of another.
             var used = environment.WithVariables(values.Overlay);
-            await TellAsync(step.Request is { } request ? new StepStarted(index, step.Title, request.Method, RequestRunner.AddressOf(request, used)) : new StepStarted(index, step.Title, "JS", ""));
+            await TellAsync(step.Step.Kind switch
+            {
+                StepKind.Script => new StepStarted(index, step.Title, "JS", ""),
+                StepKind.Delay => new StepStarted(index, step.Title, "WAIT", ""),
+                _ => new StepStarted(index, step.Title, step.Request!.Method, RequestRunner.AddressOf(step.Request, used)),
+            });
             StepFinished finished;
             try
             {
-                var response = step.Request is { } sent ? await SendAsync(sent, used) : await RunScriptAsync(step);
-                string? missing = null;
-                var saved = response.IsSuccess ? values.TrySave(step.Step.Saves, response, out missing) : null;
-                finished = StepFinished.Of(index, response, saved, missing);
+                finished = step.Step.Kind switch
+                {
+                    StepKind.Delay => await WaitAsync(index, step.Step.DelaySeconds!.Value),
+                    StepKind.Script => Finish(index, step, await RunScriptAsync(step)),
+                    _ => await SendUntilReadyAsync(index, step, used),
+                };
             }
             catch (ScriptException exception)
             {
@@ -81,9 +88,66 @@ public sealed class WorkflowRunner(IRequestSender sender, AppFolder folder, ILog
             return new(index, finished.Outcome, finished.Status);
         }
 
+        StepFinished Finish(int index, CheckedStep step, ApiResponse response)
+        {
+            string? missing = null;
+            var saved = response.IsSuccess ? values.TrySave(step.Step.Saves, response, out missing) : null;
+            return StepFinished.Of(index, response, saved, missing);
+        }
+
+        // A wait has no answer, so it tells only how long it took.
+        async Task<StepFinished> WaitAsync(int index, int seconds)
+        {
+            var waitStarted = clock.GetTimestamp();
+            await Task.Delay(TimeSpan.FromSeconds(seconds), clock, cancellationToken);
+            return new(index, StepOutcome.Succeeded, ElapsedMs: (long)clock.GetElapsedTime(waitStarted).TotalMilliseconds);
+        }
+
+        // A step that retries is sent again until its answer is ready, as an API can still be making what is asked for.
+        // Only what comes back from the server or the network can change, so an error made before anything is sent is not tried again.
+        async Task<StepFinished> SendUntilReadyAsync(int index, CheckedStep step, ApiEnvironment used)
+        {
+            if (step.Step.Retry is not { } retry)
+            {
+                return Finish(index, step, await SendAsync(step.Request!, used));
+            }
+            for (var attempt = 1; ; attempt++)
+            {
+                var last = attempt >= retry.Times;
+                StepRetrying notReady;
+                try
+                {
+                    var response = await SendAsync(step.Request!, used);
+                    var value = retry.Until is { } until && RunValues.ValueOf(until, response) is { } found ? RunValues.TextOf(found) : null;
+                    var finished = !response.IsSuccess ? StepFinished.Of(index, response, null, null)
+                        : retry.Until is not null && !string.Equals(value, retry.Value, StringComparison.OrdinalIgnoreCase) ? StepFinished.NotReadyOf(index, response, attempt)
+                        : Finish(index, step, response);
+                    if (finished.Outcome == StepOutcome.Succeeded || last)
+                    {
+                        return finished with { Attempts = attempt };
+                    }
+                    notReady = new(index, attempt, response.StatusCode, value?[..Math.Min(value.Length, 200)]);
+                }
+                catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+                {
+                    var problem = RequestProblem.KindOf(exception, cancellationToken);
+                    if (last || problem is not (RequestProblemKind.TimedOut or RequestProblemKind.NetworkFailed))
+                    {
+                        return new(index, StepOutcome.Failed, Attempts: attempt, Error: RequestProblem.TextOf(problem), Problem: problem);
+                    }
+                    notReady = new(index, attempt, Error: RequestProblem.TextOf(problem));
+                }
+                await TellAsync(notReady);
+                await Task.Delay(TimeSpan.FromSeconds(retry.WaitSeconds), clock, cancellationToken);
+            }
+        }
+
+        // A step that inherits uses the workflow's auth, and one that inherits from a workflow without auth sends none.
         Task<ApiResponse> SendAsync(ApiRequest request, ApiEnvironment used)
         {
-            var auth = new AuthSource(request.Id, request.Auth);
+            var auth = request.Auth.Kind == AuthKind.Inherit
+                ? new AuthSource(workflow.Workflow.Id, workflow.Workflow.Auth ?? AuthSettings.None)
+                : new AuthSource(request.Id, request.Auth);
             return TokenRetry.SendAsync(() => sender.SendAsync(request, auth, used, cancellationToken), () => auth, fetchToken);
         }
 

@@ -34,7 +34,7 @@ try
     var runner = new RequestRunner(sender, library, history, NullLogger<RequestRunner>.Instance);
     var workflows = new WorkflowLibrary(folder, NullLogger<WorkflowLibrary>.Instance);
     var check = new WorkflowCheck(workflows, secrets, NullLogger<WorkflowCheck>.Instance);
-    var workflowRunner = new WorkflowRunner(sender, folder, NullLogger<WorkflowRunner>.Instance);
+    var workflowRunner = new WorkflowRunner(sender, folder, TimeProvider.System, NullLogger<WorkflowRunner>.Instance);
     var oauth = new OAuthClient(clients, new NoBrowser(), new Translator(Translation.English), TimeProvider.System, NullLogger<OAuthClient>.Instance);
     var tokens = new UnaskedTokens(oauth, secrets, NullLogger<UnaskedTokens>.Instance);
     var output = new CliOutput(Console.OpenStandardOutput(), Console.OpenStandardError());

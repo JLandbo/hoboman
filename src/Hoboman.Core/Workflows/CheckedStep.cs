@@ -7,5 +7,10 @@ namespace Hoboman.Core.Workflows;
 public sealed record CheckedStep(WorkflowStep Step, ApiRequest? Request, string? Code = null)
 {
     // A step without a name is known by its address, which leaves out what can hold a key, as the run log shows it.
-    public string Title => Step.Name is { Length: > 0 } name ? name : Step.Script ?? (Request is { } request ? $"{request.Method} {RequestRunner.AddressOf(request, null)}" : "");
+    public string Title => Step.Name is { Length: > 0 } name ? name : Step.Kind switch
+    {
+        StepKind.Script => Step.Script!,
+        StepKind.Delay => $"Wait {Step.DelaySeconds} s",
+        _ => Request is { } request ? $"{request.Method} {RequestRunner.AddressOf(request, null)}" : "",
+    };
 }

@@ -72,7 +72,7 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
         sender ??= new HttpRequestSender(Secrets, _clients ??= new(Settings), TimeProvider.System, NullLogger<HttpRequestSender>.Instance);
         var runner = new RequestRunner(sender, Library, History, NullLogger<RequestRunner>.Instance);
         var check = new WorkflowCheck(Workflows, Secrets, NullLogger<WorkflowCheck>.Instance);
-        var workflowRunner = new WorkflowRunner(sender, Folder, NullLogger<WorkflowRunner>.Instance);
+        var workflowRunner = new WorkflowRunner(sender, Folder, TimeProvider.System, NullLogger<WorkflowRunner>.Instance);
         var tokens = new UnaskedTokens(oauth ?? new(_ => throw new OAuthException(OAuthProblem.Denied, "access_denied")), Secrets, NullLogger<UnaskedTokens>.Instance);
         return new CliApplication(Library, Settings, Environments, runner, Workflows, check, workflowRunner, tokens, new(_output, _error), new(input ?? TextReader.Null, input is not null))
             .RunAsync(arguments, cancellationToken ?? Cancellation);

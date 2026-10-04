@@ -24,6 +24,16 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task UpdateAsync_WhenSplitsAreSaved_ThenTheyAreThereAfterARestart()
+    {
+        // Act
+        await Store().UpdateAsync(saved => saved with { Layout = new(1200, 800, false, 340, new Dictionary<string, double> { ["Request"] = 0.3 }) }, Cancellation);
+
+        // Assert
+        Assert.Equal(0.3, (await Store().LoadAsync(Cancellation)).Layout!.Splits!["Request"]);
+    }
+
+    [Fact]
     public async Task UpdateAsync_WhenTheLayoutIsSaved_ThenKeepsTheOtherSettings()
     {
         // Arrange

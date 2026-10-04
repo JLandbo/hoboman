@@ -6,20 +6,22 @@ using ICSharpCode.AvalonEdit.Rendering;
 
 namespace Hoboman.Controls;
 
-// Tints the lines of the chosen properties, and writes at the end of each what happens to it.
+// Tints the lines of the chosen properties under the text, and writes over the text what happens to each.
+// What a line says goes right after its text when there is room, and else at the right edge on the editor's own background, so it never mixes with the code.
 sealed class Base64Highlighter : IBackgroundRenderer
 {
     readonly MarkedEditor _editor;
     readonly Base64Margin _margin;
+    readonly bool _labels;
     readonly Brush _chosen;
     readonly Brush _failed;
     readonly Brush _saved;
     readonly Typeface _badge;
     readonly Typeface _note;
 
-    public Base64Highlighter(MarkedEditor editor, Base64Margin margin)
+    public Base64Highlighter(MarkedEditor editor, Base64Margin margin, bool labels)
     {
-        (_editor, _margin) = (editor, margin);
+        (_editor, _margin, _labels) = (editor, margin, labels);
         _chosen = Tint("Attention", 0x12);
         _failed = Tint("Error", 0x14);
         _saved = Tint("Success", 0x14);
@@ -28,6 +30,7 @@ sealed class Base64Highlighter : IBackgroundRenderer
         _note = new(font, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
     }
 
+    // The labels are drawn by their own layer over the text, so only the tint is drawn as a background.
     public KnownLayer Layer => KnownLayer.Background;
 
     public void Draw(TextView textView, DrawingContext drawing)
@@ -52,42 +55,78 @@ sealed class Base64Highlighter : IBackgroundRenderer
                 Base64MarkState.Checked or Base64MarkState.Decoded => _chosen,
                 _ => _saved,
             };
-            drawing.DrawRectangle(tint, null, new(0, top, textView.ActualWidth, height));
-            var right = textView.ActualWidth - 10;
-            if (mark.Saved is { } saved)
+            if (!_labels)
             {
-                right = Write(drawing, saved, _badge, Brush("Success"), Brush("SuccessSoft"), right, top, height, dip) - 8;
+                drawing.DrawRectangle(tint, null, new(0, top, textView.ActualWidth, height));
+                continue;
             }
-            if (mark.Note is { } note)
+            var labels = LabelsOf(mark, dip);
+            if (labels.Count == 0)
             {
-                right = Write(drawing, note, _note, Brush("Muted"), null, right, top, height, dip) - 8;
+                continue;
             }
-            if (mark.Badge is { } badge)
+            var width = labels.Sum(label => label.Width) + 8 * (labels.Count - 1);
+            // The line's text line can be cut at the view, so the end is taken from where its last character is.
+            var textEnd = line.GetVisualPosition(line.VisualLength, VisualYPosition.TextMiddle).X - textView.HorizontalOffset;
+            var left = textEnd + 24;
+            if (left + width > textView.ActualWidth - 10)
             {
-                var (text, back) = mark.State switch
-                {
-                    Base64MarkState.Decoded => (Brush("Success"), Brush("SuccessSoft")),
-                    Base64MarkState.Failed => (Brush("Error"), Brush("ErrorSoft")),
-                    _ => (Brush("Attention"), Tint("Attention", 0x29)),
-                };
-                Write(drawing, badge, _badge, text, back, right, top, height, dip);
+                left = textView.ActualWidth - 10 - width;
+                var behind = new Rect(left - 12, top, textView.ActualWidth - left + 12, height);
+                drawing.DrawRectangle(Brush("Input"), null, behind);
+                drawing.DrawRectangle(tint, null, behind);
+            }
+            foreach (var label in labels)
+            {
+                left = Write(drawing, label, left, top, height) + 8;
             }
         }
         drawing.Pop();
     }
 
-    // Right-aligned and no higher than the line, and gives where it starts, so the next text goes before it.
-    static double Write(DrawingContext drawing, string text, Typeface typeface, Brush foreground, Brush? background, double right, double top, double height, double dip)
+    sealed record Label(FormattedText Text, Brush? Background, double Width);
+
+    // In the order they are read: what happens to the property, a note on it, and what was saved from it.
+    List<Label> LabelsOf(Base64Mark mark, double dip)
+    {
+        var labels = new List<Label>();
+        if (mark.Badge is { } badge)
+        {
+            var (text, back) = mark.State switch
+            {
+                Base64MarkState.Decoded => (Brush("Success"), Brush("SuccessSoft")),
+                Base64MarkState.Failed => (Brush("Error"), Brush("ErrorSoft")),
+                _ => (Brush("Attention"), Tint("Attention", 0x29)),
+            };
+            labels.Add(LabelOf(badge, _badge, text, back, dip));
+        }
+        if (mark.Note is { } note)
+        {
+            labels.Add(LabelOf(note, _note, Brush("Muted"), null, dip));
+        }
+        if (mark.Saved is { } saved)
+        {
+            labels.Add(LabelOf(saved, _badge, Brush("Success"), Brush("SuccessSoft"), dip));
+        }
+        return labels;
+    }
+
+    static Label LabelOf(string text, Typeface typeface, Brush foreground, Brush? background, double dip)
     {
         var formatted = new FormattedText(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, typeface, 10, foreground, dip);
-        var padding = background is null ? 0 : 6;
-        var box = new Rect(right - formatted.Width - 2 * padding, top + (height - formatted.Height) / 2, formatted.Width + 2 * padding, formatted.Height);
-        if (background is not null)
+        return new(formatted, background, formatted.Width + (background is null ? 0 : 12));
+    }
+
+    // No higher than the line, and gives where it ends, so the next one goes after it.
+    static double Write(DrawingContext drawing, Label label, double left, double top, double height)
+    {
+        var box = new Rect(left, top + (height - label.Text.Height) / 2, label.Width, label.Text.Height);
+        if (label.Background is { } background)
         {
             drawing.DrawRoundedRectangle(background, null, box, 4, 4);
         }
-        drawing.DrawText(formatted, new(box.X + padding, box.Y));
-        return box.X;
+        drawing.DrawText(label.Text, new(box.X + (label.Background is null ? 0 : 6), box.Y));
+        return box.Right;
     }
 
     Brush Brush(string key) => (Brush)_editor.FindResource(key);

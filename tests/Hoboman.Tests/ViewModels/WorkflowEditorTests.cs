@@ -163,6 +163,301 @@ public sealed class WorkflowEditorTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenAStepHoldsARequestAndAWait_ThenTellsItAndKeepsTheRequestAndItsSecret()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var id = Guid.NewGuid();
+        await harness.Secrets.SaveAsync(id, SecretKind.Token, "abc", Cancellation);
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { DelaySeconds = 5, Request = Request() with { Id = id, Auth = new(AuthKind.Bearer) } }] }, harness);
+
+        // Act
+        await workflow.RunAsync().WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+        await workflow.SaveAsync();
+
+        // Assert
+        var mixed = harness.Translator.Format("Workflow.StepProblem", 1, harness.Translator.Of("WorkflowProblem.MixedStep"));
+        Assert.Equal((true, id, "abc"), (workflow.Problems.Contains(mixed), (await harness.WorkflowLibrary.LoadAsync("Flow", Cancellation))!.Steps.Single().Request?.Id,
+            await harness.Secrets.OfAsync(id, SecretKind.Token, Cancellation)));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenAStepHoldingARequestAndAWaitIsRemoved_ThenForgetsTheRequestsSecret()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var id = Guid.NewGuid();
+        await harness.Secrets.SaveAsync(id, SecretKind.Token, "abc", Cancellation);
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { DelaySeconds = 5, Request = Request() with { Id = id, Auth = new(AuthKind.Bearer) } }] }, harness);
+        await workflow.SaveAsync();
+        workflow.RemoveStep(workflow.Steps.Single());
+
+        // Act
+        await workflow.SaveAsync();
+
+        // Assert
+        Assert.Null(await harness.Secrets.OfAsync(id, SecretKind.Token, Cancellation));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAScriptStepHasARetry_ThenTellsItAndShowsNoRetry()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var workflow = await OpenScriptAsync(harness, "return { value: 1 };", new WorkflowStep { Script = "map.js", Retry = new() });
+
+        // Act
+        await workflow.RunAsync();
+
+        // Assert
+        var invalid = harness.Translator.Format("Workflow.StepProblem", 2, harness.Translator.Format("WorkflowProblem.InvalidRetry", WorkflowCheck.MaxRetryTimes, WorkflowCheck.MaxDelaySeconds));
+        Assert.Equal((true, false), (workflow.Problems.Contains(invalid), workflow.Steps[1].HasRetry));
+    }
+
+    [Fact]
+    public async Task OpenWorkflowAsync_WhenAWaitHasSaves_ThenShowsThemSoTheyCanBeRemoved()
+    {
+        // Arrange
+        using var harness = new Harness();
+
+        // Act
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Variables = [new("x")], Steps = [new() { DelaySeconds = 5, Saves = [new("x", "$.id")] }] }, harness);
+
+        // Assert
+        Assert.True(workflow.Steps.Single().HasSaves);
+    }
+
+    [Fact]
+    public async Task Relabel_WhenTheLanguageChangesAfterARetriedRun_ThenTellsTheAttemptsInTheNewLanguage()
+    {
+        // Arrange
+        var calls = 0;
+        using var harness = new Harness(send: () => Task.FromResult(++calls == 1 ? new ApiResponse(403, "Forbidden", 1, 0, [], "") : Ok("{}")));
+        harness.Translator.Use(Translation.Danish);
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request(), Retry = new() { Times = 3, WaitSeconds = 0 } }] }, harness);
+        await workflow.RunAsync();
+        harness.Translator.Use(Translation.English);
+        var changed = new List<string?>();
+        workflow.Steps.Single().PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        // Act
+        workflow.Relabel();
+
+        // Assert
+        Assert.Equal((true, true), (changed.Contains(nameof(WorkflowStepViewModel.Elapsed)), workflow.Steps.Single().Elapsed!.EndsWith(harness.Translator.Format("Workflow.Attempts", 2))));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAStepWaits_ThenItRunsWithoutSending()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { DelaySeconds = 5 }] }, harness);
+        var step = workflow.Steps.Single();
+
+        // Act
+        var running = workflow.RunAsync();
+        for (var tries = 0; tries < 500 && !step.IsRunning; tries++)
+        {
+            await Task.Delay(10, Cancellation);
+        }
+        var (isRunning, isSending) = (step.IsRunning, step.IsSending);
+        for (var tries = 0; tries < 500 && !running.IsCompleted; tries++)
+        {
+            harness.Clock.Advance(TimeSpan.FromSeconds(5));
+            await Task.Delay(10, Cancellation);
+        }
+        await running.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+
+        // Assert
+        Assert.Equal((true, false), (isRunning, isSending));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenAStepRetries_ThenSavesHowItRetries()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request() }] }, harness);
+        var step = workflow.Steps.Single();
+        (step.Retries, step.RetryUntil, step.RetryEquals, step.RetryTimes, step.RetryWaitSeconds) = (true, " $.result.status ", "succeeded", 60, 5);
+
+        // Act
+        await workflow.SaveAsync();
+
+        // Assert
+        Assert.Equal(new WorkflowRetry { Until = "$.result.status", Value = "succeeded", Times = 60, WaitSeconds = 5 }, (await harness.WorkflowLibrary.LoadAsync("Flow", Cancellation))!.Steps.Single().Retry);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAStepIsTriedAgain_ThenShowsWhichAttemptIsRunning()
+    {
+        // Arrange
+        var sending = new TaskCompletionSource();
+        var answer = new TaskCompletionSource<ApiResponse>();
+        var calls = 0;
+        using var harness = new Harness(send: () =>
+        {
+            if (++calls == 1)
+            {
+                return Task.FromResult(new ApiResponse(403, "Forbidden", 1, 0, [], ""));
+            }
+            sending.TrySetResult();
+            return answer.Task;
+        });
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request(), Retry = new() { Times = 3, WaitSeconds = 0 } }] }, harness);
+
+        // Act
+        var running = workflow.RunAsync();
+        await sending.Task.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+        var state = workflow.Steps.Single().State;
+        answer.SetResult(Ok("{}"));
+        await running.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+
+        // Assert
+        Assert.Equal(harness.Translator.Format("Workflow.Attempt", 2, 3), state);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheAnswerIsNeverReady_ThenTheStepTellsAfterHowManyAttempts()
+    {
+        // Arrange
+        using var harness = new Harness(send: () => Task.FromResult(Ok("""{"status":"processing"}""")));
+        harness.Translator.Use(Translation.Danish);
+        var retry = new WorkflowRetry { Until = "$.status", Value = "done", Times = 2, WaitSeconds = 0 };
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request(), Retry = retry }] }, harness);
+
+        // Act
+        await workflow.RunAsync();
+
+        // Assert
+        Assert.Equal(harness.Translator.Format("Workflow.NotReady", 2), workflow.Steps.Single().Error);
+    }
+
+    [Fact]
+    public async Task AddDelay_WhenSaved_ThenTheStepWaitsItsSeconds()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid() }, harness);
+        workflow.AddDelay();
+        workflow.Steps.Single().DelaySeconds = 30;
+
+        // Act
+        await workflow.SaveAsync();
+
+        // Assert
+        var saved = (await harness.WorkflowLibrary.LoadAsync("Flow", Cancellation))!.Steps.Single();
+        Assert.Equal((StepKind.Delay, 30, harness.Translator.Format("Workflow.DelayTitle", 30)), (saved.Kind, saved.DelaySeconds, workflow.Steps.Single().Title));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenTheWorkflowHasABearerToken_ThenSavesItUnderTheWorkflowAndNotInTheFile()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var id = Guid.NewGuid();
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = id }, harness);
+        workflow.Auth.Kind = AuthKind.Bearer;
+        workflow.Auth.Token = "abc";
+
+        // Act
+        await workflow.SaveAsync();
+
+        // Assert
+        Assert.Equal((AuthKind.Bearer, "abc"), ((await harness.WorkflowLibrary.LoadAsync("Flow", Cancellation))!.Auth!.Kind, await harness.Secrets.OfAsync(id, SecretKind.Token, Cancellation)));
+        Assert.DoesNotContain("abc", await File.ReadAllTextAsync(Path.Combine(harness.Folder.Workflows, "Flow", "workflow.json"), Cancellation));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenTheWorkflowsAuthIsRemovedAndAddedAgain_ThenSavesItsSecretAgain()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var id = Guid.NewGuid();
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = id }, harness);
+        (workflow.Auth.Kind, workflow.Auth.Token) = (AuthKind.Bearer, "abc");
+        await workflow.SaveAsync();
+        workflow.Auth.Kind = AuthKind.None;
+        await workflow.SaveAsync();
+        workflow.Auth.Kind = AuthKind.Bearer;
+
+        // Act
+        await workflow.SaveAsync();
+
+        // Assert
+        Assert.Equal("abc", await harness.Secrets.OfAsync(id, SecretKind.Token, Cancellation));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAStepThatInheritsMissesTheWorkflowsSecret_ThenPointsAtTheWorkflowsAuth()
+    {
+        // Arrange
+        using var harness = new Harness(send: () => throw new MissingSecretException(SecretKind.Token));
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer), Steps = [new() { Request = Request() with { Auth = new(AuthKind.Inherit) } }] }, harness);
+
+        // Act
+        await workflow.RunAsync();
+
+        // Assert
+        Assert.Equal(harness.Translator.Of("Workflow.MissingSecret"), workflow.Steps.Single().Error);
+    }
+
+    [Fact]
+    public async Task AddRequest_WhenAdded_ThenTheStepInheritsTheWorkflowsAuth()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid() }, harness);
+
+        // Act
+        workflow.AddRequest();
+        workflow.Steps.Single().Request!.Url = "https://dev.local";
+        await workflow.SaveAsync();
+
+        // Assert
+        Assert.Equal(AuthKind.Inherit, (await harness.WorkflowLibrary.LoadAsync("Flow", Cancellation))!.Steps.Single().Request!.Auth!.Kind);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheWorkflowsClientCredentialsTokenIsMissing_ThenFetchesAndSavesItForTheWorkflow()
+    {
+        // Arrange
+        var calls = 0;
+        using var harness = new Harness(send: () => ++calls == 1 ? throw new MissingSecretException(SecretKind.OAuthToken) : Task.FromResult(Ok("{}")));
+        var dev = new ApiEnvironment("Dev", []) { Id = Guid.NewGuid() };
+        await harness.EnvironmentStore.SaveAsync([dev], Cancellation);
+        var id = Guid.NewGuid();
+        var main = harness.Main();
+        var workflow = await OpenAsync(main, "Flow", new() { Id = id, Auth = ClientCredentials, Steps = [new() { Request = Request() with { Auth = new(AuthKind.Inherit) } }] }, harness);
+        await main.Environments.ChooseAsync(main.Environments.Items.Single());
+
+        // Act
+        await workflow.RunAsync();
+
+        // Assert
+        Assert.Equal(("200", false), (workflow.Steps.Single().Status, workflow.IsDirty));
+        Assert.NotNull(await harness.Secrets.OfAsync(id, SecretKind.OAuthToken, dev.Id, Cancellation));
+    }
+
+    [Fact]
+    public async Task DeleteWorkflowAsync_WhenTheWorkflowHasAuth_ThenForgetsItsSecret()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(accept: true));
+        var id = Guid.NewGuid();
+        await harness.Secrets.SaveAsync(id, SecretKind.Token, "abc", Cancellation);
+        var main = harness.Main();
+        await OpenAsync(main, "Flow", new() { Id = id, Auth = new(AuthKind.Bearer) }, harness);
+
+        // Act
+        await main.DeleteWorkflowAsync("Flow");
+
+        // Assert
+        Assert.Null(await harness.Secrets.OfAsync(id, SecretKind.Token, Cancellation));
+    }
+
+    [Fact]
     public async Task SaveAsync_WhenAStepHasABearerToken_ThenSavesItAsASecretAndNotInTheWorkflow()
     {
         // Arrange

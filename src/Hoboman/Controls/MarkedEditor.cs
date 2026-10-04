@@ -1,6 +1,7 @@
 using System.Windows;
 using Hoboman.ViewModels;
 using ICSharpCode.AvalonEdit;
+using ICSharpCode.AvalonEdit.Rendering;
 
 namespace Hoboman.Controls;
 
@@ -25,7 +26,13 @@ public abstract class MarkedEditor : TextEditor
         Colorings.Theme(this);
         _margin = new(this);
         TextArea.LeftMargins.Insert(0, _margin);
-        TextArea.TextView.BackgroundRenderers.Add(new Base64Highlighter(this, _margin));
+        TextArea.TextView.BackgroundRenderers.Add(new Base64Highlighter(this, _margin, labels: false));
+        var labels = new Base64LabelLayer(TextArea.TextView, new Base64Highlighter(this, _margin, labels: true)) { IsHitTestVisible = false };
+        TextArea.TextView.InsertLayer(labels, KnownLayer.Caret, LayerInsertionPosition.Below);
+        TextArea.TextView.VisualLinesChanged += (_, _) => labels.InvalidateVisual();
+        TextArea.TextView.ScrollOffsetChanged += (_, _) => labels.InvalidateVisual();
+        TextArea.TextView.SizeChanged += (_, _) => labels.InvalidateVisual();
+        _margin.Redrawn += labels.InvalidateVisual;
         _folding = new(this);
     }
 
