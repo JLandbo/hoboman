@@ -41,6 +41,21 @@ public sealed class SettingsViewModel(SettingsStore store, Translator translator
         }
     }
 
+    // Empty keeps the history for ever. The old calls and runs are deleted when the app starts.
+    public int? DeleteHistoryAfterDays
+    {
+        get => _saved.DeleteHistoryAfterDays;
+        set
+        {
+            if (value is <= 0 || value == _saved.DeleteHistoryAfterDays)
+            {
+                return;
+            }
+            logger.LogInformation("Delete history after {Days} days", value);
+            Saving = SaveAsync(settings => settings with { DeleteHistoryAfterDays = value });
+        }
+    }
+
     public string? Problem { get; private set => Set(ref field, value); }
 
     internal Task Saving { get; private set; } = Task.CompletedTask;

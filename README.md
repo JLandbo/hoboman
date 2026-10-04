@@ -15,7 +15,7 @@ Hoboman er et skrivebordsværktøj til at bygge, sende og undersøge API-kald. R
 - **Request og svar i separate paneler** – panelerne ligger over hinanden med en justerbar splitter. Brug HTTP-metoder, query-parametre, headers og body som JSON, XML, tekst eller ingen body. Svaret viser status, svartid, størrelse, headers og indhold, og **Gem** i svarets statuslinje gemmer det, præcis som serveren sendte det, som en fil, fx en PDF.
 - **Samlinger med undermapper** – opret requests direkte i en mappe, flyt requests og mapper med drag-and-drop, og gem deres rækkefølge.
 - **Faner og drafts** – et draft, du opretter i en mappe, står i samlingerne med en prik, indtil det er gemt. Omdøb faner med dobbeltklik, og træk dem i den ønskede rækkefølge. Gemte faner og deres rækkefølge gendannes ved næste start.
-- **Historik** – de 100 seneste kald fra appen og CLI'et, grupperet pr. dag. Et kald åbnes i en fane, så du kan sende det igen.
+- **Historik** – de 100 seneste kald fra appen og CLI'et, grupperet pr. dag. Et kald åbnes i en fane, så du kan sende det igen. Gamle kald og kørsler kan slettes efter et antal dage.
 - **Miljøer og variabler** – brug `{{variabel}}` i URL, parametre, headers og auth-felter. Appen husker det senest valgte miljø.
 - **Auth med nedarvning** – ingen auth, Basic, Bearer og OAuth 2.0. En undermappe kan overtage eller tilsidesætte auth fra sin overmappe.
 - **Gemte credentials** – gem hele auths, Basic, Bearer token eller OAuth 2.0, pr. miljø under **Credentials** ved siden af miljøvælgeren, og vælg dem i Auth i stedet for at skrive dem igen.
@@ -141,12 +141,12 @@ Et workflow er en række trin, som kører i rækkefølge. Hvert trin sender en r
 3. **Auth** er workflowets fælles auth. Nye request-trin arver den.
 4. **Tilføj trin** med **+ Request**, **+ Script** og **+ Vent**. Et request-trin redigeres som en fane, men hører kun til workflowet.
 5. **Gem værdier.** Under **Gemmer** på et trin vælger du, hvad der gemmes i en variabel efter et 2xx-svar, fx `$.accessToken` i `token`. De næste trin bruger den som `{{token}}`, og scripts som `vars.token`.
-6. **Kør** med **Kør** eller Ctrl+Enter. Listen følger kørslen og markerer trinnet, der kører, med gult. Klik på et trin for at se dets svar og det, det gemte.
+6. **Kør** med **Kør** eller Ctrl+Enter. Listen følger kørslen og markerer trinnet, der kører, med gult. Bagefter står fx **5/5 trin · 2,3 sekunder** ved **Kør**, grønt eller rødt. Klik på et trin for at se dets svar og det, det gemte.
 7. **Gem** workflowet med **Gem** eller Ctrl+S.
 
 ![Workflowet Eksempel efter en kørsel med trin 5 valgt](docs/images/workflow.png)
 
-Hvert trin i listen viser metoden (eller **JS** og **VENT**), navnet, status og tid og under det de navne, trinnet bruger → dem, det gemmer, i grønt. Under svaret står **Gemt** med de gemte værdier, og linjen, der blev gemt fra, har et grønt **i**.
+Hvert trin i listen viser metoden (eller **JS** og **VENT**), navnet, status (**OK** for et script) og tid og under det de navne, trinnet bruger → dem, det gemmer, i grønt. Under svaret står **Gemt** med de gemte værdier, og linjen, der blev gemt fra, har et grønt **i**.
 
 ### Script-trin
 
@@ -167,7 +167,9 @@ Hvert trin i listen viser metoden (eller **JS** og **VENT**), navnet, status og 
 
 ## Indstillinger og temaer
 
-Tandhjulet nederst i sidebaren åbner **Indstillinger** med **Sprog**, **Tema**, **Ignorér certifikatfejl** og en liste over **Genveje**. Ændringer gemmes med det samme.
+Tandhjulet nederst i sidebaren åbner **Indstillinger** med **Sprog**, **Tema**, **Ignorér certifikatfejl**, **Slet historik efter … dage** og en liste over **Genveje**. Ændringer gemmes med det samme.
+
+**Slet historik efter … dage** sletter kald i `history\` og workflow-kørsler i `runs\`, der er ældre end det antal dage, når Hoboman starter. Sletningen sker i baggrunden. Et tomt felt betyder, at intet slettes.
 
 Sort og gul er indbygget. Hver fil `themes\<navn>.json` er et tema med filens navn og holder `{"colors": {"Navn": "#AARRGGBB"}}` med navnene fra `src\Hoboman\Themes\Colors.xaml`; `#RRGGBB` virker også, og farver, filen udelader, er standardtemaets. Mappeknappen åbner `themes\`, og temaerne læses igen, hver gang **Indstillinger** åbnes.
 
@@ -252,13 +254,13 @@ Data gemmes ved siden af den kørende app. Efter `install.ps1` er det i `publish
 | `requests\<mappe>\.folder.json` | Mappens id og auth-indstillinger |
 | `request-order.json` | Rækkefølgen af requests og mapper |
 | `environments.json` | Miljøer og deres variabler |
-| `settings.json` | Valgt miljø, sprog, tema, **Ignorér certifikatfejl**, vindueslayout og gemte faner. CLI'et bruger også det valgte miljø og **Ignorér certifikatfejl** |
+| `settings.json` | Valgt miljø, sprog, tema, **Ignorér certifikatfejl**, **Slet historik efter**, vindueslayout og gemte faner. CLI'et bruger også det valgte miljø og **Ignorér certifikatfejl** |
 | `credentials.json` | Gemte credentials: miljø, navn og auth uden hemmeligheder |
 | `secrets.json` | Krypterede passwords, tokens og client secrets fra auth-felterne og credentials samt OAuth-tokens pr. miljø |
 | `pending-secret-cleanup.json` | Ejere, hvis hemmeligheder skal kontrolleres og ryddes op efter sletning |
-| `history\` | Ét JSON-dokument pr. kald fra appen eller CLI'et med request, svar eller fejl. Appen viser de 100 seneste |
+| `history\` | Ét JSON-dokument pr. kald fra appen eller CLI'et med request, svar eller fejl. Appen viser de 100 seneste og sletter gamle efter **Slet historik efter** |
 | `workflows\<navn>\workflow.json` | Ét workflow pr. mappe med id, parametre, variabler, auth og trin. Script-trinenes `.js`-filer ligger i samme mappe |
-| `runs\<workflow-id>\` | Én JSON-linjefil pr. kørsel fra appen eller CLI'et med events, svar og gemte værdier |
+| `runs\<workflow-id>\` | Én JSON-linjefil pr. kørsel fra appen eller CLI'et med events, svar og gemte værdier. Slettes som `history\` |
 | `logs\` | Appens daglige logfiler, `hoboman-ÅÅÅÅMMDD.log`. CLI'et logger ikke |
 | `themes\<navn>.json` | Ét tema pr. fil, se [Indstillinger og temaer](#indstillinger-og-temaer) |
 

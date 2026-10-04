@@ -47,6 +47,14 @@
             </ItemsControl.ItemTemplate>
         </ItemsControl>
         <CheckBox Content="{DynamicResource Settings.IgnoreCertificateErrors}" IsChecked="{Binding IgnoreCertificateErrors}" />
+        <DockPanel Margin="0,12,0,0">
+            <TextBlock Text="{DynamicResource Settings.DeleteHistory}" VerticalAlignment="Center" />
+            <Border CornerRadius="8" Background="{DynamicResource Input}" Width="56" Margin="8,0" VerticalAlignment="Center">
+                <TextBox x:Name="DeleteHistoryDays" Text="{Binding DeleteHistoryAfterDays, TargetNullValue='', UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}"
+                         FontFamily="{StaticResource UiFont}" Padding="8,4" HorizontalContentAlignment="Right" AutomationProperties.Name="{DynamicResource Settings.DeleteHistory}" />
+            </Border>
+            <TextBlock Text="{DynamicResource Settings.Days}" VerticalAlignment="Center" />
+        </DockPanel>
         <TextBlock Text="{Binding Problem}" Foreground="{DynamicResource Error}" FontSize="12" TextWrapping="Wrap" Margin="0,12,0,0">
             <TextBlock.Style>
                 <Style TargetType="TextBlock">

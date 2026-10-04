@@ -359,7 +359,8 @@ public sealed class WorkflowStepViewModel : ObservableObject
     internal async Task FinishedAsync(StepFinished finished, IReadOnlyList<WorkflowSave> saves)
     {
         IsSuccess = finished.Outcome == StepOutcome.Succeeded;
-        Status = finished.Status?.ToString(CultureInfo.InvariantCulture);
+        // A script sends nothing, so it has no status code to show, only that it went well.
+        Status = IsScript && finished.Status is not null ? "OK" : finished.Status?.ToString(CultureInfo.InvariantCulture);
         _finished = finished;
         OnPropertyChanged(nameof(SavedValues));
         OnPropertyChanged(nameof(Elapsed));
@@ -369,6 +370,7 @@ public sealed class WorkflowStepViewModel : ObservableObject
         if (finished.Status is { } status)
         {
             Result.Saved = SavedPlacesOf(finished, saves);
+            Result.StatusText = IsScript ? "OK" : null;
             await Result.ShowAsync(new(status, finished.Reason ?? "", finished.ElapsedMs ?? 0, finished.Size ?? 0, finished.Headers ?? [], finished.Body ?? "") { Bytes = finished.Bytes });
         }
     }

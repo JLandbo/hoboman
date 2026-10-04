@@ -30,7 +30,7 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
             {
                 return await RunWorkflowAsync(input.Run, cancellationToken);
             }
-            return input.IsList ? await ListAsync(cancellationToken) : await SendAsync(input.Send!, cancellationToken);
+            return input.IsList ? await ListAsync(input.ListsWorkflows, cancellationToken) : await SendAsync(input.Send!, cancellationToken);
         }
         catch (Exception exception)
         {
@@ -38,9 +38,9 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         }
     }
 
-    async Task<int> ListAsync(CancellationToken cancellationToken)
+    async Task<int> ListAsync(bool workflowNames, CancellationToken cancellationToken)
     {
-        var names = await library.NamesAsync(cancellationToken);
+        var names = workflowNames ? await workflows.NamesAsync(cancellationToken) : await library.NamesAsync(cancellationToken);
         await output.WriteNamesAsync(names.Order(StringComparer.OrdinalIgnoreCase).ThenBy(name => name, StringComparer.Ordinal), cancellationToken);
         return 0;
     }
@@ -83,7 +83,20 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         // The temporary values only live in this call, and a token is saved for the environment, so it is fetched without them.
         var used = overrides.Count > 0 ? environment.WithVariables(overrides) : environment;
         var response = await runner.RunAsync(request, name, used, HistorySource.Cli, auth => tokens.FetchAsync(auth, environment, cancellationToken), cancellationToken);
-        return await output.WriteResponseAsync(response, cancellationToken);
+        if (input.OutFile is null)
+        {
+            return await output.WriteResponseAsync(response, cancellationToken);
+        }
+        var file = Path.GetFullPath(input.OutFile);
+        try
+        {
+            await File.WriteAllBytesAsync(file, response.Bytes ?? [], cancellationToken);
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            return await output.WriteErrorAsync("Output file could not be written.");
+        }
+        return await output.WriteResponseAsync(response, file, cancellationToken);
     }
 
     // Everything is read and checked before the run starts, so a run that cannot start writes to stderr only and leaves no run log.

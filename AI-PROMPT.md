@@ -7,9 +7,10 @@ En AI arbejder med Hoboman udefra, gennem kommandolinjeprogrammet `hoboman-cli.e
 | AI'en vil | Sådan | Det sker |
 |---|---|---|
 | Finde requests | `hoboman-cli list` | Stierne til de gemte requests. Intet skrives |
-| Finde workflows og deres parametre | Læse `workflows\<navn>\workflow.json` | Intet skrives |
+| Finde workflows og deres parametre | `hoboman-cli list workflows`, og læse `workflows\<navn>\workflow.json` | Intet skrives |
 | Sende en gemt request | `hoboman-cli send <sti>` | Ét kald med requestens egen auth eller mappens. Kaldet står i **Historik** med mærket **CLI** |
 | Sende et direkte kald | `hoboman-cli send <METODE> <url>` | Ét kald uden auth ud over de headers, AI'en giver |
+| Hente en fil, fx en PDF | `hoboman-cli send … --out <fil>` | Svaret gemmes byte for byte i filen |
 | Køre et workflow | `hoboman-cli run <navn>` | Alle trin i rækkefølge. Hvert trin skrives som en JSON-linje, mens det kører, og i `runs\` |
 | Følge en kørsel, du startede i appen | Læse den nyeste fil i `runs\<workflow-id>\` | Intet skrives |
 | Bygge eller rette et workflow, når du beder om det | Skrive `workflow.json` og `.js`-filer i `workflows\<navn>\` | Workflowet står i appen med det samme |
@@ -19,7 +20,6 @@ Det gør du selv i appen:
 
 - **Hemmeligheder.** Passwords, tokens og client secrets skrives under Auth i appen og gemmes krypteret for din Windows-bruger. En AI kan hverken læse eller skrive dem.
 - **Login med authorization code.** Hent tokenet med refresh-knappen ved Auth, **Hent token** eller **Saved credentials…**, med det miljø valgt, som AI'en bruger. Client-credentials-tokens henter CLI'et selv.
-- **Binære svar.** CLI'et giver kun tekst, så en PDF eller et billede gemmes med **Gem** i svaret i appen.
 
 En kørsel med `run` vises ikke i appens workflow-editor; dér vises kun det, der køres fra editoren. Se [CLI.md](CLI.md) for alle detaljer.
 
@@ -57,9 +57,9 @@ Du kan sende API-kald og køre workflows gennem **Hoboman**, et API-værktøj p�
 ## Kommandoer
 
 ```text
-hoboman-cli list
-hoboman-cli send <gemt request> [--env <miljø>] [--var <navn=værdi>]... [--vars <fil|->]
-hoboman-cli send <METODE> <url> [--env <miljø>] [-H "Navn: Værdi"]... [--json <tekst|@fil> | --text <tekst|@fil>] [--var <navn=værdi>]... [--vars <fil|->]
+hoboman-cli list [workflows]
+hoboman-cli send <gemt request> [--env <miljø>] [--var <navn=værdi>]... [--vars <fil|->] [--out <fil>]
+hoboman-cli send <METODE> <url> [--env <miljø>] [-H "Navn: Værdi"]... [--json <tekst|@fil> | --text <tekst|@fil>] [--var <navn=værdi>]... [--vars <fil|->] [--out <fil>]
 hoboman-cli run <workflow> [--env <miljø>] [--param <navn=værdi>]... [--params <fil|->]
 hoboman-cli --help
 ```
@@ -69,6 +69,7 @@ hoboman-cli --help
 - Uden `--env` bruges det miljø, brugeren har valgt i appen. Har brugeren intet valgt, bruges intet miljø, og `{{navne}}` udfyldes ikke.
 - En gemt request sendes med sine egne headers, body og auth. Du kan kun ændre dens `{{variabler}}` med `--var`/`--vars`.
 - Et direkte kald (`send METODE url`) har ingen auth ud over de headers, du giver det. `{{navne}}` udfyldes i URL og headers, men ikke i bodyen.
+- `--out fil` gemmer svarets body byte for byte i filen. Brug det til PDF'er, billeder og andre binære svar. Filen skrives også ved 4xx og 5xx, så tjek exitkoden.
 - `--json @fil.json` sender en body fra en fil. Brug det altid i Windows PowerShell 5.1, der fjerner anførselstegnene i en JSON-tekst på kommandolinjen.
 
 ## Output fra `send`
@@ -79,7 +80,7 @@ Et svar skrives som én JSON-linje på stdout, også ved 4xx og 5xx:
 {"status":200,"reason":"OK","elapsedMs":123,"size":17,"headers":[{"name":"Content-Type","value":"application/json"}],"body":"{\"id\":\"42\"}"}
 ```
 
-`body` er tekst. Er den JSON, skal den parses en gang til.
+`body` er tekst. Er den JSON, skal den parses en gang til. Med `--out` står `file` med filens fulde sti i stedet for `body`.
 
 | Exitkode | Betydning |
 |---|---|
@@ -91,8 +92,9 @@ Et svar skrives som én JSON-linje på stdout, også ved 4xx og 5xx:
 
 Et workflow er en række trin, der hver sender sin egen request, kører et script eller venter et antal sekunder. Værdier fra et svar, fx et token, gemmes i variabler, som de næste trin bruger.
 
-**Find workflows og deres parametre.** Der er ingen `list`-kommando for workflows.
-- Hvert workflow er en mappe `workflows\<navn>\` med en `workflow.json`. Mappens navn er det, du giver til `run`.
+**Find workflows og deres parametre.**
+- `hoboman-cli list workflows` skriver workflowenes navne, ét pr. linje. Navnet er det, du giver til `run`.
+- Hvert workflow er en mappe `workflows\<navn>\` med en `workflow.json`.
 - Læs `parameters` i `workflow.json`. En parameter uden `default` er påkrævet og skal gives med `--param navn=værdi` eller `--params`.
 - `--param` giver altid tekst. Skal en værdi være et tal eller et objekt, så brug `--params` med et JSON-objekt.
 - Hvert trin har præcis én af `request` (metode, URL, query, headers, body og auth), `script` (en `.js`-fil i mappen) og `delaySeconds`. Et trin med `"auth": { "kind": "Inherit" }` bruger workflowets fælles `auth`; uden `auth` sender trinnet ingen. Hemmeligheder til auth ligger ikke i filen.
@@ -157,7 +159,7 @@ switch ($finished.outcome) {
 **Lange kørsler.**
 - Start `run` som en baggrundsopgave, og læs `runFile` fra første linje.
 - Eller følg filen live: `Get-Content -LiteralPath $runFile -Wait -Encoding UTF8`. Stop ved `run.finished`.
-- Kørsler startet i appen ligger også i `runs\<workflowId>\`. Id'et står i `workflow.json`. Den nyeste fil er den seneste kørsel.
+- Kørsler startet i appen ligger også i `runs\<workflowId>\`. Id'et står i `workflow.json`. Den nyeste fil er den seneste kørsel. Appen kan være sat til at slette kald og kørsler efter et antal dage.
 - Ctrl+C afbryder pænt med `run.finished` `Cancelled`. Dræbes processen, fx når en baggrundsopgave når sin tidsgrænse, kommer der ingen `run.finished`.
 
 ## Byg et workflow (kun når brugeren beder om det)
@@ -210,6 +212,7 @@ Ved `run` står de samme tekster som `error` i et trins `step.finished` (exitkod
 | `Request body could not be encoded.` | Bodyen kunne ikke Base64-encodes, fx fordi den ikke er gyldig JSON eller mangler et markeret felt. Bed brugeren rette requesten eller trinnet i Hoboman |
 | `Request was cancelled.` | Kaldet blev afbrudt med Ctrl+C |
 | `Request failed.` | En anden fejl. Fortæl brugeren det |
+| `Output file could not be written.` | Filen i `--out` kunne ikke skrives. Tjek stien; mappen skal findes. Kaldet er sendt |
 | `Invalid command arguments. Use --help for usage.` | Ret kommandoen. `--env`, `--json`, `--text`, `--vars` og `--params` må kun gives én gang |
 | `Invalid variable input.` / `Invalid parameter input.` | `--var`/`--param` skal være `navn=værdi`, og `--vars`/`--params` et JSON-objekt. `-` kræver, at der pipes noget ind |
 | `Workflow could not be loaded.` | Workflowet findes ikke. Se mapperne i `workflows\` |
@@ -231,12 +234,12 @@ Et trin, hvor en værdi i `saves` mangler i svaret, fejler med `error` = `Nothin
 
 Et trin med `retry`, hvis svar aldrig blev klar, fejler med det sidste svar, og `attempts` viser antallet af forsøg. Passede `until`-værdien ikke, er `error` `The answer was not ready after <n> attempts.`: det, API'et lavede, blev ikke færdigt i tide. Ellers er det sidste svars `status` eller `error` som ved et almindeligt trin. Fortæl brugeren, hvad det sidste svar sagde, fx en status. Er `error` `Stopped as <sti> was <værdi>.`, stoppede trinnet med det samme, fordi API'et svarede, at det, der ventes på, er fejlet. Det er ikke en timeout.
 
-Et script-trin har `JS` som `method`, en tom `address` og scriptets filnavn som `name`, hvis det intet navn har. Fejler det, er `error` fil, linje og scriptets fejltekst, fx `map.js:2: No order`. Returnerer det intet, mens trinnet har `saves`, er `error` `map.js returned nothing to save.` Et ventetrin har `WAIT` som `method`, en tom `address` og `Wait <n> seconds` som `name`, hvis det intet navn har.
+Et script-trin har `JS` som `method`, `status` 200, en tom `address` og scriptets filnavn som `name`, hvis det intet navn har. Fejler det, er `error` fil, linje og scriptets fejltekst, fx `map.js:2: No order`. Returnerer det intet, mens trinnet har `saves`, er `error` `map.js returned nothing to save.` Et ventetrin har `WAIT` som `method`, en tom `address` og `Wait <n> seconds` som `name`, hvis det intet navn har.
 
 ## Godt at vide
 
 - Kald med `send` gemmes i Hobomans historik og vises i appen med mærket **CLI**. Kald, der fejler, før de bygges, fx med forkerte argumenter eller et ukendt miljø, og kald, der afbrydes, gemmes ikke. Trin i et workflow gemmes kun i `runs\`. Historikken og `runs\` er ikke krypteret.
 - Client-credentials-tokens hentes automatisk, når de mangler, er udløbet, eller serveren svarer 401, både ved `send` og i et workflow-trin. Det kræver en gemt client secret, og tokenet skrives i `secrets.json`. Authorization-code-tokens kræver, at brugeren logger ind i appen.
-- Hele svaret holdes i hukommelsen, og bodies er tekst. Der er ingen binære downloads; bed brugeren gemme et binært svar med **Gem** i svaret i appen.
+- Hele svaret holdes i hukommelsen, og `body` er tekst. Gem binære svar med `--out`.
 - Cookies bruges ikke, redirects følges, og et kald venter højst 100 sekunder.
 - Der er ingen tørkørsel, og et enkelt trin kan ikke køres for sig.

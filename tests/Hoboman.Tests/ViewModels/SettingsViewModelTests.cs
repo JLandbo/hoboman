@@ -32,6 +32,22 @@ public sealed class SettingsViewModelTests : IDisposable
         Assert.Same(Translation.English, translator.Current);
     }
 
+    [Theory]
+    [InlineData(30, 30)]
+    [InlineData(0, null)]
+    public async Task DeleteHistoryAfterDays_WhenSet_ThenSavesOnlyAPositiveNumber(int days, int? expected)
+    {
+        // Arrange
+        var settings = Settings(new Translator(Translation.Danish));
+
+        // Act
+        settings.DeleteHistoryAfterDays = days;
+        await settings.Saving;
+
+        // Assert
+        Assert.Equal(expected, (await Store().LoadAsync(Cancellation)).DeleteHistoryAfterDays);
+    }
+
     [Fact]
     public async Task Language_WhenSet_ThenTranslatesWithIt()
     {

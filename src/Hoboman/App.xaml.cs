@@ -57,6 +57,7 @@ public partial class App : Application
         var themes = _services.GetRequiredService<ThemeLibrary>();
         themes.Changed += () => _theme = themes.Current.Apply(Resources, _theme);
         await _services.GetRequiredService<SettingsViewModel>().LoadAsync(CancellationToken.None);
+        _ = _services.GetRequiredService<HistoryCleanup>().DeleteOldAsync(CancellationToken.None);
         var watcher = _services.GetRequiredService<AppFolderWatcher>();
         watcher.RequestsChanged += () => OnUi(main.RequestsChangedAsync);
         watcher.HistoryChanged += () => OnUi(main.HistoryChangedAsync);
@@ -117,6 +118,7 @@ public partial class App : Application
         services.AddSingleton<HttpClients>();
         services.AddSingleton<IRequestSender, HttpRequestSender>();
         services.AddSingleton<HistoryStore>();
+        services.AddSingleton<HistoryCleanup>();
         services.AddSingleton<RequestRunner>();
         services.AddSingleton<WorkflowLibrary>();
         services.AddSingleton<WorkflowCheck>();

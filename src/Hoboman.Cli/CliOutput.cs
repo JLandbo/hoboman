@@ -33,6 +33,13 @@ sealed class CliOutput(Stream output, Stream error)
         return response.IsSuccess ? 0 : 1;
     }
 
+    // The body is in the file, so it is not written as text as well.
+    public async Task<int> WriteResponseAsync(ApiResponse response, string file, CancellationToken cancellationToken)
+    {
+        await WriteJsonAsync(output, new { status = response.StatusCode, response.Reason, response.ElapsedMs, response.Size, response.Headers, file }, cancellationToken);
+        return response.IsSuccess ? 0 : 1;
+    }
+
     // The same bytes as in the run log, written in one go and flushed, so a reader sees each event as it happens.
     // Written even when the run was cancelled, so its last line tells how it ended.
     public async Task WriteEventAsync(WorkflowEvent workflowEvent)

@@ -8,7 +8,7 @@ public sealed class VariableInputTests
 {
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
-    static SendInput Command(string[] variables, string? file = null) => new(["GET", "https://localhost/"], null, [], null, null, variables, file);
+    static SendInput Command(string[] variables, string? file = null) => new(["GET", "https://localhost/"], null, [], null, null, null, variables, file);
 
     static Task<IReadOnlyList<KeyValue>> ReadAsync(string[] variables, string? json = null) =>
         new VariableInput(new StringReader(json ?? ""), json is not null).ReadAsync(Command(variables, json is null ? null : "-"), TestContext.Current.CancellationToken);

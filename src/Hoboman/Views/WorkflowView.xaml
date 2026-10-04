@@ -101,6 +101,24 @@
                             Visibility="{Binding IsRunning, Converter={StaticResource VisibleWhenTrue}}" />
                 </Grid>
                 <Button DockPanel.Dock="Right" Content="{DynamicResource Editor.Save}" Command="{Binding Save}" Style="{StaticResource PillButton}" FontSize="12" Padding="12,4" VerticalAlignment="Center" />
+                <Border x:Name="RunSummary" DockPanel.Dock="Right" CornerRadius="6" Padding="8,3" Margin="0,0,8,0" VerticalAlignment="Center">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="{DynamicResource ErrorSoft}" />
+                            <Setter Property="TextElement.Foreground" Value="{DynamicResource Error}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasSucceeded}" Value="True">
+                                    <Setter Property="Background" Value="{DynamicResource SuccessSoft}" />
+                                    <Setter Property="TextElement.Foreground" Value="{DynamicResource Success}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Summary}" Value="{x:Null}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <TextBlock Text="{Binding Summary}" FontSize="12" FontWeight="SemiBold" />
+                </Border>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="{DynamicResource Workflow.Crumb}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,0,6,0" />
                     <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" />

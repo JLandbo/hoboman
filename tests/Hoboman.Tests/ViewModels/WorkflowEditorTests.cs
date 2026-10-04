@@ -1083,6 +1083,21 @@ public sealed class WorkflowEditorTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenAScriptStepSucceeds_ThenShowsOkWithoutAStatusCode()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var workflow = await OpenScriptAsync(harness, "return { value: 1 };");
+
+        // Act
+        await workflow.RunAsync();
+
+        // Assert
+        var step = workflow.Steps.Single();
+        Assert.Equal(("OK", "OK"), (step.Status, step.Result.Response!.Status));
+    }
+
+    [Fact]
     public async Task Code_WhenTwoStepsRunTheSameFileWrittenWithOtherCase_ThenTheyShareIt()
     {
         // Arrange
@@ -1315,6 +1330,22 @@ public sealed class WorkflowEditorTests
 
         // Assert
         Assert.Equal(["$.token"], workflow.Steps.Single().Result.ResponseMarks.Where(mark => mark.Saved is not null).Select(mark => mark.Path));
+    }
+
+    [Theory]
+    [InlineData(200, "2/2 steps", true)]
+    [InlineData(500, "0/2 steps", false)]
+    public async Task RunAsync_WhenTheRunEnds_ThenSummarizesHowManyStepsSucceeded(int status, string expected, bool succeeded)
+    {
+        // Arrange
+        using var harness = new Harness(send: () => Task.FromResult(new ApiResponse(status, "", 1, 0, [], "")));
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request() }, new() { Request = Request() }] }, harness);
+
+        // Act
+        await workflow.RunAsync();
+
+        // Assert
+        Assert.Equal((expected, succeeded), (workflow.Summary?.Split(" · ")[0], workflow.HasSucceeded));
     }
 
     [Fact]

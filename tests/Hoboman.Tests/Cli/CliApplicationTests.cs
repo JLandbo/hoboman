@@ -110,6 +110,46 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     }
 
     [Fact]
+    public async Task RunAsync_WhenListingWorkflows_ThenWritesTheirNamesSorted()
+    {
+        // Arrange
+        await Workflows.SaveAsync("b", new() { Id = Guid.NewGuid() }, Cancellation);
+        await Workflows.SaveAsync("a", new() { Id = Guid.NewGuid() }, Cancellation);
+        await Library.SaveAsync("request", Request, Cancellation);
+
+        // Act
+        await RunAsync(["list", "workflows"]);
+
+        // Assert
+        Assert.Equal($"a{Environment.NewLine}b{Environment.NewLine}", Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenSentWithOut_ThenWritesTheBytesToTheFileAndNotTheBody()
+    {
+        // Arrange
+        var file = Path.Combine(_temporary.Path, "svar.pdf");
+
+        // Act
+        var exitCode = await RunAsync(["send", "GET", $"{server.Http}file", "--out", file]);
+
+        // Assert
+        using var response = JsonDocument.Parse(_output.ToArray());
+        Assert.Equal((0, Convert.ToHexString(EchoServer.File), file, false),
+            (exitCode, Convert.ToHexString(await File.ReadAllBytesAsync(file, Cancellation)), response.RootElement.GetProperty("file").GetString(), response.RootElement.TryGetProperty("body", out _)));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheOutFileCannotBeWritten_ThenSaysSo()
+    {
+        // Act
+        var exitCode = await RunAsync(["send", "GET", $"{server.Http}file", "--out", Path.Combine(_temporary.Path, "mangler", "svar.pdf")]);
+
+        // Assert
+        Assert.Equal((2, "Output file could not be written."), (exitCode, Problem));
+    }
+
+    [Fact]
     public async Task RunAsync_WhenListing_ThenReadsNoOtherData()
     {
         // Arrange

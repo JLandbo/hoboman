@@ -18,7 +18,8 @@ public sealed class WorkflowViewModel : ObservableObject
     string _savedJson = "";
     int _version;
     bool _closed;
-    bool _reloadAfterRun;
+    bool _reloadPostponed;
+    int _fetchesByHand;
     CancellationTokenSource? _running;
     // Kept per file, so two steps that run the same script show the same code. File names on Windows ignore case.
     readonly Dictionary<string, string> _code = new(StringComparer.OrdinalIgnoreCase);
@@ -113,6 +114,24 @@ public sealed class WorkflowViewModel : ObservableObject
     // What keeps the workflow from running, found before anything is sent.
     public IReadOnlyList<string> Problems { get; private set => Set(ref field, value); } = [];
 
+    // How the last run went, shown until the next one starts or the workflow is loaded again.
+    RunFinished? LastRun
+    {
+        get;
+        set
+        {
+            field = value;
+            OnPropertyChanged(nameof(Summary));
+            OnPropertyChanged(nameof(HasSucceeded));
+        }
+    }
+
+    public string? Summary => LastRun is { } run
+        ? _services.Translator.Format("Workflow.Summary", run.Steps.Count(step => step.Outcome == StepOutcome.Succeeded), run.Steps.Count, run.ElapsedMs / 1000d)
+        : null;
+
+    public bool HasSucceeded => LastRun?.Outcome == RunOutcome.Succeeded;
+
     public AsyncCommand Send { get; }
 
     // Told when a run comes to a step, so the step can be brought into view.
@@ -144,6 +163,7 @@ public sealed class WorkflowViewModel : ObservableObject
 
     // Changes on disk are taken in when nothing is edited here, but the editor's own save must not clear the run that is shown.
     // A change seen during a run is taken in when the run ends, as the run shows its results on the steps it started with.
+    // The same goes for a token fetched by hand, as a login can stay open for minutes and its token belongs to the step that waits for it.
     // Gives false when the workflow is gone.
     public async Task<bool> ReloadAsync()
     {
@@ -153,9 +173,9 @@ public sealed class WorkflowViewModel : ObservableObject
             {
                 return false;
             }
-            if (IsRunning)
+            if (IsRunning || _fetchesByHand > 0)
             {
-                _reloadAfterRun = true;
+                _reloadPostponed = true;
             }
             else
             {
@@ -189,6 +209,7 @@ public sealed class WorkflowViewModel : ObservableObject
         {
             step.Relabel();
         }
+        OnPropertyChanged(nameof(Summary));
         Refresh();
     }
 
@@ -382,6 +403,7 @@ public sealed class WorkflowViewModel : ObservableObject
         }
         var translator = _services.Translator;
         Problems = [];
+        LastRun = null;
         foreach (var step in Steps)
         {
             step.ClearRun();
@@ -436,6 +458,10 @@ public sealed class WorkflowViewModel : ObservableObject
                     {
                         StepRunning?.Invoke(steps[started.Index]);
                     }
+                    if (workflowEvent is RunFinished finished)
+                    {
+                        LastRun = finished;
+                    }
                 },
                 running.Token);
         }
@@ -451,11 +477,7 @@ public sealed class WorkflowViewModel : ObservableObject
         {
             _running = null;
             IsRunning = false;
-            if (_reloadAfterRun && !_closed)
-            {
-                _reloadAfterRun = false;
-                await ReloadAsync();
-            }
+            await ReloadIfPostponedAsync();
         }
     }
 
@@ -612,6 +634,7 @@ public sealed class WorkflowViewModel : ObservableObject
         }
         SelectedStep = Steps.FirstOrDefault();
         Problems = [];
+        LastRun = null;
         IsDirty = false;
         Refresh();
     }
@@ -647,6 +670,29 @@ public sealed class WorkflowViewModel : ObservableObject
 
     // A token fetched by hand is saved with the secrets, as a run does, so it is no edit.
     async Task<bool> FetchByHandAsync(AuthViewModel auth)
+    {
+        _fetchesByHand++;
+        try
+        {
+            return await FetchAndSaveAsync(auth);
+        }
+        finally
+        {
+            _fetchesByHand--;
+            await ReloadIfPostponedAsync();
+        }
+    }
+
+    async Task ReloadIfPostponedAsync()
+    {
+        if (_reloadPostponed && !IsRunning && _fetchesByHand == 0 && !_closed)
+        {
+            _reloadPostponed = false;
+            await ReloadAsync();
+        }
+    }
+
+    async Task<bool> FetchAndSaveAsync(AuthViewModel auth)
     {
         if (!await auth.FetchTokenAsync() || _closed)
         {

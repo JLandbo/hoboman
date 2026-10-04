@@ -6,22 +6,21 @@
 
 Det kan:
 
-- vise de gemte requests (`list`)
+- vise de gemte requests (`list`) og workflows (`list workflows`)
 - sende en gemt request med dens egen metode, URL, headers, body, Base64-valg og auth, eller auth fra nærmeste mappe (`send <request>`)
 - sende et direkte kald med headers og en JSON- eller tekst-body (`send <METODE> <url>`)
 - køre et workflow med parametre og skrive hvert trin som en JSON-linje, mens det kører (`run <workflow>`)
 - vælge miljø pr. kald og give midlertidige variabler og parametre
 - hente client-credentials-tokens selv, når de mangler, er udløbet eller afvist med 401
+- gemme et svar byte for byte i en fil, fx en PDF (`--out`)
 - give en exitkode, som et script kan handle på
 
 Det kan ikke:
 
 - logge ind med authorization code. Det kræver en browser, så tokenet hentes i appen
 - skifte det valgte miljø, ændre indstillinger eller bruge `credentials.json`
-- vise workflows; de er mapperne i `workflows\`
 - give en gemt request en anden body, andre headers eller anden auth
 - se ugemte ændringer i appen; det bruger filerne, som de er gemt
-- gemme binære svar; `body` er altid tekst
 
 ## Kom i gang
 
@@ -40,6 +39,7 @@ De første kommandoer:
 ```powershell
 & $cli --help                                   # hjælp; også fx send --help
 & $cli list                                     # gemte requests, fx Dummyjson/Hent mig
+& $cli list workflows                           # workflows, fx Eksempel
 & $cli send "Dummyjson/Hent mig" --env Demo     # en gemt request i miljøet Demo
 & $cli send GET https://dummyjson.com/products/1
 & $cli run Stresstest                          # et workflow med standardværdier
@@ -71,6 +71,22 @@ En JSON-body sendes bedst fra en fil, for Windows PowerShell 5.1 fjerner anførs
 ```powershell
 & $cli send POST https://dummyjson.com/products/add --json "@ny-vare.json" -H "X-Kilde: hoboman-cli"
 ```
+
+### Hent en PDF
+
+`body` er tekst, så en PDF eller et billede gemmes med `--out`. Her gemmer et workflow adressen på en PDF i variablen `pdfUrl`, som det næste kald henter:
+
+```powershell
+$lines = & $cli run Udskrift
+if ($LASTEXITCODE -ne 0) { throw "Udskrift fejlede ($LASTEXITCODE)." }
+$pdfUrl = ($lines[-1] | ConvertFrom-Json).variables.pdfUrl
+$raw = & $cli send GET $pdfUrl --out dokument.pdf
+if ($LASTEXITCODE -ne 0) { throw "PDF'en kunne ikke hentes ($LASTEXITCODE)." }
+($raw | ConvertFrom-Json).file
+```
+
+- Filen får svarets bytes, præcis som serveren sendte dem, og stdout har `file` med den fulde sti i stedet for `body`.
+- Filen skrives også ved 4xx og 5xx, så tjek exitkoden, før du bruger den.
 
 ### Kør et workflow, og vis hvordan trinene gik
 
@@ -122,16 +138,18 @@ Uden `-Encoding UTF8` læser Windows PowerShell æ, ø og å forkert.
 ## Kommandoer
 
 ```text
-hoboman-cli list
-hoboman-cli send <gemt request> [--env <navn>] [--var <navn=værdi>]... [--vars <fil|->]
-hoboman-cli send <METODE> <url> [--env <navn>] [-H "Navn: Værdi"]... [--json <tekst|@fil> | --text <tekst|@fil>] [--var <navn=værdi>]... [--vars <fil|->]
+hoboman-cli list [workflows]
+hoboman-cli send <gemt request> [--env <navn>] [--var <navn=værdi>]... [--vars <fil|->] [--out <fil>]
+hoboman-cli send <METODE> <url> [--env <navn>] [-H "Navn: Værdi"]... [--json <tekst|@fil> | --text <tekst|@fil>] [--var <navn=værdi>]... [--vars <fil|->] [--out <fil>]
 hoboman-cli run <workflow> [--env <navn>] [--param <navn=værdi>]... [--params <fil|->]
 hoboman-cli --help
 hoboman-cli --version
 ```
 
 - `list` skriver de gemte requests som stier relativt til `requests\`, med `/` og uden `.json`, én pr. linje og sorteret, fx `Brugere/Hent bruger`. Det er netop den sti, `send` skal have.
+- `list workflows` skriver workflowenes navne, én pr. linje og sorteret. Det er mappernes navne i `workflows\`, som `run` skal have.
 - Ét argument efter `send` er en gemt request. To er en metode og en URL.
+- `--out <fil>` gemmer svarets body byte for byte i filen og overskriver den, hvis den findes. Relative stier læses fra den mappe, du står i, og mappen skal findes.
 - `<workflow>` er mappens navn i `workflows\`.
 - `--help`, `-h` og `-?` virker både alene og efter en kommando. `--version` virker kun alene og skriver versionen og committen, fx `1.0.0+<commit>`. Uden kommando er det en fejl.
 - Options kan stå før eller efter argumenterne, og `--env=Demo` virker også. `--env`, `--json`, `--text`, `--vars` og `--params` må kun gives én gang; `-H`, `--var` og `--param` gentages for hver værdi.
@@ -168,6 +186,8 @@ Et svar skrives som én linje JSON på stdout, også ved 4xx og 5xx:
 - `elapsedMs` omfatter hentningen af bodyen, og `size` er bodyens bytes. `headers` har både svarets og indholdets headers, én pr. værdi.
 - stdout og stderr er UTF-8 uden BOM. `list`, `--help` og `--version` skriver almindelig tekst, alt andet JSON.
 
+Med `--out` står `file` med filens fulde sti i stedet for `body`.
+
 Fejl, før der kommer et svar, skrives som `{"error":"..."}` på stderr, og stdout er tom. En gemt request, der ikke er gyldig JSON, angives med fil, JSON-sti og linje, fx `{"error":"Saved request file is not valid.","file":"...","path":"$.headers","line":4}`.
 
 | Exitkode | Betydning |
@@ -193,6 +213,7 @@ Fejl, før der kommer et svar, skrives som `{"error":"..."}` på stderr, og stdo
 | `Network request failed.` / `Request timed out.` | Serveren kunne ikke nås eller svarede ikke inden for 100 sekunder |
 | `Request was cancelled.` | Kaldet blev afbrudt med Ctrl+C |
 | `Request failed.` | En anden fejl |
+| `Output file could not be written.` | Filen i `--out` kunne ikke skrives, fx fordi mappen ikke findes. Kaldet er sendt og står i historikken |
 
 `send` tjekker i denne rækkefølge: argumenter, variabler, requesten, miljøet og så kaldet. En ukendt request meldes derfor før et ukendt miljø.
 
@@ -351,14 +372,14 @@ En færdig instruktion til AI-agenter står i [AI-PROMPT.md](AI-PROMPT.md).
 - Hvert kald med `send` gemmes i historikken som et kald fra CLI'et, også direkte kald og kald, der fejler, mens Hoboman bygger eller sender det, fx en ugyldig URL eller en manglende hemmelighed. Den åbne app viser det med det samme i **Historik** med mærket **CLI**. Trin i et workflow gemmes kun i kørslens logfil.
 - Fejl, før kaldet bygges, gemmes ikke: forkerte argumenter eller variabler, et direkte kalds `-H` eller `@fil`, en request, der ikke kan indlæses, og problemer med miljøet. Kald, du selv afbryder, gemmes heller ikke.
 - Requesten gemmes, som den er skrevet, med variablerne uudfyldte. De midlertidige værdier gemmes ikke for sig, men står i den gemte adresse, hvis de bruges i vært, port eller sti.
-- Hver kørsel med `run` skrives i `runs\<workflowId>\<runId>.jsonl`. Filerne ryddes ikke op.
-- CLI'et skriver kun i `history\`, `runs\` og, når det henter et token, i `secrets.json`. Læser det miljøer uden id, giver det dem id i `environments.json` og sletter tokens gemt under miljønavne i `secrets.json`. `list`, `--help` og `--version` skriver ingenting, og CLI'et skriver ingen logfiler.
+- Hver kørsel med `run` skrives i `runs\<workflowId>\<runId>.jsonl`. Er **Slet historik efter** udfyldt i appens Indstillinger, sletter appen kald og kørsler, der er ældre end det antal dage, når den starter; ellers ryddes de ikke op.
+- CLI'et skriver kun i `history\`, `runs\`, filen i `--out` og, når det henter et token, i `secrets.json`. Læser det miljøer uden id, giver det dem id i `environments.json` og sletter tokens gemt under miljønavne i `secrets.json`. `list`, `--help` og `--version` skriver ingenting, og CLI'et skriver ingen logfiler.
 - Kan historikken ikke skrives, fx ved fuld disk eller manglende rettigheder, skrives svaret alligevel, og kaldet sendes ikke igen.
 - Historikken og `runs\` er ikke krypteret. Headers, du selv skriver, fx `Authorization`, samt bodies, svar, den udfyldte adresse og gemte værdier som tokens kan indeholde hemmeligheder.
 
 ## Grænser
 
-- Hele svaret holdes i hukommelsen, og bodies er tekst, så binære svar bliver ødelagt. Gem dem med **Gem** i appens svar i stedet.
+- Hele svaret holdes i hukommelsen, og `body` er tekst, så binære svar som PDF'er gemmes med `--out`.
 - Et kald venter højst 100 sekunder. Det kan ikke ændres.
 - Redirects følges, men cookies bruges ikke. **Ignorér certifikatfejl** fra appens indstillinger gælder også CLI'et og tokenhentning.
 - En gemt request kan ikke få en ny body eller nye headers fra kommandolinjen, og et direkte kald kan kun have en JSON- eller tekst-body.

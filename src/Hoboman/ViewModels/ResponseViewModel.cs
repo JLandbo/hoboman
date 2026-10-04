@@ -56,6 +56,9 @@ public sealed class ResponseViewModel : ObservableObject
     // The variables a workflow step saved, by the place in the body they came from, shown on the response with the next show.
     public IReadOnlyDictionary<string, string> Saved { get; set; } = new Dictionary<string, string>();
 
+    // Shown instead of the status code and reason with the next show.
+    public string? StatusText { get; set; }
+
     public async Task ShowAsync(ApiResponse? response)
     {
         _response = response;
@@ -126,7 +129,7 @@ public sealed class ResponseViewModel : ObservableObject
             var shown = await Task.Run(() => Base64ViewModel.ShowResponse(response, format, decode, _translator, formatting.Token, saved), formatting.Token);
             if (ReferenceEquals(response, _response) && format == _bodyFormat && ReferenceEquals(decode, Base64.Decode))
             {
-                Response = shown.Display;
+                Response = StatusText is { } status ? shown.Display with { Status = status } : shown.Display;
                 ResponseMarks = shown.Marks;
                 ResponseBodyProblem = shown.Problem;
             }

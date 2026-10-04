@@ -1,3 +1,5 @@
+using Hoboman.Tests.Auth;
+
 namespace Hoboman.Tests.ViewModels;
 
 public sealed class WorkflowAuthRefreshTests
@@ -43,6 +45,30 @@ public sealed class WorkflowAuthRefreshTests
 
         // Assert
         Assert.Equal((true, true), (told, step.HasOAuth));
+    }
+
+    [Fact]
+    public async Task ReloadAsync_WhenALoginIsOpen_ThenWaitsForItSoItsTokenIsKept()
+    {
+        // Arrange
+        var login = new TaskCompletionSource<OAuthToken>();
+        using var harness = new Harness(oauth: new(_ => login.Task));
+        var (flowId, stepId) = (Guid.NewGuid(), Guid.NewGuid());
+        Workflow Flow(string url) => new() { Id = flowId, Steps = [new() { Request = new() { Id = stepId, Url = url, Auth = _clientCredentials } }] };
+        await harness.WorkflowLibrary.SaveAsync("Flow", Flow("https://dev.local/ping"), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.OpenWorkflowAsync("Flow");
+        var workflow = main.Workflow!;
+        var refreshing = workflow.RefreshAuthAsync(workflow.Steps.Single());
+        await harness.WorkflowLibrary.SaveAsync("Flow", Flow("https://dev.local/changed"), Cancellation);
+        await workflow.ReloadAsync();
+
+        // Act
+        login.SetResult(FakeOAuthClient.Token);
+
+        // Assert
+        Assert.Equal((true, "https://dev.local/changed"), (await refreshing, workflow.Steps.Single().Request!.Url));
     }
 
     [Fact]
