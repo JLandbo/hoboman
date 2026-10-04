@@ -22,7 +22,7 @@ Du kan sende API-kald og køre workflows gennem **Hoboman**, et API-værktøj p�
 ## Regler
 
 1. **Rør ikke Hobomans datafiler.** Du må ikke oprette, ændre eller slette noget i `requests\`, `workflows\`, `environments.json`, `settings.json` eller `secrets.json`, medmindre brugeren udtrykkeligt beder om det. Workflows og requests sættes op af brugeren i appen.
-2. **Læs altid exitkoden** (`$LASTEXITCODE`), før du bruger outputtet. stdout og stderr er JSON.
+2. **Læs altid exitkoden** (`$LASTEXITCODE`), før du bruger outputtet. stdout og stderr er JSON, bortset fra `list`, der skriver stierne som tekst.
 3. **Giv følsomme værdier via stdin** med `--vars -` eller `--params -`, aldrig som `--var`/`--param` på kommandolinjen, så de ikke havner i shellens historik. `run` skriver dog parametre og variabler i klartekst på stdout og i run-loggen, så giv kun en hemmelighed som parameter, når brugeren har bedt om det.
 4. **Gentag ikke hemmeligheder** som tokens, passwords og API-nøgler i dine svar til brugeren. Opsummér i stedet, fx "login lykkedes, token gemt".
 5. **Send ikke kald med sideeffekter** (POST, PUT, PATCH, DELETE eller workflows, der ændrer data), uden at brugeren har bedt om netop det.
@@ -81,7 +81,7 @@ $code = $LASTEXITCODE
 Med parametre fra stdin:
 
 ```powershell
-@{ apiKey = $key } | ConvertTo-Json | & $cli run Ordre-sync --params -
+@{ orderId = 'o-17'; pageSize = 50 } | ConvertTo-Json | & $cli run Ordre-sync --params -
 ```
 
 **Events.** `run` skriver én JSON-linje pr. event på stdout, mens kørslen sker. Der er altid kun én kørsel pr. kald.
@@ -109,6 +109,7 @@ Med parametre fra stdin:
 **Læs et resultat:**
 
 ```powershell
+if ($code -eq 2) { throw "Workflowet startede ikke." }
 $events = $lines | ForEach-Object { $_ | ConvertFrom-Json }
 $finished = $events[-1]
 if ($code -eq 0) { $finished.variables }
@@ -126,7 +127,7 @@ elseif ($code -eq 1) {
 
 ## Fejl og hvad du gør
 
-Ved `run` står de samme tekster som `error` i et trins `step.finished` (exitkode 1), fx når en hemmelighed eller et token mangler på et workflow-trin.
+Ved `run` står de samme tekster som `error` i et trins `step.finished` (exitkode 1), fx når en hemmelighed eller et token mangler på et workflow-trin. `run` finder kun hemmeligheder og tokens for trin, der er gemt i appen (trinnets `request` har et `id`), så bed brugeren gemme workflowet i Hoboman.
 
 | Fejl (stderr `error`) | Gør |
 |---|---|
@@ -137,6 +138,8 @@ Ved `run` står de samme tekster som `error` i et trins `step.finished` (exitkod
 | `Required authentication secret is missing.` | Bed brugeren udfylde auth på requesten, mappen eller workflow-trinnet i Hoboman |
 | `Network request failed.` / `Request timed out.` | Serveren kunne ikke nås. Fortæl det, og prøv højst én gang til efter aftale |
 | `Invalid request URL.` / `Invalid request input.` | Tjek URL, headers og variabler |
+| `Input could not be read.` | En fil kunne ikke læses, typisk `@fil`, `--vars fil` eller `--params fil`. Tjek stien. En relativ sti læses fra den mappe, du står i |
+| `Request body could not be encoded.` | Bodyen kunne ikke Base64-encodes, fx fordi den ikke er gyldig JSON eller mangler et markeret felt. Bed brugeren rette requesten eller trinnet i Hoboman |
 | `Invalid command arguments. Use --help for usage.` | Ret kommandoen |
 | `Invalid variable input.` / `Invalid parameter input.` | `--var`/`--param` skal være `navn=værdi`, og `--vars`/`--params` et JSON-objekt |
 | `Workflow could not be loaded.` | Workflowet findes ikke. Se mapperne i `workflows\` |

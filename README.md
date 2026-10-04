@@ -82,6 +82,19 @@ Encoding ændrer det, der sendes, ikke teksten i editoren. Decoding af svaret æ
 
 Knapperne **Stringify**, **Parse**, **Base64 Encode** og **Base64 Decode** arbejder separat på teksten i udklipsholderen. Grøn feedback betyder, at ændringen lykkedes; rød betyder, at den ikke kunne udføres.
 
+## Arbejd med workflows
+
+Vælg **Workflows** i sidebaren. Hovedområdet viser så det åbne workflow i stedet for request-fanerne.
+
+- Klik **+** for at oprette et workflow. Højreklik på et workflow for at omdøbe eller slette det.
+- **+ Request** tilføjer et trin med sin egen request. Den redigeres som en request i samlingerne, men hører kun til workflowet, og auth arves ikke fra en mappe. **Brug miljøvariabler i body** er slået til for nye trin, så `{{navn}}` også virker i bodyen.
+- **+ Script** tilføjer et JavaScript-trin. Scriptet læser værdier som `vars.navn` og returnerer det, trinnet skal gemme fra. Koden redigeres i appen og ligger som en `.js`-fil i workflowets mappe.
+- **Parametre** gives ved start. Har en parameter ingen standardværdi, spørger appen om den, når du kører.
+- I **Gemmer** under trinnets svar vælger du, hvad der gemmes i en variabel efter et 2xx-svar: `$.sti` i JSON-svaret, `$` for hele bodyen, `header:Navn` eller `status`. Linjen i svaret, der blev gemt fra, mærkes med "gemt i …", og de næste trin bruger værdien som `{{navn}}`.
+- Hvert trin viser de navne, det bruger, og dem, det gemmer, så du kan se, hvordan værdierne går fra trin til trin.
+- **Kør** (`Ctrl+Enter`) tjekker først, at alle `{{navne}}` har en værdi, og kører så trinene i rækkefølge. Fejler et trin, springes resten over. Miljøets variabler kan også bruges, men workflowets egne navne vinder.
+- Kald fra et workflow gemmes ikke i **Historik**, men som en kørsel i `runs\`. Det samme workflow kan køres med `hoboman-cli run`; se [CLI.md](CLI.md).
+
 ## Sådan hænger det sammen
 
 ```mermaid
@@ -138,7 +151,7 @@ Testprojektet bruger xUnit og Microsoft.Testing.Platform, valgt i `global.json`.
 | `Ctrl+S` | Gem den aktuelle request eller det viste workflow |
 | `Shift+Alt+F` | Formatér JSON/XML, når fokus er i bodyen |
 | `Ctrl+Z` / `Ctrl+Y` | Fortryd/gentag i bodyen, også formatering |
-| `Enter` | Åbn det valgte element i samlinger eller historik |
+| `Enter` | Åbn det valgte element i samlinger, historik eller workflows |
 
 ## Lokale data og hemmeligheder
 
@@ -150,18 +163,18 @@ Data gemmes ved siden af den kørende app. Efter `install.ps1` er det i `publish
 | `requests\<mappe>\.folder.json` | Mappens id og auth-indstillinger |
 | `request-order.json` | Rækkefølgen af requests og mapper |
 | `environments.json` | Miljøer og deres variabler |
-| `settings.json` | Valgt miljø, sprog, vindueslayout og gemte faner |
+| `settings.json` | Valgt miljø, sprog, **Ignorér certifikatfejl**, vindueslayout og gemte faner. CLI'et bruger også det valgte miljø og **Ignorér certifikatfejl** |
 | `secrets.json` | Krypterede passwords, tokens og client secrets fra auth-felterne |
 | `pending-secret-cleanup.json` | Ejere, hvis hemmeligheder skal kontrolleres og ryddes op efter sletning |
-| `history\` | Ét JSON-dokument pr. gemt kald med request, svar eller fejl |
-| `workflows\<navn>\workflow.json` | Ét workflow pr. mappe med parametre, variabler og trin |
+| `history\` | Ét JSON-dokument pr. gemt kald med request, svar eller fejl. Trin i et workflow gemmes kun i `runs\` |
+| `workflows\<navn>\workflow.json` | Ét workflow pr. mappe med parametre, variabler og trin. Script-trinenes `.js`-filer ligger i samme mappe |
 | `runs\<workflow-id>\` | Én JSON-linjefil pr. kørsel af et workflow med events, svar og gemte værdier |
 | `logs\` | Daglige logfiler |
 
-Auth-hemmeligheder beskyttes med Windows DPAPI for den aktuelle Windows-bruger. De ligger separat fra request- og mappefilerne. En kopi af `secrets.json` er derfor ikke en almindelig, flytbar eksport af loginoplysninger. Ved sletning ryddes tilhørende hemmeligheder op, når ingen tilbageværende request eller mappe bruger dem; afbrudt oprydning kan genoptages ved næste start.
+Auth-hemmeligheder beskyttes med Windows DPAPI for den aktuelle Windows-bruger. De ligger separat fra request-, mappe- og workflowfilerne. En kopi af `secrets.json` er derfor ikke en almindelig, flytbar eksport af loginoplysninger. Ved sletning ryddes tilhørende hemmeligheder op, når ingen tilbageværende request eller mappe bruger dem; afbrudt oprydning kan genoptages ved næste start. Et workflow-trins hemmeligheder gemmes under trinnets id og glemmes, når trinnet fjernes, og workflowet gemmes, eller når workflowet slettes i appen, medmindre et andet workflow har et trin med samme id. Har en kørsel gemt hemmeligheder for trin, der aldrig er gemt, glemmes de, når workflowet gemmes uden dem, når du åbner et andet workflow, eller når appen lukkes.
 
 **Resten af dataene er ikke krypterede.** Miljøvariabler, manuelt indtastede headers, bodies, historik, kørsler og logs kan indeholde følsomme oplysninger. Gennemgå dem før deling eller check-in; et token skrevet direkte i en header eller miljøvariabel får ikke automatisk beskyttelsen fra secret-lageret.
 
 ## Kommandolinjeværktøj
 
-`hoboman-cli.exe` sender gemte og direkte requests og kører workflows uden GUI'en og skriver resultatet som JSON. Kommandoer, variabler, workflows, events, exitkoder, auth og et eksempel på at kæde kald sammen i PowerShell står i [CLI.md](CLI.md).
+`hoboman-cli.exe` sender gemte og direkte requests og kører workflows uden GUI'en og skriver resultatet som JSON. Kommandoer, variabler, workflows, events, exitkoder, auth og et eksempel på at kæde kald sammen i PowerShell står i [CLI.md](CLI.md). En færdig instruktion til AI-agenter, der skal bruge CLI'et, står i [AI-PROMPT.md](AI-PROMPT.md).

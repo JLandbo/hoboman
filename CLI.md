@@ -77,13 +77,13 @@ Fejl, før der kommer et svar, skrives som `{"error":"..."}` på stderr, og stdo
 - `auth` er `None` (standard), `Basic`, `Bearer` eller `OAuth2` som på en request, men et trin arver ikke fra en mappe. Passwords, tokens og client secrets står aldrig i `workflow.json`; de gemmes krypteret i `secrets.json` under trinnets `id`. Auth kan også gives som header, fx `Authorization: Bearer {{token}}` med et token fra et tidligere trin.
 - `id` sættes af appen, første gang workflowet gemmes med trinnet, og ejer trinnets hemmeligheder. Auth med hemmeligheder virker derfor først i `run`, når workflowet er gemt i appen. Kopiér aldrig et `id` fra en gemt request eller et andet trin, for så deler de hemmeligheder, og sletter man den ene, kan den andens forsvinde.
 - Ved client credentials henter `run` selv et nyt token til trinnet, når det mangler, er udløbet, eller serveren svarer 401, ligesom `send`. Authorization code kræver, at brugeren henter et token under Auth på trinnet i Hoboman.
-- `name` er valgfrit og vises i appen og i events. Uden navn bruges scriptets filnavn eller metode og URL.
-- Parametre gives ved start og kan ikke gemmes i. En parameters `default` kan være enhver JSON-værdi. Variabler er de navne, trinnene gemmer i med `saves`, og får deres værdi derfra. Appen skriver listen over variabler ud fra trinnene, når workflowet gemmes, så en fast værdi gives som en parameter med `default`.
-- Et trin kan i stedet for `request` have `"script": "map.js"`, en JavaScript-fil i workflowets mappe. Scriptet får alle parametre, variabler og miljøets variabler i `vars`, som ikke kan ændres. Et navn, workflowet selv har, vinder over miljøet, som i en request, og det, det returnerer, er trinnets output. Outputtet gemmes med `saves` som et svar, fx `"from": "$"` eller `"$.id"`. I events har trinnet scriptets filnavn som `name`, hvis det intet navn har, `JS` som `method` og outputtet som `body`. Returnerer scriptet intet, fejler trinnet kun, hvis det har noget i `saves`. Et script har ingen adgang til filer eller netværk og stoppes efter 5 sekunder. Tal over 2^53 kan ændre sig, når de går gennem et script.
+- `name` er valgfrit og vises i appen og i events. Uden navn bruges scriptets filnavn eller metoden og requestens adresse uden query, fx `POST {{baseUrl}}/auth/token`.
+- Parametre gives ved start og kan ikke gemmes i. En parameters `default` kan være enhver JSON-værdi. Variabler er de navne, trinnene gemmer i med `saves`, og får deres værdi derfra. En variabel kan også have en `default`, som den har, indtil et trin gemmer i den. Appen skriver listen over variabler ud fra trinnene, når workflowet gemmes, og beholder deres `default`, så en fast værdi, som intet trin gemmer i, gives som en parameter med `default`.
+- Et trin kan i stedet for `request` have `"script": "map.js"`, en JavaScript-fil i workflowets mappe. Scriptet får alle parametre, variabler og miljøets variabler i `vars`, som ikke kan ændres. Et navn, workflowet selv har, vinder over miljøet, som i en request, og det, det returnerer, er trinnets output. Outputtet gemmes med `saves` som et svar, fx `"from": "$"` eller `"$.id"`. I events har trinnet scriptets filnavn som `name`, hvis det intet navn har, `JS` som `method` og outputtet som `body`. Returnerer scriptet intet, fejler trinnet kun, hvis det har noget i `saves`. Et script har ingen adgang til filer eller netværk og stoppes efter 5 sekunder, eller når det holder mere end 512 MB hukommelse. Tal over 2^53 kan ændre sig, når de går gennem et script.
 - `from` i `saves` er `$` for hele bodyen (rå tekst, hvis den ikke er JSON), en sti som `$.data.items[0].id`, `header:Navn` eller `status`. Der gemmes kun efter et 2xx-svar, og et trin gemmer alle sine værdier eller ingen.
 - `{{navn}}` udfyldes i URL, query og headers, i Basic-brugernavn og -password og i Bearer-token og i body, når `useEnvironmentVariablesInBody` er `true`. Navnet får sin værdi fra workflowets parametre og variabler. Kun et navn, som workflowet ikke selv har, hentes fra miljøet. Tekst indsættes uændret, og alt andet som kompakt JSON.
 - `--param navn=værdi` giver en parameter som tekst og kan gentages. `--params fil.json` eller `--params -` (stdin) læser et JSON-objekt, hvor værdierne beholder deres type, fx `{"orderId":"o-17","pageSize":50}`. `--param` vinder over `--params`.
-- Før første kald tjekkes hele workflowet: at hvert trin har en URL, at parametrene er kendte, at de påkrævede er givet, og at hvert navn har en værdi, når trinnet kører. Fejler tjekket, sendes intet.
+- Før første kald tjekkes hele workflowet: at hvert trin har en URL, at parametrene er kendte, at de påkrævede er givet, og at hvert `{{navn}}` i en request har en værdi, når trinnet kører. Navne, et script læser i `vars`, tjekkes ikke. Fejler tjekket, sendes intet.
 - Trinene køres ét ad gangen i rækkefølge. Et trin fejler ved en status uden for 2xx, ved en fejl før svaret, eller hvis en værdi i `saves` ikke findes. Så springes resten over.
 
 ### Events
@@ -104,13 +104,13 @@ Kørslen skriver én JSON-linje pr. event på stdout og de samme linjer i `runs\
 | `run.started` | Altid første linje: `runId`, `workflowId`, `workflow` (mappens navn), `environment`, `runFile` (fuld sti til logfilen) og `parameters` |
 | `step.started` | `index` (første trin er 0), `name` (trinnets navn), `method` og `address` (vært, port og sti uden skema og query) |
 | `step.finished` | `outcome` (`Succeeded` eller `Failed`), svaret med samme navne som ved `send`, `error` ved en fejl og `saved` med de gemte værdier |
-| `step.skipped` | Et trin, der ikke blev kørt efter en fejl |
+| `step.skipped` | Et trin, der ikke blev kørt efter en fejl eller en afbrydelse |
 | `step.cancelled` | Trinnet, der kørte, da kørslen blev afbrudt |
 | `run.finished` | Altid sidste linje: `outcome` (`Succeeded`, `Failed` eller `Cancelled`), `elapsedMs`, `steps` og `variables` med de endelige værdier |
 
 - Små felter står først og headers og body sidst, så en afkortet linje stadig viser, hvordan trinnet gik.
 - Værdier er ægte JSON, så et tal er et tal og et objekt et objekt. `body` er tekst ligesom ved `send`.
-- `error` beskriver fejlens type med de samme tekster som `send` og kopierer aldrig tekst fra selve fejlen. Et script-trin er undtaget: dets `error` er fil, linje og scriptets egen fejltekst.
+- `error` beskriver fejlens type med de samme tekster som `send` og kopierer aldrig tekst fra selve fejlen. Findes en værdi fra `saves` ikke, er `error` fx `Nothing to save was found at $.importId.` Et script-trin er undtaget: dets `error` starter med scriptets filnavn og har linje og scriptets egen fejltekst, når scriptet selv fejler, fx `map.js:2: No order`.
 - `workflow`, `name` og `environment` er navne fra kørslens start og er kun til læsning. Det er id'erne, der henviser til noget.
 - Mangler `run.finished`, blev processen stoppet undervejs. Stilhed betyder ikke, at det gik godt.
 - Ignorér felter og event-typer, du ikke kender, så formatet kan udvides.
@@ -215,7 +215,7 @@ En stor body sendes fra en fil ved et direkte kald:
 
 ## Historik og hvad CLI'et skriver
 
-- Hvert afsendt kald med `send` gemmes i historikken som et kald fra CLI'et, også direkte kald og kald, der fejler undervejs. Trin i et workflow gemmes kun i kørslens logfil. Requesten gemmes, som den er skrevet, med variablerne uudfyldte; de midlertidige værdier gemmes ikke.
+- Hvert afsendt kald med `send` gemmes i historikken som et kald fra CLI'et, også direkte kald og kald, der fejler undervejs. Trin i et workflow gemmes kun i kørslens logfil. Requesten gemmes, som den er skrevet, med variablerne uudfyldte. De midlertidige værdier gemmes ikke for sig, men står i den gemte adresse, hvis de bruges i vært, port eller sti.
 - Fejl, før kaldet sendes, fx forkerte argumenter eller et ukendt miljø, og kald, du selv afbryder, gemmes ikke.
 - Hver kørsel med `run` skrives i `runs\<workflowId>\<runId>.jsonl`. Filerne ryddes ikke op.
 - CLI'et skriver kun i `history\`, `runs\` og, når det henter et token, i `secrets.json`. Læser det miljøer uden id, giver det dem id i `environments.json` og sletter tokens gemt under miljønavne i `secrets.json`. `list`, `--help` og `--version` skriver ingenting.
