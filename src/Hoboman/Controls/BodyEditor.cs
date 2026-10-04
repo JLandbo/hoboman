@@ -20,8 +20,7 @@ public sealed class BodyEditor : MarkedEditor
 
     public BodyEditor()
     {
-        TextArea.Caret.CaretBrush = (Brush)FindResource("Text");
-        TextArea.TextView.LineTransformers.Add(new VariableColorizer(this, (Brush)FindResource("Attention")));
+        TextArea.TextView.LineTransformers.Add(new VariableColorizer(this));
         TextChanged += (_, _) =>
         {
             _typing = true;
@@ -51,7 +50,7 @@ public sealed class BodyEditor : MarkedEditor
         }
     }
 
-    sealed class VariableColorizer(BodyEditor editor, Brush foreground) : DocumentColorizingTransformer
+    sealed class VariableColorizer(BodyEditor editor) : DocumentColorizingTransformer
     {
         protected override void ColorizeLine(DocumentLine line)
         {
@@ -59,6 +58,7 @@ public sealed class BodyEditor : MarkedEditor
             {
                 return;
             }
+            var foreground = (Brush)editor.FindResource("Attention");
             foreach (Match variable in ApiEnvironment.VariablesIn(CurrentContext.Document.GetText(line)))
             {
                 ChangeLinePart(line.Offset + variable.Index, line.Offset + variable.Index + variable.Length, element => element.TextRunProperties.SetForegroundBrush(foreground));

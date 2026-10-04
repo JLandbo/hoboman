@@ -177,6 +177,8 @@
     "Save.Failed": "The request could not be saved",
     "Settings.Title": "Settings",
     "Settings.Language": "Language",
+    "Settings.Theme": "Theme",
+    "Settings.OpenThemes": "Open the themes folder",
     "Settings.IgnoreCertificateErrors": "Ignore certificate errors",
     "Settings.SaveFailed": "The settings could not be saved: {0}",
     "Shortcuts.Title": "Shortcuts",

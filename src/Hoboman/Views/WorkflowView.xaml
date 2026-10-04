@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:Hoboman.Views"
              xmlns:controls="clr-namespace:Hoboman.Controls"
+             xmlns:themes="clr-namespace:Hoboman.Themes"
              xmlns:viewModels="clr-namespace:Hoboman.ViewModels">
     <UserControl.Resources>
         <Style x:Key="Chip" TargetType="Border">
@@ -220,8 +221,8 @@
                                                     <TextBlock Text="{Binding State}" Foreground="{DynamicResource Muted}" FontSize="11" VerticalAlignment="Center" />
                                                 </StackPanel>
                                                 <Grid DockPanel.Dock="Left" Width="52" Margin="0,0,10,0" VerticalAlignment="Center">
-                                                    <Border CornerRadius="6" Background="{Binding Badge, Converter={StaticResource MethodBrush}}" Opacity="0.14" />
-                                                    <TextBlock Text="{Binding Badge}" FontSize="10.5" FontWeight="Bold" Foreground="{Binding Badge, Converter={StaticResource MethodBrush}}"
+                                                    <Border CornerRadius="6" Background="{Binding Foreground, ElementName=StepBadge}" Opacity="0.14" />
+                                                    <TextBlock x:Name="StepBadge" Text="{Binding Badge}" FontSize="10.5" FontWeight="Bold" themes:MethodColor.Of="{Binding Badge}"
                                                                HorizontalAlignment="Center" Margin="0,1" TextTrimming="CharacterEllipsis" />
                                                 </Grid>
                                                 <TextBlock Text="{Binding Title}" FontSize="13.5" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />

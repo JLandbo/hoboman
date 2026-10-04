@@ -2,12 +2,50 @@
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:local="clr-namespace:Hoboman.Views"
+                    xmlns:themes="clr-namespace:Hoboman.Themes"
                     Title="{DynamicResource Settings.Title}" Width="440" SizeToContent="Height">
     <StackPanel>
         <DockPanel Margin="0,0,0,16">
             <ListBox DockPanel.Dock="Right" ItemsSource="{Binding Languages}" SelectedItem="{Binding Language}" DisplayMemberPath="Name" Style="{StaticResource Segments}" />
             <TextBlock Text="{DynamicResource Settings.Language}" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" />
         </DockPanel>
+        <DockPanel Margin="0,0,0,8">
+            <Button DockPanel.Dock="Right" Content="&#xE838;" ToolTip="{DynamicResource Settings.OpenThemes}" AutomationProperties.Name="{DynamicResource Settings.OpenThemes}"
+                    Click="OpenThemes_Click" Style="{StaticResource SmallIconButton}" FontSize="12" VerticalAlignment="Center" />
+            <TextBlock Text="{DynamicResource Settings.Theme}" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" />
+        </DockPanel>
+        <ItemsControl ItemsSource="{Binding Themes}" Focusable="False" Margin="0,0,0,8">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <WrapPanel />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="{x:Type themes:ThemeChoice}">
+                    <Border x:Name="Tile" Margin="0,0,8,8" CornerRadius="10" BorderThickness="2" BorderBrush="Transparent">
+                        <Button Click="Theme_Click" Style="{StaticResource PillButton}" Padding="10,8" AutomationProperties.Name="{Binding Name}">
+                            <StackPanel>
+                                <Border Width="80" Height="48" CornerRadius="6" Padding="8" Background="{Binding Surface}" BorderBrush="{Binding Edge}" BorderThickness="1">
+                                    <Grid>
+                                        <StackPanel>
+                                            <Border Width="44" Height="5" CornerRadius="2.5" Background="{Binding Text}" HorizontalAlignment="Left" />
+                                            <Border Width="30" Height="5" CornerRadius="2.5" Background="{Binding Muted}" HorizontalAlignment="Left" Margin="0,5,0,0" />
+                                        </StackPanel>
+                                        <Border Width="22" Height="9" CornerRadius="4.5" Background="{Binding Attention}" HorizontalAlignment="Right" VerticalAlignment="Bottom" />
+                                    </Grid>
+                                </Border>
+                                <TextBlock Text="{Binding Name}" HorizontalAlignment="Center" FontSize="12" Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Button>
+                    </Border>
+                    <DataTemplate.Triggers>
+                        <DataTrigger Binding="{Binding Selected}" Value="True">
+                            <Setter TargetName="Tile" Property="BorderBrush" Value="{DynamicResource Attention}" />
+                        </DataTrigger>
+                    </DataTemplate.Triggers>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
         <CheckBox Content="{DynamicResource Settings.IgnoreCertificateErrors}" IsChecked="{Binding IgnoreCertificateErrors}" />
         <TextBlock Text="{Binding Problem}" Foreground="{DynamicResource Error}" FontSize="12" TextWrapping="Wrap" Margin="0,12,0,0">
             <TextBlock.Style>

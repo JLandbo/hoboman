@@ -49,7 +49,7 @@ Vælg metode, skriv en URL, tilføj eventuel body og auth, og tryk **Send** elle
 .\install.ps1
 ```
 
-Scriptet publicerer appen og `hoboman-cli.exe` til `publish\`, opretter en genvej i Start-menuen og starter `Hoboman.exe`. Hvis den publicerede app allerede kører, beder scriptet dig lukke den først, så ugemte requests ikke bliver lukket ned bag din ryg.
+Scriptet publicerer appen og `hoboman-cli.exe` til `publish\`, lægger temaet Lys i `publish\themes\`, hvis det ikke er der, opretter en genvej i Start-menuen og starter `Hoboman.exe`. Hvis den publicerede app allerede kører, beder scriptet dig lukke den først, så ugemte requests ikke bliver lukket ned bag din ryg.
 
 ## Arbejd med requests
 
@@ -173,13 +173,14 @@ Data gemmes ved siden af den kørende app. Efter `install.ps1` er det i `publish
 | `requests\<mappe>\.folder.json` | Mappens id og auth-indstillinger |
 | `request-order.json` | Rækkefølgen af requests og mapper |
 | `environments.json` | Miljøer og deres variabler |
-| `settings.json` | Valgt miljø, sprog, **Ignorér certifikatfejl**, vindueslayout og gemte faner. CLI'et bruger også det valgte miljø og **Ignorér certifikatfejl** |
+| `settings.json` | Valgt miljø, sprog, tema, **Ignorér certifikatfejl**, vindueslayout og gemte faner. CLI'et bruger også det valgte miljø og **Ignorér certifikatfejl** |
 | `secrets.json` | Krypterede passwords, tokens og client secrets fra auth-felterne |
 | `pending-secret-cleanup.json` | Ejere, hvis hemmeligheder skal kontrolleres og ryddes op efter sletning |
 | `history\` | Ét JSON-dokument pr. gemt kald med request, svar eller fejl. Trin i et workflow gemmes kun i `runs\` |
 | `workflows\<navn>\workflow.json` | Ét workflow pr. mappe med parametre, variabler og trin. Script-trinenes `.js`-filer ligger i samme mappe |
 | `runs\<workflow-id>\` | Én JSON-linjefil pr. kørsel af et workflow med events, svar og gemte værdier |
 | `logs\` | Daglige logfiler |
+| `themes\<navn>.json` | Et tema pr. fil, vælges i Indstillinger. Filen holder `{"colors": {"Navn": "#AARRGGBB"}}` med navnene fra `src\Hoboman\Themes\Colors.xaml`; farver, den udelader, er standardtemaets |
 
 Auth-hemmeligheder beskyttes med Windows DPAPI for den aktuelle Windows-bruger. De ligger separat fra request-, mappe- og workflowfilerne. En kopi af `secrets.json` er derfor ikke en almindelig, flytbar eksport af loginoplysninger. Ved sletning ryddes tilhørende hemmeligheder op, når ingen tilbageværende request eller mappe bruger dem; afbrudt oprydning kan genoptages ved næste start. Workflowets egen auth gemmes under workflowets id og glemmes, når workflowet slettes i appen. Et workflow-trins hemmeligheder gemmes under trinnets id og glemmes, når trinnet fjernes, og workflowet gemmes, eller når workflowet slettes i appen, medmindre et andet workflow har et trin med samme id. Har en kørsel gemt hemmeligheder for trin, der aldrig er gemt, glemmes de, når workflowet gemmes uden dem, når du åbner et andet workflow, eller når appen lukkes.
 

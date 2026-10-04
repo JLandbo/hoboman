@@ -6,18 +6,11 @@ namespace Hoboman.Controls;
 
 public sealed class DropIndicator : Adorner
 {
-    readonly Pen _pen;
-    readonly Brush _fill;
-
     public DropIndicator(FrameworkElement owner) : base(owner)
     {
         IsHitTestVisible = false;
         ClipToBounds = true;
         Visibility = Visibility.Collapsed;
-        var brush = (Brush)owner.FindResource("Attention");
-        _pen = new(brush, 3);
-        _fill = brush.Clone();
-        _fill.Opacity = 0.14;
         AdornerLayer.GetAdornerLayer(owner)?.Add(this);
     }
 
@@ -37,11 +30,12 @@ public sealed class DropIndicator : Adorner
 
     protected override void OnRender(DrawingContext drawingContext)
     {
+        var pen = new Pen((Brush)FindResource("Attention"), 3);
         if (IsBox)
         {
-            drawingContext.DrawRoundedRectangle(_fill, _pen, Bounds, 6, 6);
+            drawingContext.DrawRoundedRectangle((Brush)FindResource("AttentionSoft"), pen, Bounds, 6, 6);
             return;
         }
-        drawingContext.DrawLine(_pen, Bounds.TopLeft, Bounds.BottomRight);
+        drawingContext.DrawLine(pen, Bounds.TopLeft, Bounds.BottomRight);
     }
 }

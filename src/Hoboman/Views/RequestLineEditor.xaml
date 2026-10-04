@@ -2,13 +2,14 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:controls="clr-namespace:Hoboman.Controls"
+             xmlns:themes="clr-namespace:Hoboman.Themes"
              xmlns:viewModels="clr-namespace:Hoboman.ViewModels">
     <!-- The method and the address of a request, as in a tab and a workflow step. -->
     <DockPanel>
         <ToggleButton x:Name="MethodToggle" DockPanel.Dock="Left" Style="{StaticResource PillToggle}" Margin="0,0,8,0" MinWidth="96"
                       IsHitTestVisible="{Binding IsOpen, ElementName=MethodPopup, Converter={StaticResource Not}}">
             <StackPanel Orientation="Horizontal">
-                <TextBlock Text="{Binding Method}" Foreground="{Binding Method, Converter={StaticResource MethodBrush}}" FontWeight="Bold" />
+                <TextBlock Text="{Binding Method}" themes:MethodColor.Of="{Binding Method}" FontWeight="Bold" />
                 <TextBlock Text="&#xE70D;" FontFamily="{StaticResource IconFont}" FontSize="9" Foreground="{DynamicResource Muted}" Margin="8,0,0,0" VerticalAlignment="Center" />
             </StackPanel>
         </ToggleButton>
@@ -20,7 +21,7 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <Button Style="{StaticResource MenuButton}" Click="Method_Click" HorizontalAlignment="Stretch">
-                                    <TextBlock Text="{Binding}" Foreground="{Binding Converter={StaticResource MethodBrush}}" FontWeight="Bold" FontSize="12" />
+                                    <TextBlock Text="{Binding}" themes:MethodColor.Of="{Binding}" FontWeight="Bold" FontSize="12" />
                                 </Button>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>

@@ -16,6 +16,8 @@ public sealed class AppFolder(string root)
 
     public string Runs => Path.Combine(root, "runs");
 
+    public string Themes => Path.Combine(root, "themes");
+
     public string Secrets => Path.Combine(root, "secrets.json");
 
     public string Settings => Path.Combine(root, "settings.json");

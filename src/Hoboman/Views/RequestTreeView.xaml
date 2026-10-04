@@ -1,6 +1,7 @@
 <UserControl x:Class="Hoboman.Views.RequestTreeView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:themes="clr-namespace:Hoboman.Themes"
              xmlns:viewModels="clr-namespace:Hoboman.ViewModels">
     <UserControl.Resources>
         <ContextMenu x:Key="RequestMenu" x:Shared="False" Style="{StaticResource PopupMenu}">
@@ -51,7 +52,7 @@
                         <TextBlock x:Name="Chevron" DockPanel.Dock="Left" Width="18" Text="&#xE76C;" FontFamily="{StaticResource IconFont}" FontSize="10"
                                    Foreground="{DynamicResource Muted}" VerticalAlignment="Center" Visibility="Collapsed" />
                         <TextBlock x:Name="Method" DockPanel.Dock="Left" Width="58" Text="{Binding Tab.Editor.Method}" FontSize="11" FontWeight="Bold"
-                                   Foreground="{Binding Text, RelativeSource={RelativeSource Self}, Converter={StaticResource MethodBrush}}" VerticalAlignment="Center" />
+                                   themes:MethodColor.Of="{Binding Text, RelativeSource={RelativeSource Self}}" VerticalAlignment="Center" />
                         <Button x:Name="NewRequest" DockPanel.Dock="Right" Content="&#xE710;" Click="NewRequest_Click" Style="{StaticResource SmallIconButton}"
                                 ToolTip="{DynamicResource Sidebar.NewRequest}" AutomationProperties.Name="{DynamicResource Sidebar.NewRequest}" VerticalAlignment="Center" Visibility="Collapsed" />
                         <Button x:Name="NewFolder" DockPanel.Dock="Right" Content="&#xE8F4;" Click="NewFolder_Click" Style="{StaticResource SmallIconButton}" Margin="0,0,4,0"

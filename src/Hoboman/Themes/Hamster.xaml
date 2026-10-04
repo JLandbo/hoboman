@@ -3,49 +3,11 @@
                     xmlns:controls="clr-namespace:Hoboman.Controls"
                     xmlns:editing="clr-namespace:ICSharpCode.AvalonEdit.Editing;assembly=ICSharpCode.AvalonEdit"
                     xmlns:converters="clr-namespace:Hoboman.Converters">
-    <SolidColorBrush x:Key="Surface" Color="#F0262626" />
-    <SolidColorBrush x:Key="SolidSurface" Color="#262626" />
-    <SolidColorBrush x:Key="Edge" Color="#26FFFFFF" />
-    <SolidColorBrush x:Key="Text" Color="#F2F2F2" />
-    <SolidColorBrush x:Key="Muted" Color="#B8B8B8" />
-    <SolidColorBrush x:Key="Attention" Color="#F5C542" />
-    <SolidColorBrush x:Key="OnAttention" Color="#1E1E1E" />
-    <SolidColorBrush x:Key="Input" Color="#1E1E1E" />
-    <SolidColorBrush x:Key="Button" Color="#3A3A3A" />
-    <SolidColorBrush x:Key="Error" Color="#FF6B6B" />
-    <SolidColorBrush x:Key="Handle" Color="#99FFFFFF" />
-    <SolidColorBrush x:Key="Card" Color="#14FFFFFF" />
-    <SolidColorBrush x:Key="Box" Color="#08FFFFFF" />
-    <SolidColorBrush x:Key="BoxEdge" Color="#1FFFFFFF" />
-    <SolidColorBrush x:Key="Success" Color="#6BDD9A" />
-    <!-- What a button blinks after it did something (Views/Blink.cs). -->
-    <SolidColorBrush x:Key="ClipboardSuccess" Color="#22C55E" />
-    <SolidColorBrush x:Key="ClipboardError" Color="#EF4444" />
-    <SolidColorBrush x:Key="SuccessSoft" Color="#266BDD9A" />
-    <SolidColorBrush x:Key="ErrorSoft" Color="#24FF6B6B" />
-    <SolidColorBrush x:Key="ErrorEdge" Color="#8CFF6B6B" />
-    <SolidColorBrush x:Key="MethodGET" Color="#6BDD9A" />
-    <SolidColorBrush x:Key="MethodPOST" Color="#FFE47E" />
-    <SolidColorBrush x:Key="MethodPUT" Color="#74AEF6" />
-    <SolidColorBrush x:Key="MethodPATCH" Color="#C0A8E1" />
-    <SolidColorBrush x:Key="MethodDELETE" Color="#F79A8E" />
-    <SolidColorBrush x:Key="MethodHEAD" Color="#6BDD9A" />
-    <SolidColorBrush x:Key="MethodOPTIONS" Color="#F15EB0" />
-    <SolidColorBrush x:Key="JsonKey" Color="#9CDCFE" />
-    <SolidColorBrush x:Key="JsonString" Color="#CE9178" />
-    <SolidColorBrush x:Key="JsonNumber" Color="#B5CEA8" />
-    <SolidColorBrush x:Key="JsonLiteral" Color="#569CD6" />
-    <SolidColorBrush x:Key="XmlTag" Color="#569CD6" />
-    <SolidColorBrush x:Key="XmlAttribute" Color="#9CDCFE" />
-    <SolidColorBrush x:Key="XmlValue" Color="#CE9178" />
-    <SolidColorBrush x:Key="XmlComment" Color="#6A9955" />
-
     <FontFamily x:Key="UiFont">Segoe UI Variable Text, Segoe UI</FontFamily>
     <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
     <FontFamily x:Key="CodeFont">Cascadia Mono, Consolas</FontFamily>
     <DropShadowEffect x:Key="Shadow" BlurRadius="12" ShadowDepth="2" Opacity="0.35" />
     <BooleanToVisibilityConverter x:Key="VisibleWhenTrue" />
-    <converters:MethodBrush x:Key="MethodBrush" />
     <converters:IsEqual x:Key="IsEqual" />
     <converters:Not x:Key="Not" />
 

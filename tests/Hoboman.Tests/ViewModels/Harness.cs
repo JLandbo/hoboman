@@ -67,7 +67,7 @@ public sealed class Harness : IDisposable
         new(WorkflowLibrary, NullLogger<WorkflowsViewModel>.Instance),
         WorkflowServices,
         Environments,
-        new(SettingsStore, _translator, NullLogger<SettingsViewModel>.Instance),
+        new(SettingsStore, _translator, new(Folder.Themes), NullLogger<SettingsViewModel>.Instance),
         SettingsStore,
         EnvironmentEditor(),
         FolderAuth(),

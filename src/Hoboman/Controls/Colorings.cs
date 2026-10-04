@@ -2,22 +2,21 @@ using System.Windows;
 using System.Windows.Media;
 using Hoboman.ViewModels;
 using ICSharpCode.AvalonEdit;
+using ICSharpCode.AvalonEdit.Editing;
+using ICSharpCode.AvalonEdit.Folding;
 using ICSharpCode.AvalonEdit.Highlighting;
 
 namespace Hoboman.Controls;
 
 static class Colorings
 {
-    static readonly IHighlightingDefinition _json = Themed("Json",
-        [("FieldName", "JsonKey"), ("String", "JsonString"), ("Number", "JsonNumber"), ("Bool", "JsonLiteral"), ("Null", "JsonLiteral"), ("Punctuation", "Text")]);
+    static readonly IHighlightingDefinition _json = HighlightingManager.Instance.GetDefinition("Json");
 
-    static readonly IHighlightingDefinition _xml = Themed("XML",
-        [("XmlTag", "XmlTag"), ("XmlDeclaration", "XmlTag"), ("DocType", "XmlTag"), ("AttributeName", "XmlAttribute"), ("AttributeValue", "XmlValue"),
-         ("CData", "XmlValue"), ("Entity", "XmlValue"), ("BrokenEntity", "Error"), ("Comment", "XmlComment")]);
+    static readonly IHighlightingDefinition _xml = HighlightingManager.Instance.GetDefinition("XML");
 
-    static readonly IHighlightingDefinition _javaScript = Themed("JavaScript",
-        [("Digits", "JsonNumber"), ("Comment", "XmlComment"), ("String", "JsonString"), ("Character", "JsonString"), ("Regex", "JsonString"),
-         ("JavaScriptKeyWords", "JsonLiteral"), ("JavaScriptIntrinsics", "JsonKey"), ("JavaScriptLiterals", "JsonLiteral"), ("JavaScriptGlobalFunctions", "JsonKey")]);
+    static readonly IHighlightingDefinition _javaScript = HighlightingManager.Instance.GetDefinition("JavaScript");
+
+    static Colorings() => Use(brush => (Brush)Application.Current.FindResource(brush));
 
     public static IHighlightingDefinition JavaScript => _javaScript;
 
@@ -33,20 +32,29 @@ static class Colorings
     {
         editor.Options.EnableHyperlinks = false;
         editor.Options.EnableEmailHyperlinks = false;
-        var attention = ((SolidColorBrush)editor.FindResource("Attention")).Color;
-        editor.TextArea.SelectionBrush = new SolidColorBrush(Color.FromArgb(0x66, attention.R, attention.G, attention.B));
+        editor.TextArea.SetResourceReference(TextArea.SelectionBrushProperty, "Selection");
         editor.TextArea.SelectionBorder = null;
         editor.TextArea.SelectionForeground = null;
     }
 
-    // The built-in definitions are colored for a light background, so they get the theme's colors.
-    static IHighlightingDefinition Themed(string name, ReadOnlySpan<(string Color, string Brush)> colors)
+    // The built-in definitions have their own colors, so they get the theme's.
+    public static void Use(Func<string, Brush> brushOf)
     {
-        var definition = HighlightingManager.Instance.GetDefinition(name);
+        FoldingElementGenerator.TextBrush = brushOf("Muted");
+        Recolor(_json, brushOf, [("FieldName", "JsonKey"), ("String", "JsonString"), ("Number", "JsonNumber"), ("Bool", "JsonLiteral"), ("Null", "JsonLiteral"), ("Punctuation", "Text")]);
+        Recolor(_xml, brushOf,
+            [("XmlTag", "XmlTag"), ("XmlDeclaration", "XmlTag"), ("DocType", "XmlTag"), ("AttributeName", "XmlAttribute"), ("AttributeValue", "XmlValue"),
+             ("CData", "XmlValue"), ("Entity", "XmlValue"), ("BrokenEntity", "Error"), ("Comment", "XmlComment")]);
+        Recolor(_javaScript, brushOf,
+            [("Digits", "JsonNumber"), ("Comment", "XmlComment"), ("String", "JsonString"), ("Character", "JsonString"), ("Regex", "JsonString"),
+             ("JavaScriptKeyWords", "JsonLiteral"), ("JavaScriptIntrinsics", "JsonKey"), ("JavaScriptLiterals", "JsonLiteral"), ("JavaScriptGlobalFunctions", "JsonKey")]);
+    }
+
+    static void Recolor(IHighlightingDefinition definition, Func<string, Brush> brushOf, ReadOnlySpan<(string Color, string Brush)> colors)
+    {
         foreach (var (color, brush) in colors)
         {
-            definition.GetNamedColor(color).Foreground = new SimpleHighlightingBrush(((SolidColorBrush)Application.Current.FindResource(brush)).Color);
+            definition.GetNamedColor(color).Foreground = new SimpleHighlightingBrush(((SolidColorBrush)brushOf(brush)).Color);
         }
-        return definition;
     }
 }

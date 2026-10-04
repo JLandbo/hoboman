@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Windows.Media;
 using System.Windows.Threading;
 using Hoboman.Mvvm;
 using Hoboman.ViewModels;
@@ -33,7 +32,6 @@ sealed class BodyFolding
         _waiting = new(_standStill, DispatcherPriority.Background, (_, _) => Search(), editor.Dispatcher) { IsEnabled = false };
         _searches = new(FindAsync);
         _margin = new(this);
-        FoldingElementGenerator.TextBrush = (Brush)editor.FindResource("Muted");
         // AvalonEdit only folds right when the folds are made before any other element.
         editor.TextArea.TextView.ElementGenerators.Insert(0, _generator);
         editor.TextArea.LeftMargins.Add(_margin);

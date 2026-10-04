@@ -1,6 +1,7 @@
 <UserControl x:Class="Hoboman.Views.HistoryView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:themes="clr-namespace:Hoboman.Themes"
              xmlns:viewModels="clr-namespace:Hoboman.ViewModels">
     <Grid>
         <ListBox x:Name="Entries" ItemsSource="{Binding History.Items}" Style="{StaticResource SideList}" MouseLeftButtonUp="Entries_MouseLeftButtonUp" KeyDown="Entries_KeyDown">
@@ -31,7 +32,7 @@
                             <TextBlock Text="{DynamicResource History.Cli}" Foreground="{DynamicResource Muted}" FontSize="10" />
                         </Border>
                         <TextBlock DockPanel.Dock="Left" Width="58" Text="{Binding Method}" FontSize="11" FontWeight="Bold"
-                                   Foreground="{Binding Method, Converter={StaticResource MethodBrush}}" VerticalAlignment="Center" />
+                                   themes:MethodColor.Of="{Binding Method}" VerticalAlignment="Center" />
                         <TextBlock Text="{Binding Address}" FontFamily="{StaticResource CodeFont}" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                     </DockPanel>
                     <DataTemplate.Triggers>

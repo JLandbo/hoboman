@@ -15,6 +15,7 @@ using Hoboman.Core.Storage;
 using Hoboman.Core.Workflows;
 using Hoboman.Desktop;
 using Hoboman.Services;
+using Hoboman.Themes;
 using Hoboman.ViewModels;
 using Hoboman.Views;
 
@@ -26,6 +27,7 @@ public partial class App : Application
 
     ServiceProvider? _services;
     ResourceDictionary? _texts;
+    ResourceDictionary? _theme;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -52,6 +54,8 @@ public partial class App : Application
             Use(translator.Current);
             OnUi(main.LanguageChangedAsync);
         };
+        var themes = _services.GetRequiredService<ThemeLibrary>();
+        themes.Changed += () => _theme = themes.Current.Apply(Resources, _theme);
         await _services.GetRequiredService<SettingsViewModel>().LoadAsync(CancellationToken.None);
         var watcher = _services.GetRequiredService<AppFolderWatcher>();
         watcher.RequestsChanged += () => OnUi(main.RequestsChangedAsync);
@@ -103,6 +107,7 @@ public partial class App : Application
         services.AddSingleton<AppFolderWatcher>();
         services.AddSingleton<SettingsStore>();
         services.AddSingleton(_ => new Translator(Translation.Danish));
+        services.AddSingleton(_ => new ThemeLibrary(folder.Themes));
         services.AddSingleton<EnvironmentStore>();
         services.AddSingleton<RequestLibrary>();
         services.AddSingleton<SecretStore>();

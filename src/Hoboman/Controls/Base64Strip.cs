@@ -74,7 +74,7 @@ sealed class Base64Strip(MarkedEditor editor) : UIElement
         {
             var (text, back) = mark.State == Base64MarkState.Failed
                 ? (Brush("Error"), Brush("ErrorSoft"))
-                : (Brush("Attention"), Base64Highlighter.Tint(Brush("Attention"), 0x29));
+                : (Brush("Attention"), Brush("AttentionSoft"));
             labels.Add(LabelOf(badge, FontWeights.SemiBold, text, back, dip));
         }
         if (mark.Saved is { } saved)

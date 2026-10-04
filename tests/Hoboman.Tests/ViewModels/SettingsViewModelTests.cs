@@ -1,3 +1,5 @@
+using Hoboman.Themes;
+
 namespace Hoboman.Tests.ViewModels;
 
 public sealed class SettingsViewModelTests : IDisposable
@@ -6,11 +8,13 @@ public sealed class SettingsViewModelTests : IDisposable
 
     string FilePath => Path.Combine(_temporary.Path, "settings.json");
 
+    string ThemesFolder => Path.Combine(_temporary.Path, "themes");
+
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
     SettingsStore Store() => new(new AppFolder(_temporary.Path), NullLogger<SettingsStore>.Instance);
 
-    SettingsViewModel Settings(Translator translator) => new(Store(), translator, NullLogger<SettingsViewModel>.Instance);
+    SettingsViewModel Settings(Translator translator, ThemeLibrary? themes = null) => new(Store(), translator, themes ?? new(ThemesFolder), NullLogger<SettingsViewModel>.Instance);
 
     public void Dispose() => _temporary.Dispose();
 
@@ -55,6 +59,53 @@ public sealed class SettingsViewModelTests : IDisposable
 
         // Assert
         Assert.Equal("English", (await Store().LoadAsync(Cancellation)).LanguageName);
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenTheSettingsChooseATheme_ThenUsesIt()
+    {
+        // Arrange
+        await Store().UpdateAsync(_ => new(ThemeName: "Lys"), Cancellation);
+        Directory.CreateDirectory(ThemesFolder);
+        File.WriteAllText(Path.Combine(ThemesFolder, "Lys.json"), "{}");
+        var themes = new ThemeLibrary(ThemesFolder);
+
+        // Act
+        await Settings(new Translator(Translation.Danish), themes).LoadAsync(Cancellation);
+
+        // Assert
+        Assert.Equal("Lys", themes.Current.Name);
+    }
+
+    [Fact]
+    public async Task ChooseTheme_WhenChosen_ThenSavesIt()
+    {
+        // Arrange
+        var settings = Settings(new Translator(Translation.Danish));
+
+        // Act
+        settings.ChooseTheme(Theme.Parse("Lys", "{}"));
+        await settings.Saving;
+
+        // Assert
+        Assert.Equal("Lys", (await Store().LoadAsync(Cancellation)).ThemeName);
+    }
+
+    [Fact]
+    public async Task ChooseTheme_WhenChosen_ThenOnlyItIsSelected()
+    {
+        // Arrange
+        Directory.CreateDirectory(ThemesFolder);
+        File.WriteAllText(Path.Combine(ThemesFolder, "Lys.json"), "{}");
+        var themes = new ThemeLibrary(ThemesFolder);
+        var settings = Settings(new Translator(Translation.Danish), themes);
+
+        // Act
+        settings.ChooseTheme(themes.Find("Lys"));
+        await settings.Saving;
+
+        // Assert
+        Assert.Equal(["Lys"], settings.Themes.Where(choice => choice.Selected).Select(choice => choice.Name));
     }
 
     [Fact]

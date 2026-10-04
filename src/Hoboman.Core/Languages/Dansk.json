@@ -177,6 +177,8 @@
     "Save.Failed": "Requesten kunne ikke gemmes",
     "Settings.Title": "Indstillinger",
     "Settings.Language": "Sprog",
+    "Settings.Theme": "Tema",
+    "Settings.OpenThemes": "Åbn mappen med temaer",
     "Settings.IgnoreCertificateErrors": "Ignorér certifikatfejl",
     "Settings.SaveFailed": "Indstillingerne kunne ikke gemmes: {0}",
     "Shortcuts.Title": "Genveje",

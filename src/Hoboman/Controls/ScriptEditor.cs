@@ -1,5 +1,4 @@
 using System.Windows;
-using System.Windows.Media;
 using ICSharpCode.AvalonEdit;
 using ICSharpCode.AvalonEdit.Document;
 
@@ -17,7 +16,6 @@ public sealed class ScriptEditor : TextEditor
     {
         Colorings.Theme(this);
         SyntaxHighlighting = Colorings.JavaScript;
-        TextArea.Caret.CaretBrush = (Brush)FindResource("Text");
         TextChanged += (_, _) =>
         {
             _typing = true;

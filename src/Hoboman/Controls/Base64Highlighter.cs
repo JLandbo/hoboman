@@ -9,17 +9,8 @@ sealed class Base64Highlighter : IBackgroundRenderer
 {
     readonly MarkedEditor _editor;
     readonly Base64Margin _margin;
-    readonly Brush _chosen;
-    readonly Brush _failed;
-    readonly Brush _saved;
 
-    public Base64Highlighter(MarkedEditor editor, Base64Margin margin)
-    {
-        (_editor, _margin) = (editor, margin);
-        _chosen = Tint((Brush)editor.FindResource("Attention"), 0x12);
-        _failed = Tint((Brush)editor.FindResource("Error"), 0x14);
-        _saved = Tint((Brush)editor.FindResource("Success"), 0x14);
-    }
+    public Base64Highlighter(MarkedEditor editor, Base64Margin margin) => (_editor, _margin) = (editor, margin);
 
     public KnownLayer Layer => KnownLayer.Background;
 
@@ -43,17 +34,11 @@ sealed class Base64Highlighter : IBackgroundRenderer
     // A property inside a chosen one only has its checkbox greyed, as tinting it too would stripe a whole chosen body.
     public Brush? TintOf(Base64Mark mark) => mark switch
     {
-        { State: Base64MarkState.Failed } => _failed,
-        { State: Base64MarkState.Checked or Base64MarkState.Decoded } => _chosen,
-        { Saved: not null } => _saved,
+        { State: Base64MarkState.Failed } => Brush("ErrorTint"),
+        { State: Base64MarkState.Checked or Base64MarkState.Decoded } => Brush("AttentionTint"),
+        { Saved: not null } => Brush("SuccessTint"),
         _ => null,
     };
 
-    public static Brush Tint(Brush brush, byte alpha)
-    {
-        var color = ((SolidColorBrush)brush).Color;
-        var tint = new SolidColorBrush(Color.FromArgb(alpha, color.R, color.G, color.B));
-        tint.Freeze();
-        return tint;
-    }
+    Brush Brush(string key) => (Brush)_editor.FindResource(key);
 }
