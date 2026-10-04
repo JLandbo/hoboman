@@ -13,6 +13,7 @@ sealed class Base64Highlighter : IBackgroundRenderer
     readonly Base64Margin _margin;
     readonly Brush _chosen;
     readonly Brush _failed;
+    readonly Brush _saved;
     readonly Typeface _badge;
     readonly Typeface _note;
 
@@ -21,6 +22,7 @@ sealed class Base64Highlighter : IBackgroundRenderer
         (_editor, _margin) = (editor, margin);
         _chosen = Tint("Attention", 0x12);
         _failed = Tint("Error", 0x14);
+        _saved = Tint("Success", 0x14);
         var font = (FontFamily)editor.FindResource("UiFont");
         _badge = new(font, FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
         _note = new(font, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
@@ -39,13 +41,23 @@ sealed class Base64Highlighter : IBackgroundRenderer
         foreach (var line in textView.VisualLines)
         {
             // A property inside a chosen one only has its checkbox greyed, as tinting it too would stripe a whole chosen body.
-            if (_margin.MarkAt(line.FirstDocumentLine.LineNumber) is not { State: Base64MarkState.Checked or Base64MarkState.Decoded or Base64MarkState.Failed } mark)
+            if (_margin.MarkAt(line.FirstDocumentLine.LineNumber) is not { } mark || mark is { State: not (Base64MarkState.Checked or Base64MarkState.Decoded or Base64MarkState.Failed), Saved: null })
             {
                 continue;
             }
             var (top, height) = (line.VisualTop - textView.VerticalOffset, line.TextLines[0].Height);
-            drawing.DrawRectangle(mark.State == Base64MarkState.Failed ? _failed : _chosen, null, new(0, top, textView.ActualWidth, height));
+            var tint = mark.State switch
+            {
+                Base64MarkState.Failed => _failed,
+                Base64MarkState.Checked or Base64MarkState.Decoded => _chosen,
+                _ => _saved,
+            };
+            drawing.DrawRectangle(tint, null, new(0, top, textView.ActualWidth, height));
             var right = textView.ActualWidth - 10;
+            if (mark.Saved is { } saved)
+            {
+                right = Write(drawing, saved, _badge, Brush("Success"), Brush("SuccessSoft"), right, top, height, dip) - 8;
+            }
             if (mark.Note is { } note)
             {
                 right = Write(drawing, note, _note, Brush("Muted"), null, right, top, height, dip) - 8;

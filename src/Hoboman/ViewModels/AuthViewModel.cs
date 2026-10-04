@@ -65,6 +65,15 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
 
     public AsyncCommand FetchToken => field ??= new(FetchTokenAsync);
 
+    public static string HeaderOf(AuthKind? kind, Translator translator) => $"{translator.Of("Editor.Auth")} ({kind switch
+    {
+        AuthKind.None => translator.Of("Auth.None"),
+        AuthKind.Basic => translator.Of("Auth.Basic"),
+        AuthKind.Bearer => translator.Of("Auth.BearerShort"),
+        AuthKind.OAuth2 => "OAuth",
+        _ => "…",
+    }})";
+
     public bool HasUnsavedSecrets =>
         Password != _savedPassword || Token != _savedToken || ClientSecret != _savedClientSecret || _tokens.Any(token => _savedTokens.GetValueOrDefault(token.Key) != token.Value);
 

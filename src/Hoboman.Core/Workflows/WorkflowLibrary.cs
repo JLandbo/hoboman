@@ -11,6 +11,9 @@ public sealed class WorkflowLibrary(AppFolder folder, ILogger<WorkflowLibrary> l
 
     public static bool IsValidName(string name) => RequestLibrary.IsValidName(name) && !name.Contains('/');
 
+    // A script lies right in the workflow's folder, so its name cannot lead out of it.
+    public static bool IsValidScriptName(string name) => IsValidName(name) && name.EndsWith(".js", StringComparison.OrdinalIgnoreCase);
+
     // A folder without a workflow.json is not a workflow.
     public Task<IReadOnlyList<string>> NamesAsync(CancellationToken cancellationToken) => Task.Run<IReadOnlyList<string>>(() => Directory.Exists(folder.Workflows)
         ? [.. Directory.EnumerateDirectories(folder.Workflows).Where(path => File.Exists(Path.Combine(path, _workflowFile))).Select(Path.GetFileName).OfType<string>().Where(IsUsable)]
@@ -45,6 +48,75 @@ public sealed class WorkflowLibrary(AppFolder folder, ILogger<WorkflowLibrary> l
         Directory.Delete(FolderOf(name), recursive: true);
         logger.LogInformation("Deleted the workflow {Name}", name);
     }, logger, name, cancellationToken);
+
+    // A script that is not there, cannot be read or has a name that leads out of the folder gives null, so the check tells of it.
+    public async Task<string?> LoadScriptAsync(string name, string script, CancellationToken cancellationToken)
+    {
+        if (!IsValidScriptName(script))
+        {
+            logger.LogWarning("{Script} in the workflow {Name} is not a valid script name", script, name);
+            return null;
+        }
+        try
+        {
+            return await File.ReadAllTextAsync(ScriptPathOf(name, script), cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            logger.LogWarning(exception, "Could not read the script {Script} of the workflow {Name}", script, name);
+            return null;
+        }
+    }
+
+    // A file that is already there is left as it is, so its code is never overwritten.
+    public async Task CreateScriptAsync(string name, string script, string code, CancellationToken cancellationToken)
+    {
+        var path = ScriptPathOf(name, script);
+        if (File.Exists(path))
+        {
+            return;
+        }
+        await using var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, useAsync: true);
+        await using var writer = new StreamWriter(file);
+        await writer.WriteAsync(code.AsMemory(), cancellationToken).ConfigureAwait(false);
+        logger.LogInformation("Created the script {Script} of the workflow {Name}", script, name);
+    }
+
+    // Like a workflow that is already there, a script is not saved into a folder that was renamed or deleted on disk.
+    public async Task SaveScriptAsync(string name, string script, string code, CancellationToken cancellationToken)
+    {
+        await File.WriteAllTextAsync(ScriptPathOf(name, script), code, cancellationToken).ConfigureAwait(false);
+        logger.LogInformation("Saved the script {Script} of the workflow {Name}", script, name);
+    }
+
+    // A request step's secrets are saved under its id.
+    public static IEnumerable<Guid> SecretOwnersOf(Workflow workflow) => workflow.Steps.Select(step => step.Request?.Id ?? Guid.Empty).Where(id => id != Guid.Empty);
+
+    // A workflow that cannot be read may use any id, so then there is no answer.
+    public async Task<IReadOnlySet<Guid>?> SecretOwnersAsync(CancellationToken cancellationToken)
+    {
+        var owners = new HashSet<Guid>();
+        foreach (var name in await NamesAsync(cancellationToken).ConfigureAwait(false))
+        {
+            try
+            {
+                if (await LoadAsync(name, cancellationToken).ConfigureAwait(false) is not { } workflow)
+                {
+                    return null;
+                }
+                owners.UnionWith(SecretOwnersOf(workflow));
+            }
+            catch (Exception exception) when (FileProblem.Is(exception))
+            {
+                logger.LogWarning(exception, "Could not read the workflow {Name}, so no secrets are forgotten", name);
+                return null;
+            }
+        }
+        return owners;
+    }
+
+    public string ScriptPathOf(string name, string script) =>
+        IsValidScriptName(script) ? Path.Combine(FolderOf(name), script) : throw new ArgumentException($"'{script}' is not a valid script name", nameof(script));
 
     bool IsUsable(string name)
     {

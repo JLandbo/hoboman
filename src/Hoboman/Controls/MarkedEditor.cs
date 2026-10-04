@@ -1,5 +1,4 @@
 using System.Windows;
-using System.Windows.Media;
 using Hoboman.ViewModels;
 using ICSharpCode.AvalonEdit;
 
@@ -23,13 +22,7 @@ public abstract class MarkedEditor : TextEditor
 
     protected MarkedEditor()
     {
-        // Links would be drawn in AvalonEdit's own blue instead of the theme's colors.
-        Options.EnableHyperlinks = false;
-        Options.EnableEmailHyperlinks = false;
-        var attention = ((SolidColorBrush)FindResource("Attention")).Color;
-        TextArea.SelectionBrush = new SolidColorBrush(Color.FromArgb(0x66, attention.R, attention.G, attention.B));
-        TextArea.SelectionBorder = null;
-        TextArea.SelectionForeground = null;
+        Colorings.Theme(this);
         _margin = new(this);
         TextArea.LeftMargins.Insert(0, _margin);
         TextArea.TextView.BackgroundRenderers.Add(new Base64Highlighter(this, _margin));

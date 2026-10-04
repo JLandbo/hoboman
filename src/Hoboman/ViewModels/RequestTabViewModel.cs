@@ -1,5 +1,4 @@
 using System.Net.Http;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Hoboman.Core.Auth;
 using Hoboman.Core.Base64;
@@ -19,14 +18,9 @@ public sealed class RequestTabViewModel : ObservableObject
     readonly RequestTabServices _services;
     string _savedJson = "";
     ProblemMessage? _fileProblem;
-    ApiResponse? _response;
-    BodyFormat _bodyFormat;
     bool _loading;
     bool _pinned;
     CancellationTokenSource? _sending;
-    CancellationTokenSource? _formatting;
-    LayoutProblem? _layoutProblem;
-    bool _layingOut;
     AuthSource? _inheritedAuth;
     CancellationTokenSource? _refreshingAuth;
     bool _closed;
@@ -60,18 +54,21 @@ public sealed class RequestTabViewModel : ObservableObject
             }
         };
         services.AuthRefresh.Changed += RefreshAuthHeader;
-        Query.Changed += MarkDirty;
-        Headers.Changed += MarkDirty;
-        Base64 = new(services.Translator, services.Clock);
-        Base64.Changed += MarkDirty;
-        Base64.DecodeChanged += ShowResponseAgain;
+        Editor = new(services.Translator, services.Clock, services.Environments);
+        Editor.Changed += MarkDirty;
+        Result = new(services.Translator, Editor.Base64);
         // Without an address there is nothing to send, and trying would only leave a failed call in the history.
-        Send = new AsyncCommand(SendAsync, () => !string.IsNullOrWhiteSpace(Url) && !IsAuthRefreshing);
+        Send = new AsyncCommand(SendAsync, () => !string.IsNullOrWhiteSpace(Editor.Url) && !IsAuthRefreshing);
+        Editor.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(RequestViewModel.Url))
+            {
+                Send.RaiseCanExecuteChanged();
+            }
+        };
         Save = new AsyncCommand(SaveAsync);
         Load(request);
     }
-
-    public static IReadOnlyList<string> Methods { get; } = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
     public event Func<RequestTabViewModel, Task>? Created;
 
@@ -167,72 +164,9 @@ public sealed class RequestTabViewModel : ObservableObject
         _ = UpdateAuthSourceAsync();
     }
 
-    public string Method { get; set => Change(ref field, value); } = "GET";
-
     internal string SavedMethod { get; private set; } = "GET";
 
-    public string Url
-    {
-        get;
-        set
-        {
-            Change(ref field, value);
-            Send.RaiseCanExecuteChanged();
-        }
-    } = "";
-
-    public KeyValueListViewModel Query { get; } = new();
-
-    public KeyValueListViewModel Headers { get; } = new();
-
-    public BodyKind BodyKind
-    {
-        get;
-        set
-        {
-            Change(ref field, value);
-            ShowLayoutProblem(null);
-        }
-    }
-
-    public string Body
-    {
-        get;
-        set
-        {
-            if (Set(ref field, value))
-            {
-                MarkDirty();
-                ShowLayoutProblem(null);
-                Base64.BodyChanged(value, UseEnvironmentVariablesInBody);
-            }
-        }
-    } = "";
-
-    public bool UseEnvironmentVariablesInBody
-    {
-        get;
-        set
-        {
-            if (Set(ref field, value))
-            {
-                MarkDirty();
-                ShowLayoutProblem(null);
-                Base64.BodyChanged(Body, value);
-            }
-        }
-    }
-
-    // Why the body could not be laid out, until it or its kind changes, in the language of the moment.
-    public string? BodyLayoutProblem => _layoutProblem switch
-    {
-        LayoutProblem.NotJson => _services.Translator.Of("Body.NotJson"),
-        LayoutProblem.NotXml => _services.Translator.Of("Body.NotXml"),
-        LayoutProblem.NeedsVariables => _services.Translator.Of("Body.NeedsVariables"),
-        _ => null,
-    };
-
-    public Base64ViewModel Base64 { get; }
+    public RequestViewModel Editor { get; }
 
     public AuthViewModel Auth { get; }
 
@@ -242,16 +176,7 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public bool HasInheritedAuth => InheritedAuthFolder is not null;
 
-    public string AuthHeader => $"{_services.Translator.Of("Editor.Auth")} ({AuthTypeLabel})";
-
-    string AuthTypeLabel => EffectiveAuthKind switch
-    {
-        AuthKind.None => _services.Translator.Of("Auth.None"),
-        AuthKind.Basic => _services.Translator.Of("Auth.Basic"),
-        AuthKind.Bearer => _services.Translator.Of("Auth.BearerShort"),
-        AuthKind.OAuth2 => "OAuth",
-        _ => "…",
-    };
+    public string AuthHeader => AuthViewModel.HeaderOf(EffectiveAuthKind, _services.Translator);
 
     public string? AuthSourceTip => InheritedAuthFolder is { } folder ? _services.Translator.Format("Auth.InheritedFrom", folder.Replace("/", " / ")) : null;
 
@@ -362,33 +287,12 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public bool IsSending { get; private set => Set(ref field, value); }
 
-    public ResponseDisplay? Response { get; private set => Set(ref field, value); }
-
-    public string? ResponseBodyProblem { get; private set => Set(ref field, value); }
-
-    public IReadOnlyList<Base64Mark> ResponseMarks { get; private set => Set(ref field, value); } = [];
-
-    // Chosen from the Content-Type of each new response, and changed by the user when it does not fit.
-    public BodyFormat BodyFormat
-    {
-        get => _bodyFormat;
-        set
-        {
-            if (Set(ref _bodyFormat, value))
-            {
-                ShowResponseAgain();
-            }
-        }
-    }
-
-    internal Task Formatting { get; private set; } = Task.CompletedTask;
+    public ResponseViewModel Result { get; }
 
     public ProblemMessage? Problem { get; private set => Set(ref field, value); }
 
     // All tabs share one view, so each tab keeps which sections it shows.
     public RequestSection RequestSection { get; set => Set(ref field, value); } = RequestSection.Body;
-
-    public ResponseSection ResponseSection { get; set => Set(ref field, value); }
 
     public AsyncCommand Send { get; }
 
@@ -415,7 +319,7 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public async Task ShowAsync(HistoryEntry entry)
     {
-        await ShowAsync(entry.Response);
+        await Result.ShowAsync(entry.Response);
         Problem = entry.Error is { } error ? new(_services.Translator.Of("Response.Failed"), error) : null;
     }
 
@@ -523,116 +427,22 @@ public sealed class RequestTabViewModel : ObservableObject
         OnPropertyChanged(nameof(IsPreview));
     }
 
-    async Task ShowAsync(ApiResponse? response)
-    {
-        _response = response;
-        Response = null;
-        ResponseBodyProblem = null;
-        ResponseMarks = [];
-        if (response is not null)
-        {
-            Set(ref _bodyFormat, ResponseDisplay.FormatOf(response), nameof(BodyFormat));
-            await FormatAsync(response);
-        }
-    }
-
-    // Formatting a large body takes a while, so it is kept off the UI thread, and a newer response, format or choice of what to decode wins.
-    // The one before it is stopped, so quick clicks do not leave several at work.
-    async Task FormatAsync(ApiResponse response)
-    {
-        _formatting?.Cancel();
-        using var formatting = _formatting = new CancellationTokenSource();
-        var format = _bodyFormat;
-        var decode = Base64.Decode;
-        try
-        {
-            var shown = await Task.Run(() => Base64ViewModel.ShowResponse(response, format, decode, _services.Translator, formatting.Token), formatting.Token);
-            if (ReferenceEquals(response, _response) && format == _bodyFormat && ReferenceEquals(decode, Base64.Decode))
-            {
-                Response = shown.Display;
-                ResponseMarks = shown.Marks;
-                ResponseBodyProblem = shown.Problem;
-            }
-        }
-        catch (OperationCanceledException) when (formatting.IsCancellationRequested)
-        {
-        }
-        finally
-        {
-            if (_formatting == formatting)
-            {
-                _formatting = null;
-            }
-        }
-    }
-
-    void ShowResponseAgain()
-    {
-        if (_response is { } response)
-        {
-            Formatting = FormatAsync(response);
-        }
-    }
-
     public void Rename(string name)
     {
         Name = name;
         _ = UpdateAuthSourceAsync();
     }
 
-    // Laid out off the UI thread, as a large body takes a while, and given to the view rather than set here, so the editor can take it in the way typing is, and it can be undone.
-    // A click while one is at work would only do the same work again, so it is left out.
-    public async Task<string?> LaidOutBodyAsync()
-    {
-        if (_layingOut || BodyKind is not (BodyKind.Json or BodyKind.Xml))
-        {
-            return null;
-        }
-        _layingOut = true;
-        try
-        {
-            var (body, kind, environment, useVariables) = (Body, BodyKind, EnvironmentOrNone(), UseEnvironmentVariablesInBody);
-            var (laidOut, problem) = await Task.Run<(string? LaidOut, LayoutProblem? Problem)>(() =>
-                BodyLayout.Of(body, kind, useVariables) is { } text ? (text, null) : (null, ProblemOf(body, kind, environment, useVariables)));
-            // The body or how it is interpreted changed while it was laid out.
-            if (body != Body || kind != BodyKind || environment != EnvironmentOrNone() || useVariables != UseEnvironmentVariablesInBody)
-            {
-                return null;
-            }
-            ShowLayoutProblem(problem);
-            return laidOut;
-        }
-        finally
-        {
-            _layingOut = false;
-        }
-    }
-
     ApiEnvironment EnvironmentOrNone() => _services.Environments.Selected ?? ApiEnvironment.None;
-
-    static LayoutProblem ProblemOf(string body, BodyKind kind, ApiEnvironment environment, bool useVariables) =>
-        useVariables && BodyLayout.NeedsVariables(body, kind, environment) ? LayoutProblem.NeedsVariables
-        : kind == BodyKind.Xml ? LayoutProblem.NotXml
-        : LayoutProblem.NotJson;
-
-    void ShowLayoutProblem(LayoutProblem? problem)
-    {
-        if (problem != _layoutProblem)
-        {
-            _layoutProblem = problem;
-            OnPropertyChanged(nameof(BodyLayoutProblem));
-        }
-    }
 
     public void Relabel()
     {
         OnPropertyChanged(nameof(Title));
-        OnPropertyChanged(nameof(BodyLayoutProblem));
+        Editor.Relabel();
         Auth.Relabel();
         RefreshAuthHeader();
-        Base64.Relabel();
         // What is written beside the response's properties is in the language too.
-        ShowResponseAgain();
+        Result.ShowAgain();
     }
 
     public void Unlink()
@@ -644,19 +454,7 @@ public sealed class RequestTabViewModel : ObservableObject
         IsDirty = true;
     }
 
-    public ApiRequest ToRequest() => new()
-    {
-        Id = Id,
-        Method = Method,
-        Url = Url,
-        Query = Query.ToList(),
-        Headers = Headers.ToList(),
-        BodyKind = BodyKind,
-        Body = Body,
-        UseEnvironmentVariablesInBody = UseEnvironmentVariablesInBody,
-        Base64 = Base64.ToPaths(),
-        Auth = Auth.ToSettings(),
-    };
+    public ApiRequest ToRequest() => Editor.ToRequest() with { Id = Id, Auth = Auth.ToSettings() };
 
     public async Task SendAsync()
     {
@@ -667,10 +465,7 @@ public sealed class RequestTabViewModel : ObservableObject
         // Sending makes a new call, so the history entry opens the old one again.
         HistoryName = null;
         Problem = null;
-        _response = null;
-        Response = null;
-        ResponseBodyProblem = null;
-        ResponseMarks = [];
+        await Result.ShowAsync(null);
         IsSending = true;
         // The environment chosen when Send is pressed is the one used, even if another is chosen while the secrets are saved.
         var environment = _services.Environments.Selected;
@@ -681,7 +476,7 @@ public sealed class RequestTabViewModel : ObservableObject
             // Secrets were all that was unsaved if the request itself is unchanged, such as after fetching a token.
             IsDirty = HasUnsavedChanges();
             var response = await _services.Runner.RunAsync(ToRequest(), Name ?? SuggestedName ?? DraftName, environment, HistorySource.App, _ => RefreshAuthAsync(), sending.Token);
-            await ShowAsync(response);
+            await Result.ShowAsync(response);
         }
         catch (OperationCanceledException) when (sending.IsCancellationRequested)
         {
@@ -777,29 +572,12 @@ public sealed class RequestTabViewModel : ObservableObject
         SavedMethod = request.Method;
         Id = request.Id;
         Auth.UseOwner(Id);
-        Method = request.Method;
-        Url = request.Url;
-        Query.Load(request.Query);
-        Headers.Load(request.Headers);
-        BodyKind = request.BodyKind;
-        Body = request.Body;
-        UseEnvironmentVariablesInBody = request.UseEnvironmentVariablesInBody;
-        Base64.Load(request.Base64, request.Body, request.UseEnvironmentVariablesInBody);
+        Editor.Load(request);
         Auth.Load(request.Auth);
         _loading = false;
         IsDirty = false;
         _inheritedAuth = Name is null && SuggestedName is null && !IsDraft ? new(Id, AuthSettings.None) : null;
         RefreshAuthHeader();
-    }
-
-    enum LayoutProblem { NotJson, NotXml, NeedsVariables }
-
-    void Change<T>(ref T storage, T value, [CallerMemberName] string? name = null)
-    {
-        if (Set(ref storage, value, name))
-        {
-            MarkDirty();
-        }
     }
 
     void MarkDirty()

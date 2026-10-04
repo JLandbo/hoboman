@@ -1,6 +1,7 @@
 <UserControl x:Class="Hoboman.Views.AuthEditor"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Hoboman.Views"
              xmlns:controls="clr-namespace:Hoboman.Controls"
              xmlns:auth="clr-namespace:Hoboman.Core.Auth;assembly=Hoboman.Core">
     <UserControl.Resources>
@@ -17,7 +18,8 @@
         <Border DockPanel.Dock="Top" Style="{StaticResource SegmentGroup}" Margin="0,0,0,12">
             <StackPanel Orientation="Horizontal">
                 <RadioButton Content="{DynamicResource Auth.Inherit}" GroupName="AuthKind" Style="{StaticResource Segment}"
-                             IsChecked="{Binding Kind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:AuthKind.Inherit}}" />
+                             IsChecked="{Binding Kind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:AuthKind.Inherit}}"
+                             Visibility="{Binding CanInherit, RelativeSource={RelativeSource AncestorType=local:AuthEditor}, Converter={StaticResource VisibleWhenTrue}}" />
                 <RadioButton Content="{DynamicResource Auth.None}" GroupName="AuthKind" Style="{StaticResource Segment}"
                              IsChecked="{Binding Kind, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:AuthKind.None}}" />
                 <RadioButton Content="{DynamicResource Auth.Basic}" GroupName="AuthKind" Style="{StaticResource Segment}"

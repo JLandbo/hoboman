@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using System.Text.Json;
 using Hoboman.Core.Auth;
 using Hoboman.Core.Environments;
-using Hoboman.Core.History;
 using Hoboman.Core.Requests;
 using Hoboman.Core.Storage;
 using Hoboman.Core.Text;
@@ -15,21 +14,29 @@ namespace Hoboman.ViewModels;
 public sealed class WorkflowViewModel : ObservableObject
 {
     readonly WorkflowServices _services;
-    readonly RequestTreeViewModel _tree;
     Guid _id;
     string _savedJson = "";
     int _version;
     bool _closed;
     bool _reloadAfterRun;
     CancellationTokenSource? _running;
+    // Kept per file, so two steps that run the same script show the same code. File names on Windows ignore case.
+    readonly Dictionary<string, string> _code = new(StringComparer.OrdinalIgnoreCase);
+    readonly Dictionary<string, string> _savedCode = new(StringComparer.OrdinalIgnoreCase);
+    // The names the steps save into, which are the workflow's variables.
+    IReadOnlyList<string> _variables = [];
+    // A default written by hand in the file is kept, as the app does not show the variables.
+    IReadOnlyDictionary<string, JsonElement> _variableDefaults = new Dictionary<string, JsonElement>();
+    // The steps in the file as it was last loaded or saved, which take their secrets with them when they are removed here.
+    IReadOnlySet<Guid> _savedOwners = new HashSet<Guid>();
+    // Steps whose secrets were saved before the steps themselves were, as a run does, so the secrets go if the steps never are saved.
+    readonly HashSet<Guid> _unsavedOwners = [];
 
-    public WorkflowViewModel(WorkflowServices services, RequestTreeViewModel tree, string name)
+    public WorkflowViewModel(WorkflowServices services, string name)
     {
         _services = services;
-        _tree = tree;
         Name = name;
         Parameters.Changed += Edited;
-        Variables.Changed += Edited;
         Send = new AsyncCommand(RunAsync, () => !IsRunning);
         Save = new AsyncCommand(SaveAsync);
     }
@@ -38,14 +45,35 @@ public sealed class WorkflowViewModel : ObservableObject
 
     public KeyValueListViewModel Parameters { get; } = new();
 
-    public KeyValueListViewModel Variables { get; } = new();
 
     public ObservableCollection<WorkflowStepViewModel> Steps { get; } = [];
 
-    public WorkflowStepViewModel? SelectedStep { get; set => Set(ref field, value); }
+    public WorkflowStepViewModel? SelectedStep
+    {
+        get;
+        set
+        {
+            if (Set(ref field, value))
+            {
+                OnPropertyChanged(nameof(Code));
+            }
+        }
+    }
 
-    // The saved requests in the order of the tree, to choose a step from.
-    public IEnumerable<string> RequestNames => RequestTreeViewModel.Flatten(_tree.Nodes).Where(node => !node.IsFolder && !node.IsDraft).Select(node => node.Path);
+    // The code of the selected script step, as it is in the editor.
+    public string? Code
+    {
+        get => SelectedStep?.Script is { } script ? _code.GetValueOrDefault(script, "") : null;
+        set
+        {
+            if (SelectedStep?.Script is { } script && WorkflowLibrary.IsValidScriptName(script) && value is not null && value != Code)
+            {
+                _code[script] = value;
+                OnPropertyChanged();
+                Edited();
+            }
+        }
+    }
 
     public bool IsDirty { get; private set => Set(ref field, value); }
 
@@ -78,7 +106,8 @@ public sealed class WorkflowViewModel : ObservableObject
                 return false;
             }
             Load(workflow);
-            await RefreshRequestsAsync();
+            await ReadCodeAsync(Scripts);
+            await LoadSecretsAsync();
             return true;
         }
         catch (Exception exception) when (FileProblem.Is(exception))
@@ -104,11 +133,16 @@ public sealed class WorkflowViewModel : ObservableObject
             {
                 _reloadAfterRun = true;
             }
-            else if (!IsDirty && JsonOf(workflow) != _savedJson)
+            else
             {
-                _services.Logger.LogInformation("The workflow {Name} changed on disk and was reloaded", Name);
-                Load(workflow);
-                await RefreshRequestsAsync();
+                if (!IsDirty && JsonOf(workflow) != _savedJson)
+                {
+                    _services.Logger.LogInformation("The workflow {Name} changed on disk and was reloaded", Name);
+                    Load(workflow);
+                    await LoadSecretsAsync();
+                }
+                // A script may have been changed in another editor. It is taken in unless it is edited here, even while other things are.
+                await ReadCodeAsync([.. Scripts.Where(script => _code.GetValueOrDefault(script) == _savedCode.GetValueOrDefault(script))]);
             }
         }
         catch (Exception exception) when (FileProblem.Is(exception))
@@ -116,16 +150,6 @@ public sealed class WorkflowViewModel : ObservableObject
             _services.Logger.LogWarning(exception, "Could not reload the workflow {Name}", Name);
         }
         return true;
-    }
-
-    // The steps keep only the id of their request, so its path and the names it uses are looked up again when the requests change.
-    public async Task RefreshRequestsAsync()
-    {
-        foreach (var step in Steps.ToList())
-        {
-            await RefreshRequestAsync(step);
-        }
-        Refresh();
     }
 
     public void Rename(string name) => Name = name;
@@ -139,34 +163,89 @@ public sealed class WorkflowViewModel : ObservableObject
         Refresh();
     }
 
-    public void Close()
+    // What a run saved for steps that were never saved goes. Secrets of saved steps stay, also when the file is gone, as it may come back.
+    public Task CloseAsync()
     {
         _closed = true;
         Cancel();
+        foreach (var step in Steps)
+        {
+            step.Close();
+        }
+        return _services.ForgetSecretsAsync(_unsavedOwners);
     }
 
     public void Cancel() => _running?.Cancel();
 
-    public async Task AddStepAsync(string path)
+    // A new step starts with a JSON body, as a new tab does.
+    public void AddRequest() => Add(new() { Request = new() { BodyKind = BodyKind.Json } });
+
+    // The file is made at once with a small start, so it can be opened in an editor. A file that is already there is used as it is.
+    public async Task AddScriptAsync()
     {
-        var id = _tree.IdOf(path);
-        if (id == Guid.Empty)
+        var translator = _services.Translator;
+        if (_services.Dialogs.AskName(translator.Of("Workflow.ScriptTitle"), "", translator.Of("Folder.Create"),
+            name => WorkflowLibrary.IsValidScriptName(ScriptNameOf(name)) ? null : translator.Of("Save.Invalid")) is not { } name)
         {
-            _services.Dialogs.Tell(_services.Translator.Of("Workflow.NoIdTitle"), _services.Translator.Of("Workflow.NoId"));
             return;
         }
-        // An id that a copy made outside Hoboman shares points at neither file for sure.
-        if (_tree.PathOf(id) is null)
+        var script = ScriptNameOf(name);
+        try
         {
-            _services.Dialogs.Tell(_services.Translator.Of("Workflow.SharedIdTitle"), _services.Translator.Of("Workflow.SharedId"));
+            await _services.Library.CreateScriptAsync(Name, script, translator.Of("Workflow.ScriptTemplate"), CancellationToken.None);
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            _services.Logger.LogError(exception, "Could not create the script {Script} of the workflow {Name}", script, Name);
+            _services.Dialogs.Tell(translator.Of("Workflow.ScriptFailed"), translator.DetailsOf(exception));
             return;
         }
-        var step = Follow(new(new() { Request = id }, _services.Translator));
+        if (!_code.ContainsKey(script))
+        {
+            await ReadCodeAsync([script]);
+        }
+        Add(new() { Script = script });
+    }
+
+    public string? ScriptPathOf(WorkflowStepViewModel step) => step.Script is { } script && WorkflowLibrary.IsValidScriptName(script) ? _services.Library.ScriptPathOf(Name, script) : null;
+
+    IEnumerable<string> Scripts => Steps.Select(step => step.Script).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+    // A script that cannot be read has no code here, so a run tells of it instead of running nothing.
+    async Task ReadCodeAsync(IEnumerable<string> scripts)
+    {
+        // An edit made while the files are read is kept.
+        foreach (var (script, before) in scripts.Select(script => (script, _code.GetValueOrDefault(script))).ToList())
+        {
+            var code = await _services.Library.LoadScriptAsync(Name, script, CancellationToken.None);
+            if (_code.GetValueOrDefault(script) != before)
+            {
+                continue;
+            }
+            if (code is not null)
+            {
+                _savedCode[script] = code;
+                _code[script] = code;
+            }
+            else
+            {
+                _savedCode.Remove(script);
+                _code.Remove(script);
+            }
+        }
+        OnPropertyChanged(nameof(Code));
+        // A script's code tells which values it uses.
+        Refresh();
+    }
+
+    static string ScriptNameOf(string name) => name.Trim().EndsWith(".js", StringComparison.OrdinalIgnoreCase) ? name.Trim() : $"{name.Trim()}.js";
+
+    void Add(WorkflowStep added)
+    {
+        var step = Follow(new(added, _services));
         Steps.Add(step);
         SelectedStep = step;
         Edited();
-        await RefreshRequestAsync(step);
-        Refresh();
     }
 
     public void RemoveStep(WorkflowStepViewModel step)
@@ -176,9 +255,15 @@ public sealed class WorkflowViewModel : ObservableObject
         {
             return;
         }
-        Unfollow(step);
+        Drop(step);
         var wasSelected = SelectedStep == step;
         Steps.RemoveAt(index);
+        // A script no step runs any more is read from its file again if a step runs it later.
+        if (step.Script is { } script && !Scripts.Contains(script, StringComparer.OrdinalIgnoreCase))
+        {
+            _code.Remove(script);
+            _savedCode.Remove(script);
+        }
         if (wasSelected)
         {
             SelectedStep = Steps.ElementAtOrDefault(Math.Min(index, Steps.Count - 1));
@@ -212,13 +297,27 @@ public sealed class WorkflowViewModel : ObservableObject
         }
         var version = _version;
         var workflow = ToWorkflow();
+        var owners = SecretOwners;
         try
         {
+            // The secrets and scripts go first, so workflow.json never points at secrets or code that were not written.
+            await SaveSecretsAsync(CancellationToken.None);
+            foreach (var (script, code) in _code.Where(pair => _savedCode.GetValueOrDefault(pair.Key) != pair.Value).ToList())
+            {
+                await _services.Library.SaveScriptAsync(Name, script, code, CancellationToken.None);
+                _savedCode[script] = code;
+            }
             // A workflow that was renamed or deleted on disk is not brought back under its old name.
             await _services.Library.SaveAsync(Name, workflow, CancellationToken.None, createDirectory: false);
             _savedJson = JsonOf(workflow);
             // Edits made while the file was written are still unsaved.
             IsDirty = _version != version;
+            // Steps that are no longer in the file take their secrets with them.
+            var removed = _savedOwners.Union(_unsavedOwners).Except(owners).ToList();
+            _savedOwners = owners;
+            _unsavedOwners.ExceptWith(owners);
+            _unsavedOwners.ExceptWith(removed);
+            await _services.ForgetSecretsAsync(removed);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
@@ -227,7 +326,7 @@ public sealed class WorkflowViewModel : ObservableObject
         }
     }
 
-    // The workflow runs as it is in the editor, and its requests as they are saved.
+    // The workflow runs as it is in the editor.
     public async Task RunAsync()
     {
         if (_closed || IsRunning)
@@ -270,13 +369,20 @@ public sealed class WorkflowViewModel : ObservableObject
         using var running = _running = new CancellationTokenSource();
         try
         {
-            var checkedWorkflow = await _services.Check.CheckAsync(Name, workflow, environment, parameters, running.Token);
+            // The run reads the secrets where they are saved, as a tab's send does.
+            await SaveSecretsAsync(running.Token);
+            // Secrets were all that was unsaved if the workflow itself is unchanged, as in a tab.
+            if (IsDirty && !HasUnsavedChanges())
+            {
+                IsDirty = false;
+            }
+            var checkedWorkflow = await _services.Check.CheckAsync(Name, workflow, environment, parameters, running.Token, new Dictionary<string, string>(_code, StringComparer.OrdinalIgnoreCase));
             if (checkedWorkflow.Problems.Count > 0)
             {
                 Problems = [.. checkedWorkflow.Problems.Select(TextOf)];
                 return;
             }
-            await _services.Runner.RunAsync(checkedWorkflow, environment, HistorySource.App, auth => FetchTokenAsync(auth, environment, running.Token), workflowEvent => ShowAsync(workflowEvent, steps),
+            await _services.Runner.RunAsync(checkedWorkflow, environment, auth => FetchTokenAsync(auth, environment, steps, running.Token), workflowEvent => ShowAsync(workflowEvent, steps, workflow.Steps),
                 running.Token);
         }
         catch (OperationCanceledException) when (running.IsCancellationRequested)
@@ -299,7 +405,8 @@ public sealed class WorkflowViewModel : ObservableObject
         }
     }
 
-    static async Task ShowAsync(WorkflowEvent workflowEvent, IReadOnlyList<WorkflowStepViewModel> steps)
+    // The run's own steps tell where it saved from, as the steps here can be edited during the run.
+    static async Task ShowAsync(WorkflowEvent workflowEvent, IReadOnlyList<WorkflowStepViewModel> steps, IReadOnlyList<WorkflowStep> run)
     {
         switch (workflowEvent)
         {
@@ -307,7 +414,7 @@ public sealed class WorkflowViewModel : ObservableObject
                 steps[started.Index].Started();
                 break;
             case StepFinished finished:
-                await steps[finished.Index].FinishedAsync(finished);
+                await steps[finished.Index].FinishedAsync(finished, run[finished.Index].Saves);
                 break;
             case StepSkipped skipped:
                 steps[skipped.Index].Ended(StepOutcome.Skipped);
@@ -318,25 +425,52 @@ public sealed class WorkflowViewModel : ObservableObject
         }
     }
 
-    // Only client credentials come here, as they need no login. The token is fetched for the chosen environment and saved with whoever owns the auth, as from its tab or folder.
-    // A failed fetch is only logged, so the step tells of the problem that made it fetch.
-    async Task<bool> FetchTokenAsync(AuthSource auth, ApiEnvironment environment, CancellationToken cancellationToken)
+    // Only client credentials come here, as they need no login. The token is fetched for the chosen environment and saved with the step, as from a tab.
+    // A token that is fetched and saved is no edit, as in a tab, so the workflow is as saved as before unless something else was edited meanwhile.
+    // A cancelled fetch cancels the step, as the run was cancelled. A step removed during the run gets no token, as nothing would forget it.
+    async Task<bool> FetchTokenAsync(AuthSource auth, ApiEnvironment environment, IReadOnlyList<WorkflowStepViewModel> steps, CancellationToken cancellationToken)
+    {
+        if (steps.FirstOrDefault(step => step.SecretsId == auth.SecretsId) is not { Auth: { } owner } step || !Steps.Contains(step))
+        {
+            return false;
+        }
+        var (dirty, version) = (IsDirty, _version);
+        var fetched = await owner.FetchTokenAsync(environment, saveSecrets: true, cancellationToken);
+        if (fetched && _version == version + 1 && !owner.HasUnsavedSecrets)
+        {
+            IsDirty = dirty;
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        return fetched;
+    }
+
+    IReadOnlySet<Guid> SecretOwners => Steps.Select(step => step.SecretsId).OfType<Guid>().ToHashSet();
+
+    async Task SaveSecretsAsync(CancellationToken cancellationToken)
+    {
+        _unsavedOwners.UnionWith(SecretOwners.Except(_savedOwners));
+        foreach (var step in Steps.ToList())
+        {
+            await step.SaveSecretsAsync(cancellationToken);
+        }
+    }
+
+    // Secrets that cannot be read are shown as empty, as in a tab, and the run tells of one that is missing.
+    async Task LoadSecretsAsync()
     {
         try
         {
-            return auth.Folder is not null
-                ? await _services.AuthRefresh.RefreshFolderAsync(auth, environment, cancellationToken)
-                : auth.SecretsId != Guid.Empty && await _services.AuthRefresh.FetchAsync(auth, null, environment, async (token, environmentId, _) =>
-                {
-                    await _services.Secrets.SaveAsync(auth.SecretsId, SecretKind.OAuthToken, environmentId, token.ToJson(), cancellationToken);
-                    return true;
-                }, cancellationToken);
+            foreach (var step in Steps.ToList())
+            {
+                await step.LoadSecretsAsync(CancellationToken.None);
+            }
         }
-        catch (Exception exception) when (!(exception is OperationCanceledException && cancellationToken.IsCancellationRequested))
+        catch (Exception exception) when (FileProblem.Is(exception))
         {
-            _services.Logger.LogWarning(exception, "Could not fetch an OAuth token for the workflow {Name}", Name);
-            return false;
+            _services.Logger.LogError(exception, "Could not load the secrets of the workflow {Name}", Name);
         }
+        // The names a step uses can be in its secrets.
+        Refresh();
     }
 
     string TextOf(WorkflowProblem problem)
@@ -349,112 +483,72 @@ public sealed class WorkflowViewModel : ObservableObject
             WorkflowProblemKind.DuplicateName => translator.Format("WorkflowProblem.DuplicateName", problem.Detail),
             WorkflowProblemKind.UnknownParameter => translator.Format("WorkflowProblem.UnknownParameter", problem.Detail),
             WorkflowProblemKind.MissingParameter => translator.Format("WorkflowProblem.MissingParameter", problem.Detail),
-            WorkflowProblemKind.MissingRequest => translator.Of("WorkflowProblem.MissingRequest"),
-            WorkflowProblemKind.RequestNotFound => translator.Format("WorkflowProblem.RequestNotFound", problem.Detail),
-            WorkflowProblemKind.UnreadableRequests => translator.Format("WorkflowProblem.UnreadableRequests", problem.Detail),
-            WorkflowProblemKind.SharedRequestId => translator.Format("WorkflowProblem.SharedRequestId", problem.Detail),
+            WorkflowProblemKind.MissingUrl => translator.Of("WorkflowProblem.MissingUrl"),
             WorkflowProblemKind.NotAVariable => translator.Format("WorkflowProblem.NotAVariable", problem.Detail),
             WorkflowProblemKind.InvalidSource => translator.Format("WorkflowProblem.InvalidSource", problem.Detail),
-            WorkflowProblemKind.UnusedWithName => translator.Format("WorkflowProblem.UnusedWithName", problem.Detail),
             WorkflowProblemKind.UsedBeforeSaved => translator.Format("WorkflowProblem.UsedBeforeSaved", problem.Detail),
+            WorkflowProblemKind.ScriptNotFound => translator.Format("WorkflowProblem.ScriptNotFound", problem.Detail),
+            WorkflowProblemKind.InvalidScript => translator.Format("WorkflowProblem.InvalidScript", problem.Detail),
             _ => translator.Format("WorkflowProblem.UnknownName", problem.Detail),
         };
         return problem.Step is { } step ? translator.Format("Workflow.StepProblem", step + 1, text) : text;
     }
 
-    // Where each name a step uses gets its value, by the rule of the check: a value on the step, then the workflow's own names, and only then the environment.
+    // The variables are the names the steps save into, and each step shows which of the workflow's own names it uses and which it saves.
+    // A name that is a parameter is no variable, so the check tells of a step that saves into it.
     void Refresh()
     {
-        var translator = _services.Translator;
         var parameters = Parameters.ToList().Select(parameter => parameter.Name).ToHashSet();
-        var variables = Variables.ToList();
-        var variableNames = variables.Select(variable => variable.Name).ToHashSet();
-        var defaults = variables.Where(variable => !string.IsNullOrWhiteSpace(variable.Value)).Select(variable => variable.Name).ToHashSet();
-        var environment = _services.Environments.Selected;
-        var savedIn = new Dictionary<string, int>();
         foreach (var (index, step) in Steps.Index())
         {
             step.Number = index + 1;
-            var given = step.With.ToList().Where(entry => entry.Enabled).ToList();
-            var inValues = given.SelectMany(entry => WorkflowCheck.NamesIn(entry.Value)).ToHashSet();
-            var names = step.Used.Concat(inValues).Distinct().Order(StringComparer.Ordinal).ToList();
-            // The values on a step do not see each other, so a name used in one of them must get its value from outside the step.
-            step.Uses = [.. names.Select(name => UseOf(name, step.Used.Contains(name) && !inValues.Contains(name) && given.Any(entry => entry.Name == name)))];
-            var saved = step.Saves.ToList().Select(save => save.Name).ToList();
-            var used = names.Where(name => parameters.Contains(name) || variableNames.Contains(name)).ToList();
-            step.Summary = string.Join(" · ", new[]
-            {
-                used.Count > 0 ? translator.Format("Workflow.StepUses", string.Join(", ", used)) : null,
-                saved.Count > 0 ? translator.Format("Workflow.StepSaves", string.Join(", ", saved)) : null,
-            }.OfType<string>());
-            foreach (var name in saved.Where(variableNames.Contains))
-            {
-                savedIn[name] = index + 1;
-            }
+            step.IsLast = index == Steps.Count - 1;
+            step.SavedNames = [.. step.Saves.ToList().Select(save => save.Name).Where(WorkflowCheck.IsValidName).Distinct()];
         }
-
-        WorkflowUse UseOf(string name, bool given)
+        _variables = [.. Steps.SelectMany(step => step.SavedNames).Where(name => !parameters.Contains(name)).Distinct()];
+        var declared = parameters.Concat(_variables).ToHashSet();
+        foreach (var step in Steps)
         {
-            var source = given ? translator.Of("Workflow.FromThisStep")
-                : parameters.Contains(name) ? translator.Of("Workflow.FromParameter")
-                : savedIn.TryGetValue(name, out var number) ? translator.Format("Workflow.FromStep", number)
-                : defaults.Contains(name) ? translator.Of("Workflow.FromDefault")
-                : !variableNames.Contains(name) && environment?.Variables.Any(variable => variable.Enabled && variable.Name == name) == true ? translator.Format("Workflow.FromEnvironment", environment.Name)
-                : null;
-            return new($"{{{{{name}}}}}", source ?? translator.Of("Workflow.Missing"), source is null);
-        }
-    }
-
-    async Task RefreshRequestAsync(WorkflowStepViewModel step)
-    {
-        if (_tree.PathOf(step.Request) is not { } path)
-        {
-            step.Show(null, null, new HashSet<string>());
-            return;
-        }
-        try
-        {
-            var request = await _services.Requests.LoadAsync(path, CancellationToken.None);
-            step.Show(path, request?.Method, request is null ? new HashSet<string>() : await _services.Check.NamesUsedByAsync(path, request, CancellationToken.None));
-        }
-        catch (Exception exception) when (FileProblem.Is(exception))
-        {
-            _services.Logger.LogWarning(exception, "Could not read {Name} for the workflow {Workflow}", path, Name);
-            step.Show(path, null, new HashSet<string>());
+            var used = step.Script is { } script ? WorkflowCheck.VarsIn(_code.GetValueOrDefault(script, "")).Distinct() : step.Used;
+            step.UsedNames = [.. used.Where(declared.Contains).Order(StringComparer.Ordinal)];
         }
     }
 
     void Load(Workflow workflow)
     {
         _id = workflow.Id;
+        _savedOwners = WorkflowLibrary.SecretOwnersOf(workflow).ToHashSet();
+        _variableDefaults = workflow.Variables.Where(variable => variable.HasDefault).DistinctBy(variable => variable.Name).ToDictionary(variable => variable.Name, variable => variable.Default);
         _savedJson = JsonOf(workflow);
+        _code.Clear();
+        _savedCode.Clear();
         Parameters.Load(workflow.Parameters.Select(EntryOf));
-        Variables.Load(workflow.Variables.Select(EntryOf));
         foreach (var step in Steps)
         {
-            Unfollow(step);
+            Drop(step);
         }
         Steps.Clear();
         foreach (var step in workflow.Steps)
         {
-            Steps.Add(Follow(new(step, _services.Translator)));
+            Steps.Add(Follow(new(step, _services)));
         }
         SelectedStep = Steps.FirstOrDefault();
         Problems = [];
         IsDirty = false;
+        Refresh();
     }
 
     WorkflowStepViewModel Follow(WorkflowStepViewModel step)
     {
-        step.With.Changed += Edited;
-        step.Saves.Changed += Edited;
+        step.Changed += Edited;
         return step;
     }
 
-    void Unfollow(WorkflowStepViewModel step)
+    // A step that is gone must not go on fetching a token.
+    void Drop(WorkflowStepViewModel step)
     {
-        step.With.Changed -= Edited;
-        step.Saves.Changed -= Edited;
+        step.Changed -= Edited;
+        step.Close();
     }
 
     void Edited()
@@ -468,11 +562,13 @@ public sealed class WorkflowViewModel : ObservableObject
     {
         Id = _id,
         Parameters = ValuesOf(Parameters),
-        Variables = ValuesOf(Variables),
+        Variables = [.. _variables.Select(name => new WorkflowValue(name) { Default = _variableDefaults.GetValueOrDefault(name) })],
         Steps = [.. Steps.Select(step => step.ToStep())],
     };
 
-    string? InvalidDefault() => Parameters.ToList().Concat(Variables.ToList()).FirstOrDefault(value => !TryDefaultOf(value.Value, out _))?.Name;
+    bool HasUnsavedChanges() => JsonOf(ToWorkflow()) != _savedJson || _code.Any(pair => _savedCode.GetValueOrDefault(pair.Key) != pair.Value) || Steps.Any(step => step.Auth?.HasUnsavedSecrets == true);
+
+    string? InvalidDefault() => Parameters.ToList().FirstOrDefault(value => !TryDefaultOf(value.Value, out _))?.Name;
 
     static IReadOnlyList<WorkflowValue> ValuesOf(KeyValueListViewModel values) =>
         [.. values.ToList().Select(value => new WorkflowValue(value.Name) { Default = TryDefaultOf(value.Value, out var json) ? json : default })];

@@ -1,0 +1,38 @@
+<UserControl x:Class="Hoboman.Views.RequestLineEditor"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:Hoboman.Controls"
+             xmlns:viewModels="clr-namespace:Hoboman.ViewModels">
+    <!-- The method and the address of a request, as in a tab and a workflow step. -->
+    <DockPanel>
+        <ToggleButton x:Name="MethodToggle" DockPanel.Dock="Left" Style="{StaticResource PillToggle}" Margin="0,0,8,0" MinWidth="96"
+                      IsHitTestVisible="{Binding IsOpen, ElementName=MethodPopup, Converter={StaticResource Not}}">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding Method}" Foreground="{Binding Method, Converter={StaticResource MethodBrush}}" FontWeight="Bold" />
+                <TextBlock Text="&#xE70D;" FontFamily="{StaticResource IconFont}" FontSize="9" Foreground="{DynamicResource Muted}" Margin="8,0,0,0" VerticalAlignment="Center" />
+            </StackPanel>
+        </ToggleButton>
+        <Popup x:Name="MethodPopup" IsOpen="{Binding IsChecked, ElementName=MethodToggle}" PlacementTarget="{Binding ElementName=MethodToggle}"
+               StaysOpen="False" AllowsTransparency="True" Opened="MethodPopup_Opened">
+            <Border x:Name="MethodMenu" Style="{StaticResource Menu}" Width="220" PreviewKeyDown="MethodMenu_PreviewKeyDown">
+                <StackPanel>
+                    <ItemsControl ItemsSource="{x:Static viewModels:RequestViewModel.Methods}" Focusable="False">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Style="{StaticResource MenuButton}" Click="Method_Click" HorizontalAlignment="Stretch">
+                                    <TextBlock Text="{Binding}" Foreground="{Binding Converter={StaticResource MethodBrush}}" FontWeight="Bold" FontSize="12" />
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Border BorderBrush="{DynamicResource BoxEdge}" BorderThickness="0,1,0,0" Margin="0,6,0,6" />
+                    <Grid>
+                        <TextBlock x:Name="CustomPlaceholder" Text="{DynamicResource Editor.CustomMethod}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="10,0" VerticalAlignment="Center" />
+                        <TextBox x:Name="CustomMethod" Style="{StaticResource Cell}" Margin="6,0" KeyDown="CustomMethod_KeyDown" TextChanged="CustomMethod_TextChanged" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Popup>
+        <controls:VariableTextBox Text="{Binding Url, UpdateSourceTrigger=PropertyChanged}" />
+    </DockPanel>
+</UserControl>

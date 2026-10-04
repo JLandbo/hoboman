@@ -114,14 +114,15 @@ public sealed class Base64ViewModel(Translator translator, TimeProvider clock) :
     public void Relabel() => MarkBody();
 
     // Pure, so it can run off the UI thread with the choices of the moment.
-    public static ShownResponse ShowResponse(ApiResponse response, BodyFormat format, IReadOnlyList<string> decode, Translator translator, CancellationToken cancellationToken)
+    public static ShownResponse ShowResponse(ApiResponse response, BodyFormat format, IReadOnlyList<string> decode, Translator translator, CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, string>? saved = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var decoded = decode.Count > 0 ? Base64Json.Decode(response.Body, decode) : new(response.Body, new HashSet<string>());
         cancellationToken.ThrowIfCancellationRequested();
         var display = ResponseDisplay.Of(response with { Body = decoded.Body }, format);
         cancellationToken.ThrowIfCancellationRequested();
-        var marks = display.Coloring == BodyFormat.Json && JsonOutline.Of(display.Body) is { } outline ? Base64Marks.ForResponse(outline, decode, decoded.Failed, translator) : [];
+        var marks = display.Coloring == BodyFormat.Json && JsonOutline.Of(display.Body) is { } outline ? Base64Marks.ForResponse(outline, decode, decoded.Failed, translator, saved) : [];
         return new(display, marks, decoded.Failed.Contains(JsonPath.Root) ? translator.Of("Response.InvalidBase64") : null);
     }
 

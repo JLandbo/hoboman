@@ -1,6 +1,11 @@
 using Hoboman.Core.Requests;
+using Hoboman.Core.Sending;
 
 namespace Hoboman.Core.Workflows;
 
-// The path is looked up by the request's id when the run starts and is never stored. It gives the request the auth of its folder and names it in the history.
-public sealed record CheckedStep(WorkflowStep Step, string Path, ApiRequest Request);
+// A script step has the code it was checked with, so a change during the run does not reach it.
+public sealed record CheckedStep(WorkflowStep Step, ApiRequest? Request, string? Code = null)
+{
+    // A step without a name is known by its address, which leaves out what can hold a key, as the run log shows it.
+    public string Title => Step.Name is { Length: > 0 } name ? name : Step.Script ?? (Request is { } request ? $"{request.Method} {RequestRunner.AddressOf(request, null)}" : "");
+}

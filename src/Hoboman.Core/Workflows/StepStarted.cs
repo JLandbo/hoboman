@@ -1,4 +1,4 @@
 namespace Hoboman.Core.Workflows;
 
-// The request is its path when the run starts, only for reading.
-public sealed record StepStarted(int Index, string Request, string Method, string Address) : WorkflowEvent;
+// The name is the step's own name, or its script or method and URL when it has none.
+public sealed record StepStarted(int Index, string Name, string Method, string Address) : WorkflowEvent;

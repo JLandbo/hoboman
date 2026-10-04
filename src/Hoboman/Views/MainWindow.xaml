@@ -6,7 +6,7 @@
         xmlns:environments="clr-namespace:Hoboman.Core.Environments;assembly=Hoboman.Core"
         Title="Hoboman" Width="1400" Height="860" MinWidth="900" MinHeight="560"
         Background="{DynamicResource Input}" Foreground="{DynamicResource Text}"
-        FontFamily="{StaticResource UiFont}" FontSize="13" Closing="Window_Closing">
+        FontFamily="{StaticResource UiFont}" FontSize="13" Closing="Window_Closing" Closed="Window_Closed">
     <Window.InputBindings>
         <KeyBinding Key="S" Modifiers="Control" Command="{Binding Content.Save}" />
         <KeyBinding Key="Enter" Modifiers="Control" Command="{Binding Content.Send}" />
@@ -60,7 +60,7 @@
                 </Grid.RowDefinitions>
                 <local:RequestEditorView />
                 <GridSplitter Grid.Row="1" HorizontalAlignment="Stretch" Background="Transparent" />
-                <local:ResponseView Grid.Row="2" />
+                <local:ResponseView Grid.Row="2" EmptyText="{DynamicResource Response.Empty}" />
             </Grid>
         </DataTemplate>
         <DataTemplate DataType="{x:Type viewModels:WorkflowViewModel}">
@@ -113,9 +113,12 @@
                         <Button DockPanel.Dock="Right" Content="&#xE8F4;" ToolTip="{DynamicResource Sidebar.NewFolder}" Click="NewFolder_Click" Style="{StaticResource CollectionButton}" FontSize="13" Margin="0,0,4,0" />
                         <Border Style="{StaticResource SegmentGroup}">
                             <StackPanel Orientation="Horizontal">
-                                <RadioButton x:Name="CollectionsSection" Content="{DynamicResource Sidebar.Collections}" GroupName="Sidebar" IsChecked="True" Style="{StaticResource Segment}" />
-                                <RadioButton x:Name="HistorySection" Content="{DynamicResource Sidebar.History}" GroupName="Sidebar" Style="{StaticResource Segment}" />
-                                <RadioButton x:Name="WorkflowsSection" Content="{DynamicResource Sidebar.Workflows}" GroupName="Sidebar" Style="{StaticResource Segment}" />
+                                <RadioButton x:Name="CollectionsSection" Content="{DynamicResource Sidebar.Collections}" GroupName="Sidebar" Style="{StaticResource Segment}"
+                                             IsChecked="{Binding Section, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:SidebarSection.Collections}}" />
+                                <RadioButton x:Name="HistorySection" Content="{DynamicResource Sidebar.History}" GroupName="Sidebar" Style="{StaticResource Segment}"
+                                             IsChecked="{Binding Section, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:SidebarSection.History}}" />
+                                <RadioButton x:Name="WorkflowsSection" Content="{DynamicResource Sidebar.Workflows}" GroupName="Sidebar" Style="{StaticResource Segment}"
+                                             IsChecked="{Binding Section, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:SidebarSection.Workflows}}" />
                             </StackPanel>
                         </Border>
                     </DockPanel>
@@ -211,7 +214,17 @@
                         </StackPanel>
                     </Border>
                 </Popup>
+                <!-- The tabs belong to the requests, so they are left out while the workflows are shown. -->
                 <DockPanel HorizontalAlignment="Left" VerticalAlignment="Bottom">
+                    <DockPanel.Style>
+                        <Style TargetType="DockPanel">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsChecked, ElementName=WorkflowsSection}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DockPanel.Style>
                     <Button DockPanel.Dock="Right" Content="&#xE710;" ToolTip="{DynamicResource Sidebar.NewRequest}" Click="NewRequest_Click" Style="{StaticResource SmallIconButton}" FontSize="12" Margin="2,0,0,4" VerticalAlignment="Center" />
                     <ListBox x:Name="RequestTabs" ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab}" Style="{StaticResource Tabs}" SelectionChanged="Tabs_SelectionChanged" AllowDrop="True"
                              PreviewMouseLeftButtonDown="Tabs_PreviewMouseLeftButtonDown" PreviewMouseLeftButtonUp="Tabs_PreviewMouseLeftButtonUp" MouseMove="Tabs_MouseMove"
@@ -219,7 +232,7 @@
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="{x:Type viewModels:RequestTabViewModel}">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="{Binding Method}" Foreground="{Binding Method, Converter={StaticResource MethodBrush}}" FontSize="11" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                    <TextBlock Text="{Binding Editor.Method}" Foreground="{Binding Editor.Method, Converter={StaticResource MethodBrush}}" FontSize="11" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,6,0" />
                                     <TextBlock MaxWidth="180" TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock" BasedOn="{StaticResource TabTitle}">
@@ -243,6 +256,22 @@
                 </DockPanel>
             </DockPanel>
             <ContentControl Grid.Row="1" Content="{Binding Content}" Focusable="False" />
+            <TextBlock Grid.Row="1" Text="{DynamicResource Workflow.NoneOpen}" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding Section}" Value="{x:Static viewModels:SidebarSection.Workflows}" />
+                                    <Condition Binding="{Binding Workflow}" Value="{x:Null}" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="Visibility" Value="Visible" />
+                            </MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
         </Grid>
     </Grid>
 </Window>

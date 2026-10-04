@@ -25,6 +25,11 @@ public static class JsonPath
     public static IReadOnlyList<string?>? StepsOf(string path) =>
         PartsOf(path) is { } parts && parts.All(part => part.Index is null) ? [.. parts.Select(part => part.Name)] : null;
 
+    // The place a path selects, written as a body's places are, so "$['id']" and "$.id" are the same place. Null when it selects no single place.
+    public static string? PlaceOf(string path) => PartsOf(path) is { } parts && !parts.Any(part => part.IsEach)
+        ? parts.Aggregate(Root, (place, part) => part.Name is { } name ? Member(place, name) : Element(place, part.Index!.Value))
+        : null;
+
     // Selecting picks one value, so "[*]" cannot be used, while "[0]" can.
     public static bool CanSelect(string path) => PartsOf(path) is { } parts && !parts.Any(part => part.IsEach);
 

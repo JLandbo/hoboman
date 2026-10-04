@@ -7,6 +7,8 @@ namespace Hoboman.Views;
 
 public partial class AuthEditor : UserControl
 {
+    public static readonly DependencyProperty CanInheritProperty = DependencyProperty.Register(nameof(CanInherit), typeof(bool), typeof(AuthEditor), new(true));
+
     AuthViewModel? _auth;
 
     // Listening only while shown keeps a closed dialog from being held in memory by the view model it edited.
@@ -22,6 +24,12 @@ public partial class AuthEditor : UserControl
                 Follow(e.NewValue as AuthViewModel);
             }
         };
+    }
+
+    public bool CanInherit
+    {
+        get => (bool)GetValue(CanInheritProperty);
+        set => SetValue(CanInheritProperty, value);
     }
 
     void Follow(AuthViewModel? auth)

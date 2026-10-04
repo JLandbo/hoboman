@@ -1,7 +1,10 @@
 using System.Diagnostics;
+using System.Text;
+using System.Text.Json;
 using Hoboman.Core.Auth;
 using Hoboman.Core.Environments;
-using Hoboman.Core.History;
+using Hoboman.Core.Requests;
+using Hoboman.Core.Scripts;
 using Hoboman.Core.Sending;
 using Hoboman.Core.Storage;
 using Microsoft.Extensions.Logging;
@@ -9,11 +12,12 @@ using Microsoft.Extensions.Logging;
 namespace Hoboman.Core.Workflows;
 
 // One step at a time in the order of the list, and the first that fails skips the rest.
-// The calls are awaited without ConfigureAwait(false), as in RequestRunner, so a token is fetched and an event is told where the caller called from, such as the UI thread.
+// The calls are awaited without ConfigureAwait(false), so an event is told where the caller called from, such as the UI thread.
 // Each event is awaited before the next, as Progress<T> can change the order of the lines in a console.
-public sealed class WorkflowRunner(RequestRunner runner, AppFolder folder, ILogger<WorkflowRunner> logger)
+// A step sends with its own auth, and a token for client credentials is fetched as from a tab. A step has no place in the history, as the run log holds every call.
+public sealed class WorkflowRunner(IRequestSender sender, AppFolder folder, ILogger<WorkflowRunner> logger)
 {
-    public async Task<RunOutcome> RunAsync(CheckedWorkflow workflow, ApiEnvironment environment, HistorySource source, Func<AuthSource, Task<bool>> fetchToken, Func<WorkflowEvent, Task> report,
+    public async Task<RunOutcome> RunAsync(CheckedWorkflow workflow, ApiEnvironment environment, Func<AuthSource, Task<bool>> fetchToken, Func<WorkflowEvent, Task> report,
         CancellationToken cancellationToken)
     {
         if (workflow.Problems.Count > 0)
@@ -49,17 +53,19 @@ public sealed class WorkflowRunner(RequestRunner runner, AppFolder folder, ILogg
         async Task<StepResult> RunStepAsync(int index, CheckedStep step)
         {
             // The overlay is built from the environment for every step, so the values of one step never pile up on those of another.
-            // The values on a step are filled in from the shared values, so they do not see each other.
-            var shared = environment.WithVariables(values.Overlay);
-            var used = step.Step.With is [] ? shared : shared.WithVariables([.. step.Step.With.Select(entry => entry with { Value = shared.Resolve(entry.Value) })]);
-            await TellAsync(new StepStarted(index, step.Path, step.Request.Method, RequestRunner.AddressOf(step.Request, used)));
+            var used = environment.WithVariables(values.Overlay);
+            await TellAsync(step.Request is { } request ? new StepStarted(index, step.Title, request.Method, RequestRunner.AddressOf(request, used)) : new StepStarted(index, step.Title, "JS", ""));
             StepFinished finished;
             try
             {
-                var response = await runner.RunAsync(step.Request, step.Path, used, source, fetchToken, cancellationToken);
+                var response = step.Request is { } sent ? await SendAsync(sent, used) : await RunScriptAsync(step);
                 string? missing = null;
                 var saved = response.IsSuccess ? values.TrySave(step.Step.Saves, response, out missing) : null;
                 finished = StepFinished.Of(index, response, saved, missing);
+            }
+            catch (ScriptException exception)
+            {
+                finished = new(index, StepOutcome.Failed, Error: exception.Message);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -73,6 +79,32 @@ public sealed class WorkflowRunner(RequestRunner runner, AppFolder folder, ILogg
             }
             await TellAsync(finished);
             return new(index, finished.Outcome, finished.Status);
+        }
+
+        Task<ApiResponse> SendAsync(ApiRequest request, ApiEnvironment used)
+        {
+            var auth = new AuthSource(request.Id, request.Auth);
+            return TokenRetry.SendAsync(() => sender.SendAsync(request, auth, used, cancellationToken), () => auth, fetchToken);
+        }
+
+        // A script answers like a call, so its output is saved, shown and logged as a body without anything of its own.
+        // It runs off the caller's thread, as it can take a while and the caller may be the UI thread.
+        // A script that returns nothing fails only when the step has something to save.
+        async Task<ApiResponse> RunScriptAsync(CheckedStep step)
+        {
+            var scriptStarted = Stopwatch.GetTimestamp();
+            // The environment's values are in vars too, but a name the workflow declares gets its value from the workflow only, as in a request.
+            var declared = workflow.Workflow.Parameters.Concat(workflow.Workflow.Variables).ToList();
+            var names = declared.Select(value => value.Name).ToHashSet();
+            var all = environment.Variables.Where(variable => variable.Enabled && !names.Contains(variable.Name)).DistinctBy(variable => variable.Name)
+                .ToDictionary(variable => variable.Name, variable => JsonSerializer.SerializeToElement(variable.Value));
+            foreach (var (name, value) in values.Of(declared))
+            {
+                all[name] = value;
+            }
+            var output = await Task.Run(() => ScriptHost.Run(step.Step.Script!, step.Code!, all, cancellationToken), cancellationToken)
+                ?? (step.Step.Saves is [] ? "" : throw new ScriptException($"{step.Step.Script} returned nothing to save."));
+            return new(200, "OK", (long)Stopwatch.GetElapsedTime(scriptStarted).TotalMilliseconds, Encoding.UTF8.GetByteCount(output), [], output);
         }
 
         // The log is written first, so it holds the event even when telling of it fails.

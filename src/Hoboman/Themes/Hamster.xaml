@@ -347,6 +347,17 @@
         <Setter Property="ContextMenu" Value="{DynamicResource TextMenu}" />
     </Style>
 
+    <!-- How many entries a section has, left out when it has none. -->
+    <Style x:Key="Count" TargetType="TextBlock">
+        <Setter Property="Margin" Value="4,0,0,0" />
+        <Setter Property="Opacity" Value="0.7" />
+        <Style.Triggers>
+            <Trigger Property="Text" Value="0">
+                <Setter Property="Visibility" Value="Collapsed" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
     <Style x:Key="TabTitle" TargetType="TextBlock">
         <Setter Property="Text" Value="{Binding Title}" />
     </Style>
@@ -518,6 +529,19 @@
         <Setter Property="FontFamily" Value="{StaticResource CodeFont}" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+        <Setter Property="HorizontalScrollBarVisibility" Value="Auto" />
+        <Setter Property="ContextMenu" Value="{DynamicResource TextMenu}" />
+    </Style>
+
+    <Style TargetType="controls:ScriptEditor">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource Text}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="10,8" />
+        <Setter Property="FontFamily" Value="{StaticResource CodeFont}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="ShowLineNumbers" Value="True" />
+        <Setter Property="LineNumbersForeground" Value="{DynamicResource Muted}" />
         <Setter Property="HorizontalScrollBarVisibility" Value="Auto" />
         <Setter Property="ContextMenu" Value="{DynamicResource TextMenu}" />
     </Style>

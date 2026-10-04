@@ -1,4 +1,6 @@
 using System.Globalization;
+using Hoboman.Core.Auth;
+using Hoboman.Core.Base64;
 using Hoboman.Core.Languages;
 using Hoboman.Core.Requests;
 using Hoboman.Core.Sending;
@@ -10,51 +12,109 @@ namespace Hoboman.ViewModels;
 public sealed class WorkflowStepViewModel : ObservableObject
 {
     readonly Translator _translator;
+    readonly Guid _id;
     StepOutcome? _outcome;
     StepFinished? _finished;
     bool _running;
 
-    public WorkflowStepViewModel(WorkflowStep step, Translator translator)
+    public WorkflowStepViewModel(WorkflowStep step, WorkflowServices services)
     {
-        _translator = translator;
-        Request = step.Request;
-        With.Load(step.With);
+        _translator = services.Translator;
+        Script = step.Script;
+        Name = step.Name ?? "";
+        if (step.Script is null)
+        {
+            var request = step.Request ?? new();
+            _id = request.Id != Guid.Empty ? request.Id : Guid.NewGuid();
+            Request = new(services.Translator, services.Clock, services.Environments);
+            Request.Load(request.ToApiRequest());
+            Request.Changed += OnChanged;
+            Auth = new(services.Secrets, services.AuthRefresh, services.Environments, services.Translator, services.Clock, services.Logger);
+            Auth.UseOwner(_id);
+            Auth.Load(request.ToApiRequest().Auth);
+            Auth.Changed += OnChanged;
+            Auth.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(AuthViewModel.Kind))
+                {
+                    OnPropertyChanged(nameof(AuthHeader));
+                }
+            };
+            Request.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(RequestViewModel.Method))
+                {
+                    OnPropertyChanged(nameof(Badge));
+                }
+                if (e.PropertyName == nameof(RequestViewModel.Url))
+                {
+                    OnPropertyChanged(nameof(Title));
+                }
+            };
+        }
+        // A script has no request to keep what to decode, so its choices last only while the step is shown.
+        Result = new(services.Translator, Request?.Base64 ?? new(services.Translator, services.Clock));
         Saves.Load(step.Saves.Select(save => new KeyValue(save.Variable, save.From)));
+        Saves.Changed += OnChanged;
     }
 
-    // Only the id is kept, so the step follows its request when it is moved or renamed.
-    public Guid Request { get; }
+    public event Action? Changed;
 
-    public KeyValueListViewModel With { get; } = new();
+    public string? Script { get; }
+
+    // The same editors as in a tab. A step has no folder, so its auth does not inherit.
+    public RequestViewModel? Request { get; }
+
+    public AuthViewModel? Auth { get; }
+
+    public string AuthHeader => AuthViewModel.HeaderOf(Auth?.Kind, _translator);
+
+    // The owner of the step's secrets, kept in the workflow as the id of its request.
+    internal Guid? SecretsId => Auth is null ? null : _id;
+
+    public bool IsRequest => Request is not null;
+
+    // All steps share one view, so each step keeps which section it shows, as a tab does.
+    public RequestSection Section { get; set => Set(ref field, value); } = RequestSection.Body;
+
+    public string Name
+    {
+        get;
+        set
+        {
+            if (Set(ref field, value))
+            {
+                OnPropertyChanged(nameof(Title));
+                OnChanged();
+            }
+        }
+    } = "";
 
     public KeyValueListViewModel Saves { get; } = new();
 
     public int Number { get; set => Set(ref field, value); }
 
-    public string? Path
+    // The last step has no line on to a next one in the list.
+    public bool IsLast { get; internal set => Set(ref field, value); }
+
+    public string Badge => Request?.Method ?? "JS";
+
+    public string Title => Name.Trim() is { Length: > 0 } name ? name : Script ?? (Request!.Url.Trim() is { Length: > 0 } url ? url : _translator.Of("Workflow.NoUrl"));
+
+    internal IReadOnlySet<string> Used => Request is { } request ? WorkflowCheck.NamesUsedBy(request.ToRequest(), AuthTexts) : new HashSet<string>();
+
+    // The auth is filled in like the rest of the request, so its user name and secret can use names too.
+    IEnumerable<string> AuthTexts => Auth?.Kind switch
     {
-        get;
-        private set
-        {
-            if (Set(ref field, value))
-            {
-                OnPropertyChanged(nameof(Title));
-                OnPropertyChanged(nameof(Folder));
-            }
-        }
-    }
+        AuthKind.Basic => [Auth.UserName, Auth.Password],
+        AuthKind.Bearer => [Auth.Token],
+        _ => [],
+    };
 
-    public string? Method { get; private set => Set(ref field, value); }
+    // The workflow's own names the step uses, and the variables it saves, shown with the step in the list.
+    public IReadOnlyList<string> UsedNames { get; internal set => Set(ref field, value); } = [];
 
-    internal IReadOnlySet<string> Used { get; private set; } = new HashSet<string>();
-
-    public string Title => Path is { } path ? RequestLibrary.LastPartOf(path) : _translator.Of("Workflow.RequestNotFound");
-
-    public string? Folder => RequestLibrary.ParentOf(Path) is { } parent ? $"{parent.Replace("/", " / ")} /" : null;
-
-    public string Summary { get; internal set => Set(ref field, value); } = "";
-
-    public IReadOnlyList<WorkflowUse> Uses { get; internal set => Set(ref field, value); } = [];
+    public IReadOnlyList<string> SavedNames { get; internal set => Set(ref field, value); } = [];
 
     // Only the run started in this editor is shown, and nothing of it is kept.
     public string? Status { get; private set => Set(ref field, value); }
@@ -73,19 +133,34 @@ public sealed class WorkflowStepViewModel : ObservableObject
             _ => null,
         };
 
-    public ResponseDisplay? Response { get; private set => Set(ref field, value); }
+    // The same response view as in a tab.
+    public ResponseViewModel Result { get; }
 
     // Told by the kind of problem, as in the run log, so it never holds a value.
     public string? Error => _finished is null ? null : ErrorOf(_finished);
 
-    public WorkflowStep ToStep() => new() { Request = Request, With = With.ToList(), Saves = [.. Saves.ToList().Select(save => new WorkflowSave(save.Name, save.Value))] };
+    public ProblemMessage? Problem => Error is { } error ? new(_translator.Of("Workflow.StepFailed"), error) : null;
 
-    internal void Show(string? path, string? method, IReadOnlySet<string> used)
+    public bool IsSending => _running;
+
+    public bool HasFailed => _outcome == StepOutcome.Failed;
+
+    public WorkflowStep ToStep() => new()
     {
-        Path = path;
-        Method = method;
-        Used = used;
-    }
+        Name = Name.Trim() is { Length: > 0 } name ? name : null,
+        Request = Request is { } request ? WorkflowRequest.From(request.ToRequest() with { Id = _id, Auth = Auth!.ToSettings() }) : null,
+        Script = Script,
+        Saves = [.. Saves.ToList().Select(save => new WorkflowSave(save.Name, save.Value))],
+    };
+
+    void OnChanged() => Changed?.Invoke();
+
+    // Secrets that cannot be read are shown as empty, as in a tab.
+    internal Task LoadSecretsAsync(CancellationToken cancellationToken) => Auth?.LoadSecretsAsync(_id, cancellationToken) ?? Task.CompletedTask;
+
+    internal Task SaveSecretsAsync(CancellationToken cancellationToken) => Auth is { HasUnsavedSecrets: true } auth ? auth.SaveSecretsAsync(_id, cancellationToken) : Task.CompletedTask;
+
+    internal void Close() => Auth?.CancelFetch();
 
     internal void ClearRun()
     {
@@ -94,16 +169,21 @@ public sealed class WorkflowStepViewModel : ObservableObject
         Status = null;
         IsSuccess = false;
         Elapsed = null;
-        Response = null;
+        Result.Saved = new Dictionary<string, string>();
+        _ = Result.ShowAsync(null);
         _finished = null;
         OnPropertyChanged(nameof(Error));
+        OnPropertyChanged(nameof(Problem));
         OnPropertyChanged(nameof(State));
+        OnPropertyChanged(nameof(IsSending));
+        OnPropertyChanged(nameof(HasFailed));
     }
 
     internal void Started()
     {
         _running = true;
         OnPropertyChanged(nameof(State));
+        OnPropertyChanged(nameof(IsSending));
     }
 
     internal void Ended(StepOutcome outcome)
@@ -111,23 +191,31 @@ public sealed class WorkflowStepViewModel : ObservableObject
         _running = false;
         _outcome = outcome;
         OnPropertyChanged(nameof(State));
+        OnPropertyChanged(nameof(IsSending));
+        OnPropertyChanged(nameof(HasFailed));
     }
 
-    internal async Task FinishedAsync(StepFinished finished)
+    internal async Task FinishedAsync(StepFinished finished, IReadOnlyList<WorkflowSave> saves)
     {
         IsSuccess = finished.Outcome == StepOutcome.Succeeded;
         Status = finished.Status?.ToString(CultureInfo.InvariantCulture);
         Elapsed = finished.ElapsedMs is { } elapsed ? $"{elapsed} ms" : null;
         _finished = finished;
         OnPropertyChanged(nameof(Error));
+        OnPropertyChanged(nameof(Problem));
         Ended(finished.Outcome);
         if (finished.Status is { } status)
         {
-            var response = new ApiResponse(status, finished.Reason ?? "", finished.ElapsedMs ?? 0, finished.Size ?? 0, finished.Headers ?? [], finished.Body ?? "");
-            // A large body takes a while to lay out, so it is done off the UI thread.
-            Response = await Task.Run(() => ResponseDisplay.Of(response));
+            Result.Saved = SavedPlacesOf(finished, saves);
+            await Result.ShowAsync(new(status, finished.Reason ?? "", finished.ElapsedMs ?? 0, finished.Size ?? 0, finished.Headers ?? [], finished.Body ?? ""));
         }
     }
+
+    // Only what was saved is shown, so a place without a mark was not saved from.
+    static IReadOnlyDictionary<string, string> SavedPlacesOf(StepFinished finished, IReadOnlyList<WorkflowSave> saves) => finished.Saved is { } saved
+        ? saves.Where(save => saved.ContainsKey(save.Variable)).Select(save => (save.Variable, Place: JsonPath.PlaceOf(save.From))).Where(save => save.Place is not null)
+            .GroupBy(save => save.Place!).ToDictionary(places => places.Key, places => string.Join(", ", places.Select(save => save.Variable)))
+        : new Dictionary<string, string>();
 
     string? ErrorOf(StepFinished finished) => finished switch
     {
@@ -142,13 +230,20 @@ public sealed class WorkflowStepViewModel : ObservableObject
         { Problem: RequestProblemKind.BodyNotEncoded } => _translator.Of("RequestProblem.BodyNotEncoded"),
         { Problem: RequestProblemKind.InputUnreadable } => _translator.Of("RequestProblem.InputUnreadable"),
         { Problem: not null } => _translator.Of("RequestProblem.Failed"),
+        // A script tells of its own error by file and line, as written by the script.
+        { Error: { } error } => error,
         _ => null,
     };
 
     public void Relabel()
     {
+        Request?.Relabel();
+        Auth?.Relabel();
+        OnPropertyChanged(nameof(AuthHeader));
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(State));
         OnPropertyChanged(nameof(Error));
+        OnPropertyChanged(nameof(Problem));
+        Result.ShowAgain();
     }
 }

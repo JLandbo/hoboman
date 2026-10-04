@@ -9,27 +9,11 @@ namespace Hoboman.Core.Sending;
 
 public sealed class RequestRunner(IRequestSender sender, RequestLibrary library, HistoryStore history, ILogger<RequestRunner> logger)
 {
-    // A call that fails for want of a token that can be fetched unasked gets a new one and is made once more.
     // The calls are awaited without ConfigureAwait(false), so the token is fetched where the caller called from, such as the UI thread.
     public async Task<ApiResponse> RunAsync(ApiRequest request, string? name, ApiEnvironment? environment, HistorySource source, Func<AuthSource, Task<bool>> fetchToken, CancellationToken cancellationToken)
     {
         AuthSource? auth = null;
-        try
-        {
-            var response = await RunOnceAsync();
-            if (response.StatusCode != 401 || !await FetchedAsync())
-            {
-                return response;
-            }
-        }
-        catch (Exception exception) when (exception is ExpiredTokenException or MissingSecretException { Kind: SecretKind.OAuthToken })
-        {
-            if (!await FetchedAsync())
-            {
-                throw;
-            }
-        }
-        return await RunOnceAsync();
+        return await TokenRetry.SendAsync(RunOnceAsync, () => auth, fetchToken);
 
         async Task<ApiResponse> RunOnceAsync()
         {
@@ -47,8 +31,6 @@ public sealed class RequestRunner(IRequestSender sender, RequestLibrary library,
             await RememberAsync(EntryOf(response, null)).ConfigureAwait(false);
             return response;
         }
-
-        async Task<bool> FetchedAsync() => auth is not null && UnaskedTokens.CanFetch(auth.Settings) && await fetchToken(auth);
 
         HistoryEntry EntryOf(ApiResponse? answer, string? error) =>
             new(DateTimeOffset.Now, source, AddressOf(request, environment), request, name, environment?.Name, answer, error);
@@ -69,6 +51,6 @@ public sealed class RequestRunner(IRequestSender sender, RequestLibrary library,
     public static string AddressOf(ApiRequest request, ApiEnvironment? environment)
     {
         var url = environment?.Resolve(request.Url) ?? request.Url;
-        return Uri.TryCreate(url, UriKind.Absolute, out var address) ? SafeAddress.Of(address) : url;
+        return Uri.TryCreate(url, UriKind.Absolute, out var address) ? SafeAddress.Of(address) : url.Split('?', '#')[0];
     }
 }

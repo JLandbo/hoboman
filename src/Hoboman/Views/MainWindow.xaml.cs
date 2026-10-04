@@ -149,6 +149,9 @@ public partial class MainWindow : Window
         }
     }
 
+    // Windows closes the window when the session ends even if it was kept open above, as no question can be shown then.
+    void Window_Closed(object? sender, EventArgs e) => _viewModel.Exit();
+
     // The app ends right after, so the write is waited for here. The store does its work off this thread, so waiting cannot lock up.
     void SaveLayout()
     {

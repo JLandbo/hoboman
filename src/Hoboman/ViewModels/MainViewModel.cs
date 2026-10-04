@@ -92,8 +92,20 @@ public sealed class MainViewModel(
         }
     }
 
-    // A request tab and the open workflow share the main area, and choosing a tab hides the workflow until it is opened again.
-    public object? Content => (object?)SelectedTab ?? Workflow;
+    // The sidebar chooses what the main area shows: the request tabs for the collections and the history, and the open workflow, without the tabs, for the workflows.
+    public SidebarSection Section
+    {
+        get;
+        set
+        {
+            if (Set(ref field, value))
+            {
+                OnPropertyChanged(nameof(Content));
+            }
+        }
+    }
+
+    public object? Content => Section == SidebarSection.Workflows ? Workflow : SelectedTab;
 
     public async Task LoadAsync()
     {
@@ -160,7 +172,7 @@ public sealed class MainViewModel(
         if ((node.IsDraft ? node.Tab : TabOf(node.Path)) is { } open)
         {
             open.RequestSection = RequestSection.Body;
-            SelectedTab = open;
+            Show(open);
             return;
         }
         if (!_opening.Add(node.Path))
@@ -194,7 +206,7 @@ public sealed class MainViewModel(
         if (Tabs.FirstOrDefault(tab => tab.HistoryName == item.File.Name) is { } open)
         {
             open.RequestSection = RequestSection.Body;
-            SelectedTab = open;
+            Show(open);
             return;
         }
         logger.LogInformation("Opened the call to {Address} from the history", item.Address);
@@ -209,7 +221,7 @@ public sealed class MainViewModel(
         {
             Tabs.Add(tab);
         }
-        SelectedTab = tab;
+        Show(tab);
         await tab.ShowAsync(entry);
         await tab.LoadSecretsAsync(CancellationToken.None);
     }
@@ -248,6 +260,10 @@ public sealed class MainViewModel(
             SelectedTab = Tabs[Math.Min(index, Tabs.Count - 1)];
         }
     }
+
+    // The app ends right after, so what a run saved for steps that were never saved is forgotten here and waited for.
+    // The forgetting does not come back to this thread, so waiting cannot lock up.
+    public void Exit() => Workflow?.CloseAsync().GetAwaiter().GetResult();
 
     public bool CanClose()
     {
@@ -345,7 +361,7 @@ public sealed class MainViewModel(
             }
             if (FullName(name) != current)
             {
-                await RenameToAsync(new(current, tab.Method, false), FullName(name), translator.Of("Rename.Failed"));
+                await RenameToAsync(new(current, tab.Editor.Method, false), FullName(name), translator.Of("Rename.Failed"));
             }
         });
     }
@@ -651,7 +667,7 @@ public sealed class MainViewModel(
     {
         if (Workflow is { } open && SameName(open.Name, name))
         {
-            SelectedTab = null;
+            Section = SidebarSection.Workflows;
             return;
         }
         if (Workflow is { IsRunning: true } running && !dialogs.Confirm(translator.Of("Workflow.StopTitle"), translator.Format("Workflow.StopMessage", running.Name), translator.Of("Workflow.Stop"), []))
@@ -662,16 +678,17 @@ public sealed class MainViewModel(
         {
             return;
         }
-        var workflow = new WorkflowViewModel(workflowServices, tree, name);
+        var workflow = new WorkflowViewModel(workflowServices, name);
         if (!await workflow.LoadAsync())
         {
             await WorkflowsChangedAsync();
             return;
         }
         logger.LogInformation("Opened the workflow {Name}", name);
-        Workflow?.Close();
+        var closing = Workflow?.CloseAsync() ?? Task.CompletedTask;
         Workflow = workflow;
-        SelectedTab = null;
+        Section = SidebarSection.Workflows;
+        await closing;
     }
 
     public async Task NewWorkflowAsync()
@@ -724,11 +741,14 @@ public sealed class MainViewModel(
         }
         try
         {
+            // The steps' secrets go with the workflow, but only when it can be read, so they are known.
+            var owners = await StepIdsOfAsync(name);
             await workflowServices.Library.DeleteAsync(name, CancellationToken.None);
             if (Workflow is { } open && SameName(open.Name, name))
             {
-                CloseWorkflow();
+                await CloseWorkflowAsync();
             }
+            await workflowServices.ForgetSecretsAsync(owners);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
@@ -738,6 +758,19 @@ public sealed class MainViewModel(
         await WorkflowsChangedAsync();
     }
 
+    async Task<IReadOnlyList<Guid>> StepIdsOfAsync(string name)
+    {
+        try
+        {
+            return await workflowServices.Library.LoadAsync(name, CancellationToken.None) is { } workflow ? [.. WorkflowLibrary.SecretOwnersOf(workflow)] : [];
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            logger.LogWarning(exception, "Could not read the workflow {Name}, so its secrets are kept", name);
+            return [];
+        }
+    }
+
     async Task ReloadWorkflowsAsync()
     {
         await workflows.LoadAsync(CancellationToken.None);
@@ -745,15 +778,15 @@ public sealed class MainViewModel(
         if (Workflow is { } open && !await open.ReloadAsync() && !open.IsDirty)
         {
             logger.LogInformation("The workflow {Name} was removed on disk", open.Name);
-            CloseWorkflow();
+            await CloseWorkflowAsync();
         }
     }
 
-    void CloseWorkflow()
+    async Task CloseWorkflowAsync()
     {
-        Workflow?.Close();
+        var closing = Workflow?.CloseAsync() ?? Task.CompletedTask;
         Workflow = null;
-        SelectedTab ??= Tabs.FirstOrDefault();
+        await closing;
     }
 
     string? ProblemOfWorkflow(string name) =>
@@ -796,10 +829,6 @@ public sealed class MainViewModel(
                 logger.LogWarning(exception, "Could not reload {Name}", tab.Name);
                 tab.ShowFileProblem(translator.DetailsOf(exception));
             }
-        }
-        if (Workflow is { } workflow)
-        {
-            await workflow.RefreshRequestsAsync();
         }
     }
 
@@ -864,7 +893,17 @@ public sealed class MainViewModel(
     void Add(RequestTabViewModel tab)
     {
         Tabs.Add(tab);
+        Show(tab);
+    }
+
+    // A tab that is opened is shown, so the main area leaves the workflows for the requests.
+    void Show(RequestTabViewModel tab)
+    {
         SelectedTab = tab;
+        if (Section == SidebarSection.Workflows)
+        {
+            Section = SidebarSection.Collections;
+        }
     }
 
     RequestTabViewModel? TabOf(string name) => Tabs.FirstOrDefault(tab => SameName(tab.Name, name));

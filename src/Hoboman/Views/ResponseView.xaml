@@ -1,6 +1,7 @@
 <UserControl x:Class="Hoboman.Views.ResponseView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Hoboman.Views"
              xmlns:controls="clr-namespace:Hoboman.Controls"
              xmlns:viewModels="clr-namespace:Hoboman.ViewModels">
     <Border Style="{StaticResource Panel}">
@@ -11,7 +12,7 @@
                     <StackPanel.Style>
                         <Style TargetType="StackPanel">
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding Response}" Value="{x:Null}">
+                                <DataTrigger Binding="{Binding Result.Response}" Value="{x:Null}">
                                     <Setter Property="Visibility" Value="Collapsed" />
                                 </DataTrigger>
                             </Style.Triggers>
@@ -22,18 +23,18 @@
                             <Style TargetType="Border">
                                 <Setter Property="Background" Value="{DynamicResource SuccessSoft}" />
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding Response.IsSuccess}" Value="False">
+                                    <DataTrigger Binding="{Binding Result.Response.IsSuccess}" Value="False">
                                         <Setter Property="Background" Value="{DynamicResource ErrorSoft}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </Border.Style>
-                        <TextBlock Text="{Binding Response.Status}" FontSize="12" FontWeight="SemiBold">
+                        <TextBlock Text="{Binding Result.Response.Status}" FontSize="12" FontWeight="SemiBold">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
                                     <Setter Property="Foreground" Value="{DynamicResource Success}" />
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding Response.IsSuccess}" Value="False">
+                                        <DataTrigger Binding="{Binding Result.Response.IsSuccess}" Value="False">
                                             <Setter Property="Foreground" Value="{DynamicResource Error}" />
                                         </DataTrigger>
                                     </Style.Triggers>
@@ -41,22 +42,22 @@
                             </TextBlock.Style>
                         </TextBlock>
                     </Border>
-                    <TextBlock Text="{Binding Response.Elapsed}" Foreground="{DynamicResource Muted}" FontSize="12" VerticalAlignment="Center" Margin="0,0,10,0" />
-                    <TextBlock Text="{Binding Response.Size}" Foreground="{DynamicResource Muted}" FontSize="12" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding Result.Response.Elapsed}" Foreground="{DynamicResource Muted}" FontSize="12" VerticalAlignment="Center" Margin="0,0,10,0" />
+                    <TextBlock Text="{Binding Result.Response.Size}" Foreground="{DynamicResource Muted}" FontSize="12" VerticalAlignment="Center" />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <RadioButton x:Name="BodySection" Content="{DynamicResource Response.Body}" GroupName="ResponseSection" IsChecked="{Binding ResponseSection, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:ResponseSection.Body}}" Style="{StaticResource Segment}" />
-                    <RadioButton x:Name="HeadersSection" GroupName="ResponseSection" IsChecked="{Binding ResponseSection, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:ResponseSection.Headers}}" Style="{StaticResource Segment}">
+                    <RadioButton x:Name="BodySection" Content="{DynamicResource Response.Body}" GroupName="ResponseSection" IsChecked="{Binding Result.ResponseSection, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:ResponseSection.Body}}" Style="{StaticResource Segment}" />
+                    <RadioButton x:Name="HeadersSection" GroupName="ResponseSection" IsChecked="{Binding Result.ResponseSection, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:ResponseSection.Headers}}" Style="{StaticResource Segment}">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="{DynamicResource Response.Headers}" />
-                            <TextBlock Text="{Binding Response.HeaderCount}" Margin="4,0,0,0" Opacity="0.7" />
+                            <TextBlock Text="{Binding Result.Response.HeaderCount}" Margin="4,0,0,0" Opacity="0.7" />
                         </StackPanel>
                     </RadioButton>
                     <Border Margin="12,0,0,0">
                         <Border.Style>
                             <Style TargetType="Border" BasedOn="{StaticResource SegmentGroup}">
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding Response}" Value="{x:Null}">
+                                    <DataTrigger Binding="{Binding Result.Response}" Value="{x:Null}">
                                         <Setter Property="Visibility" Value="Collapsed" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding IsChecked, ElementName=BodySection}" Value="False">
@@ -67,11 +68,11 @@
                         </Border.Style>
                         <StackPanel Orientation="Horizontal">
                             <RadioButton Content="{DynamicResource Format.Json}" GroupName="BodyFormat" Style="{StaticResource Segment}"
-                                         IsChecked="{Binding BodyFormat, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:BodyFormat.Json}}" />
+                                         IsChecked="{Binding Result.BodyFormat, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:BodyFormat.Json}}" />
                             <RadioButton Content="{DynamicResource Format.Xml}" GroupName="BodyFormat" Style="{StaticResource Segment}"
-                                         IsChecked="{Binding BodyFormat, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:BodyFormat.Xml}}" />
+                                         IsChecked="{Binding Result.BodyFormat, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:BodyFormat.Xml}}" />
                             <RadioButton Content="{DynamicResource Format.Raw}" GroupName="BodyFormat" Style="{StaticResource Segment}"
-                                         IsChecked="{Binding BodyFormat, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:BodyFormat.Raw}}" />
+                                         IsChecked="{Binding Result.BodyFormat, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:BodyFormat.Raw}}" />
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -96,31 +97,32 @@
                 </DockPanel>
             </Border>
 
+            <ContentPresenter DockPanel.Dock="Bottom" Content="{Binding Footer, RelativeSource={RelativeSource AncestorType=local:ResponseView}}" />
             <Grid>
                 <DockPanel Visibility="{Binding IsChecked, ElementName=BodySection, Converter={StaticResource VisibleWhenTrue}}">
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <DockPanel.Style>
                             <Style TargetType="DockPanel">
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding Response}" Value="{x:Null}">
+                                    <DataTrigger Binding="{Binding Result.Response}" Value="{x:Null}">
                                         <Setter Property="Visibility" Value="Collapsed" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </DockPanel.Style>
-                        <ToggleButton DockPanel.Dock="Right" Content="{DynamicResource Base64.WholeBody}" IsChecked="{Binding Base64.DecodesWholeResponse}" Style="{StaticResource Switch}" />
-                        <TextBlock Text="{Binding ResponseBodyProblem}" Foreground="{DynamicResource Error}" FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap" />
+                        <ToggleButton DockPanel.Dock="Right" Content="{DynamicResource Base64.WholeBody}" IsChecked="{Binding Result.Base64.DecodesWholeResponse}" Style="{StaticResource Switch}" />
+                        <TextBlock Text="{Binding Result.ResponseBodyProblem}" Foreground="{DynamicResource Error}" FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap" />
                     </DockPanel>
                     <Border CornerRadius="8" Background="{DynamicResource Input}">
                         <Grid>
-                            <controls:BodyView x:Name="BodyText" Body="{Binding Response.Body}" Coloring="{Binding Response.Coloring, FallbackValue={x:Static viewModels:BodyFormat.Raw}}"
+                            <controls:BodyView x:Name="BodyText" DataContext="{Binding Result}" Body="{Binding Response.Body}" Coloring="{Binding Response.Coloring, FallbackValue={x:Static viewModels:BodyFormat.Raw}}"
                                                Marks="{Binding ResponseMarks}" MarkToggled="Body_MarkToggled" />
                             <TextBlock Text="{DynamicResource Response.Loading}" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center"
                                        Visibility="{Binding IsLoading, ElementName=BodyText, Converter={StaticResource VisibleWhenTrue}}" />
                         </Grid>
                     </Border>
                 </DockPanel>
-                <TextBox Text="{Binding Response.Headers, Mode=OneWay}" IsReadOnly="True" Style="{StaticResource Code}"
+                <TextBox Text="{Binding Result.Response.Headers, Mode=OneWay}" IsReadOnly="True" Style="{StaticResource Code}"
                          Visibility="{Binding IsChecked, ElementName=HeadersSection, Converter={StaticResource VisibleWhenTrue}}" />
                 <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource Muted}">
                     <TextBlock.Style>
@@ -129,12 +131,12 @@
                             <Style.Triggers>
                                 <MultiDataTrigger>
                                     <MultiDataTrigger.Conditions>
-                                        <Condition Binding="{Binding Response}" Value="{x:Null}" />
+                                        <Condition Binding="{Binding Result.Response}" Value="{x:Null}" />
                                         <Condition Binding="{Binding Problem}" Value="{x:Null}" />
                                         <Condition Binding="{Binding IsSending}" Value="False" />
                                     </MultiDataTrigger.Conditions>
                                     <Setter Property="Visibility" Value="Visible" />
-                                    <Setter Property="Text" Value="{DynamicResource Response.Empty}" />
+                                    <Setter Property="Text" Value="{Binding EmptyText, RelativeSource={RelativeSource AncestorType=local:ResponseView}}" />
                                 </MultiDataTrigger>
                                 <DataTrigger Binding="{Binding IsSending}" Value="True">
                                     <Setter Property="Visibility" Value="Visible" />

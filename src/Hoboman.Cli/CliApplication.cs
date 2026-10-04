@@ -122,7 +122,7 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
             return await output.WriteErrorAsync(new { error = "Workflow cannot run.", problems = checkedWorkflow.Problems });
         }
         // As for send, a token is saved for the environment, so it is fetched without the values of the run.
-        var outcome = await workflowRunner.RunAsync(checkedWorkflow, environment, HistorySource.Cli, auth => tokens.FetchAsync(auth, environment, cancellationToken), output.WriteEventAsync, cancellationToken);
+        var outcome = await workflowRunner.RunAsync(checkedWorkflow, environment, auth => tokens.FetchAsync(auth, environment, cancellationToken), output.WriteEventAsync, cancellationToken);
         return outcome == RunOutcome.Succeeded ? 0 : 1;
     }
 
