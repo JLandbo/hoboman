@@ -40,6 +40,13 @@ public sealed class WorkflowViewModel : ObservableObject
         Auth = new(services.Secrets, services.AuthRefresh, services.Environments, services.Credentials, services.Translator, services.Clock, services.Logger);
         Auth.Changed += Edited;
         Auth.OwnerFetch = () => FetchByHandAsync(Auth);
+        Auth.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(AuthViewModel.Kind) or nameof(AuthViewModel.IsFetching))
+            {
+                RelabelAuth();
+            }
+        };
         Send = new AsyncCommand(RunAsync, () => !IsRunning);
         Save = new AsyncCommand(SaveAsync);
     }
@@ -51,6 +58,14 @@ public sealed class WorkflowViewModel : ObservableObject
     // The auth the steps that inherit use, as a folder's auth is for its requests.
     public AuthViewModel Auth { get; }
 
+
+    public bool HasOAuth => Auth.Kind == AuthKind.OAuth2;
+
+    public bool IsAuthRefreshing => Auth.IsFetching;
+
+    public bool CanRefreshAuth => !_closed && HasOAuth && !IsAuthRefreshing;
+
+    public string RefreshAuthTip => _services.Translator.Format("OAuth.Reauthenticate", Name, _services.Environments.Selected?.Name ?? _services.Translator.Of("Environment.None"));
 
     public ObservableCollection<WorkflowStepViewModel> Steps { get; } = [];
 
@@ -99,6 +114,9 @@ public sealed class WorkflowViewModel : ObservableObject
     public IReadOnlyList<string> Problems { get; private set => Set(ref field, value); } = [];
 
     public AsyncCommand Send { get; }
+
+    // Told when a run comes to a step, so the step can be brought into view.
+    public event Action<WorkflowStepViewModel>? StepRunning;
 
     public AsyncCommand Save { get; }
 
@@ -158,7 +176,11 @@ public sealed class WorkflowViewModel : ObservableObject
         return true;
     }
 
-    public void Rename(string name) => Name = name;
+    public void Rename(string name)
+    {
+        Name = name;
+        RelabelAuth();
+    }
 
     public void Relabel()
     {
@@ -173,6 +195,7 @@ public sealed class WorkflowViewModel : ObservableObject
     public void EnvironmentChosen()
     {
         Auth.Relabel();
+        RelabelAuth();
         foreach (var step in Steps)
         {
             step.RelabelRequest();
@@ -406,7 +429,14 @@ public sealed class WorkflowViewModel : ObservableObject
                 Problems = [.. checkedWorkflow.Problems.Select(TextOf)];
                 return;
             }
-            await _services.Runner.RunAsync(checkedWorkflow, environment, auth => FetchTokenAsync(auth, environment, steps, running.Token), workflowEvent => ShowAsync(workflowEvent, steps, workflow.Steps),
+            await _services.Runner.RunAsync(checkedWorkflow, environment, auth => FetchTokenAsync(auth, environment, steps, running.Token), async workflowEvent =>
+                {
+                    await ShowAsync(workflowEvent, steps, workflow.Steps);
+                    if (workflowEvent is StepStarted started)
+                    {
+                        StepRunning?.Invoke(steps[started.Index]);
+                    }
+                },
                 running.Token);
         }
         catch (OperationCanceledException) when (running.IsCancellationRequested)
@@ -586,9 +616,28 @@ public sealed class WorkflowViewModel : ObservableObject
         Refresh();
     }
 
+    // As the button beside the auth in a tab, a token fetched here is saved as "Hent token" saves it.
+    public Task<bool> RefreshAuthAsync() => FetchByHandAsync(Auth);
+
+    // A step that inherits fetches the workflow's token.
+    public Task<bool> RefreshAuthAsync(WorkflowStepViewModel step) => step.EffectiveAuth is { } auth ? FetchByHandAsync(auth) : Task.FromResult(false);
+
+    void RelabelAuth()
+    {
+        OnPropertyChanged(nameof(HasOAuth));
+        OnPropertyChanged(nameof(IsAuthRefreshing));
+        OnPropertyChanged(nameof(CanRefreshAuth));
+        OnPropertyChanged(nameof(RefreshAuthTip));
+        foreach (var step in Steps)
+        {
+            step.RelabelAuth();
+        }
+    }
+
     WorkflowStepViewModel Follow(WorkflowStepViewModel step)
     {
         step.Changed += Edited;
+        step.Inherit(Auth, () => Name);
         if (step.Auth is { } auth)
         {
             auth.OwnerFetch = () => FetchByHandAsync(auth);
@@ -597,11 +646,11 @@ public sealed class WorkflowViewModel : ObservableObject
     }
 
     // A token fetched by hand is saved with the secrets, as a run does, so it is no edit.
-    async Task FetchByHandAsync(AuthViewModel auth)
+    async Task<bool> FetchByHandAsync(AuthViewModel auth)
     {
         if (!await auth.FetchTokenAsync() || _closed)
         {
-            return;
+            return false;
         }
         try
         {
@@ -610,11 +659,13 @@ public sealed class WorkflowViewModel : ObservableObject
             {
                 IsDirty = false;
             }
+            return true;
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
             _services.Logger.LogError(exception, "Could not save the secrets of the workflow {Name}", Name);
             _services.Dialogs.Tell(_services.Translator.Of("Workflow.SecretsSaveFailed"), _services.Translator.DetailsOf(exception));
+            return false;
         }
     }
 

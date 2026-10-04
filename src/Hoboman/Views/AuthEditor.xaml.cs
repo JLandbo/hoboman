@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using Hoboman.ViewModels;
 
@@ -23,6 +24,9 @@ public partial class AuthEditor : UserControl
     public static readonly DependencyProperty ClipboardProperty = DependencyProperty.Register(nameof(Clipboard), typeof(IClipboard), typeof(AuthEditor));
 
     AuthViewModel? _auth;
+    const int WM_NCLBUTTONDOWN = 0x00A1;
+    const int WM_NCRBUTTONDOWN = 0x00A4;
+
     bool _clearing;
     Window? _window;
 
@@ -40,6 +44,8 @@ public partial class AuthEditor : UserControl
         IsVisibleChanged += (_, _) => CloseCredentials();
         DataContextChanged += (_, e) =>
         {
+            // The list belongs to the auth it was opened for.
+            CloseCredentials();
             if (IsLoaded)
             {
                 Follow(e.NewValue as AuthViewModel);
@@ -155,10 +161,18 @@ public partial class AuthEditor : UserControl
         Grid.SetColumnSpan(CredentialPicker, below ? 2 : 1);
         CredentialPicker.HorizontalAlignment = below ? HorizontalAlignment.Left : HorizontalAlignment.Right;
         CredentialPicker.Margin = new(0, below ? 8 : 0, 0, 0);
+        // The list is wider than the field, so it lines up with the field's right edge beside the kinds and with its left edge below them.
+        CredentialPopup.HorizontalOffset = below ? 0 : CredentialPicker.Width - 300;
     }
 
+    // The arrow and the key close an open list again, as in a dropdown. A click in the text keeps it open.
     void CredentialField_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        if (CredentialPopup.IsOpen && !Within(e.OriginalSource, CredentialSearch))
+        {
+            CloseCredentials();
+            return;
+        }
         CredentialSearch.Focus();
         if (!CredentialPopup.IsOpen)
         {
@@ -166,10 +180,21 @@ public partial class AuthEditor : UserControl
         }
     }
 
+    // A dialog drags itself on a press nothing else takes.
+    void Picker_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) => e.Handled = true;
+
+    // The mouse marks what it points at, so Enter picks what looks marked.
+    void CredentialItem_MouseEnter(object sender, MouseEventArgs e) => ((ListBoxItem)sender).IsSelected = true;
+
     void CredentialSearch_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e) => Watch();
 
+    // The field's own menu, such as for pasting, takes the keyboard while it is open, and the search goes on after it.
     void CredentialSearch_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
+        if (CredentialSearch.ContextMenu is { IsOpen: true })
+        {
+            return;
+        }
         CloseCredentials();
         Watch();
     }
@@ -182,9 +207,14 @@ public partial class AuthEditor : UserControl
         }
     }
 
-    // The first one is marked, so Enter picks it when the typing leaves one. Enter never reaches a dialog's default button.
+    // The first one is marked, so Enter picks it when the typing leaves one. Enter on an open list never reaches a dialog's default button.
+    // Keys with Ctrl, Shift or Alt are left alone, so Ctrl+Enter still sends.
     void CredentialSearch_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (Keyboard.Modifiers != ModifierKeys.None)
+        {
+            return;
+        }
         switch (e.Key)
         {
             case Key.Down when !CredentialPopup.IsOpen:
@@ -194,8 +224,8 @@ public partial class AuthEditor : UserControl
                 CredentialList.SelectedIndex = Math.Clamp(CredentialList.SelectedIndex + (e.Key == Key.Down ? 1 : -1), 0, CredentialList.Items.Count - 1);
                 CredentialList.ScrollIntoView(CredentialList.SelectedItem);
                 break;
-            case Key.Enter:
-                if (CredentialPopup.IsOpen && CredentialList.SelectedItem is CredentialChoice chosen)
+            case Key.Enter when CredentialPopup.IsOpen:
+                if (CredentialList.SelectedItem is CredentialChoice chosen)
                 {
                     Pick(chosen);
                 }
@@ -221,14 +251,25 @@ public partial class AuthEditor : UserControl
     // A click in the list passes the window too, as the list belongs to it.
     void Window_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (!Within(e.OriginalSource, CredentialField) && !Within(e.OriginalSource, CredentialPopup.Child))
+        if (!Within(e.OriginalSource, CredentialField) && !Within(e.OriginalSource, CredentialPopup.Child) && !Within(e.OriginalSource, CredentialSearch.ContextMenu))
         {
             CloseCredentials();
             LeaveField();
         }
     }
 
-    static bool Within(object source, DependencyObject area)
+    // A click on the title bar or the frame of the window raises no mouse event in it.
+    IntPtr Window_Message(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (message is WM_NCLBUTTONDOWN or WM_NCRBUTTONDOWN)
+        {
+            CloseCredentials();
+            LeaveField();
+        }
+        return IntPtr.Zero;
+    }
+
+    static bool Within(object source, DependencyObject? area)
     {
         for (var current = source as DependencyObject; current is not null; current = current is Visual ? VisualTreeHelper.GetParent(current) : LogicalTreeHelper.GetParent(current))
         {
@@ -256,6 +297,10 @@ public partial class AuthEditor : UserControl
     {
         _auth?.FindCredentials(CredentialSearch.Text);
         CredentialList.SelectedIndex = CredentialList.Items.Count > 0 ? 0 : -1;
+        if (CredentialList.SelectedItem is { } first)
+        {
+            CredentialList.ScrollIntoView(first);
+        }
         CredentialPopup.IsOpen = true;
         Watch();
     }
@@ -306,6 +351,7 @@ public partial class AuthEditor : UserControl
             watched.Deactivated -= Window_Changed;
             watched.LocationChanged -= Window_Changed;
             watched.SizeChanged -= Window_Changed;
+            (HwndSource.FromVisual(watched) as HwndSource)?.RemoveHook(Window_Message);
         }
         _window = window;
         if (window is not null)
@@ -314,6 +360,7 @@ public partial class AuthEditor : UserControl
             window.Deactivated += Window_Changed;
             window.LocationChanged += Window_Changed;
             window.SizeChanged += Window_Changed;
+            (HwndSource.FromVisual(window) as HwndSource)?.AddHook(Window_Message);
         }
     }
 

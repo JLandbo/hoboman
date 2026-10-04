@@ -150,6 +150,7 @@
                             <StackPanel Orientation="Horizontal">
                                 <RadioButton x:Name="ParametersChoice" Content="{DynamicResource Workflow.Parameters}" GroupName="WorkflowSettings" IsChecked="True" Style="{StaticResource Segment}" />
                                 <RadioButton x:Name="WorkflowAuthChoice" Content="{DynamicResource Workflow.Auth}" GroupName="WorkflowSettings" Style="{StaticResource Segment}" />
+                                <Button x:Name="RefreshWorkflowAuthButton" Click="RefreshWorkflowAuth_Click" Style="{StaticResource RefreshAuthButton}" />
                             </StackPanel>
                         </Border>
                     </DockPanel>
@@ -184,7 +185,8 @@
                         <TextBlock Text="{DynamicResource Workflow.Steps}" Style="{StaticResource Heading}" />
                     </DockPanel>
                     <!-- A timeline: numbered circles joined by a line, as the steps run in this order. Only the step itself is marked when it is chosen, not its circle. -->
-                    <ListBox ItemsSource="{Binding Steps}" SelectedItem="{Binding SelectedStep}" Style="{StaticResource SideList}">
+                    <!-- The steps differ in height, so the list scrolls by pixels instead of jumping a whole step at a time. -->
+                    <ListBox x:Name="StepList" ItemsSource="{Binding Steps}" SelectedItem="{Binding SelectedStep}" Style="{StaticResource SideList}" ScrollViewer.CanContentScroll="False">
                         <ListBox.ItemContainerStyle>
                             <Style TargetType="ListBoxItem" BasedOn="{StaticResource SideListItem}">
                                 <Setter Property="Template">
@@ -208,7 +210,8 @@
                                             VerticalAlignment="Top" Margin="0,2,0,0">
                                         <TextBlock x:Name="Number" Text="{Binding Number}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                     </Border>
-                                    <Border x:Name="Body" Grid.Column="1" CornerRadius="8" Padding="10,5,10,10" Margin="10,0,0,4" Background="Transparent">
+                                    <!-- The border is always there, so marking the running step changes no size. -->
+                                    <Border x:Name="Body" Grid.Column="1" CornerRadius="8" Padding="8.5,5.5,8.5,6.5" Margin="10,0,0,4" Background="Transparent" BorderBrush="Transparent" BorderThickness="1.5">
                                         <StackPanel>
                                             <DockPanel>
                                                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
@@ -277,6 +280,7 @@
                                     <DataTrigger Binding="{Binding IsRunning}" Value="True">
                                         <Setter TargetName="Circle" Property="BorderBrush" Value="{DynamicResource Attention}" />
                                         <Setter TargetName="Number" Property="Foreground" Value="{DynamicResource Attention}" />
+                                        <Setter TargetName="Body" Property="BorderBrush" Value="{DynamicResource Attention}" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
                                         <Setter TargetName="Body" Property="Background" Value="{DynamicResource Card}" />
@@ -419,6 +423,7 @@
                                              IsChecked="{Binding Section, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:StepSection.Body}}" />
                                 <RadioButton x:Name="StepAuthSection" Content="{Binding AuthHeader}" GroupName="StepSection" Style="{StaticResource Segment}" Visibility="{Binding IsRequest, Converter={StaticResource VisibleWhenTrue}}"
                                              IsChecked="{Binding Section, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:StepSection.Auth}}" />
+                                <Button Click="RefreshStepAuth_Click" Style="{StaticResource RefreshAuthButton}" />
                                 <RadioButton x:Name="StepRetrySection" GroupName="StepSection" Style="{StaticResource Segment}" Visibility="{Binding IsRequest, Converter={StaticResource VisibleWhenTrue}}"
                                              IsChecked="{Binding Section, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:StepSection.Retry}}">
                                     <StackPanel Orientation="Horizontal">

@@ -64,7 +64,8 @@
                         </Style.Triggers>
                     </Style>
                 </Grid.Style>
-                <Border x:Name="CredentialField" CornerRadius="8" Background="{DynamicResource Input}" BorderThickness="1" PreviewMouseLeftButtonUp="CredentialField_PreviewMouseLeftButtonUp">
+                <Border x:Name="CredentialField" CornerRadius="8" Background="{DynamicResource Input}" BorderThickness="1" PreviewMouseLeftButtonUp="CredentialField_PreviewMouseLeftButtonUp"
+                        MouseLeftButtonDown="Picker_MouseLeftButtonDown">
                     <Border.Style>
                         <Style TargetType="Border">
                             <Setter Property="BorderBrush" Value="Transparent" />
@@ -77,7 +78,7 @@
                     </Border.Style>
                     <DockPanel>
                         <TextBlock DockPanel.Dock="Left" Text="&#xE8D7;" FontFamily="{StaticResource IconFont}" FontSize="12" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" Margin="8,0,0,0" />
-                        <TextBlock DockPanel.Dock="Right" Text="&#xE70D;" FontFamily="{StaticResource IconFont}" FontSize="9" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" Margin="0,0,9,0" />
+                        <TextBlock x:Name="CredentialChevron" DockPanel.Dock="Right" Text="&#xE70D;" FontFamily="{StaticResource IconFont}" FontSize="9" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" Margin="0,0,9,0" />
                         <Grid>
                             <!-- Behind the search: the credential the auth is from, or what the field is for. -->
                             <TextBlock x:Name="CredentialShown" Margin="8,0" VerticalAlignment="Center" FontSize="12.5" TextTrimming="CharacterEllipsis">
@@ -108,7 +109,7 @@
                     </DockPanel>
                 </Border>
                 <Popup x:Name="CredentialPopup" PlacementTarget="{Binding ElementName=CredentialField}" Placement="Bottom" HorizontalOffset="-60" StaysOpen="True" AllowsTransparency="True">
-                    <Border Style="{StaticResource Menu}" Width="300" TextElement.FontSize="12">
+                    <Border Style="{StaticResource Menu}" Width="300" TextElement.FontSize="12" MouseLeftButtonDown="Picker_MouseLeftButtonDown">
                         <StackPanel>
                             <ListBox x:Name="CredentialList" ItemsSource="{Binding FoundCredentials}" Style="{StaticResource SideList}" Focusable="False" MaxHeight="300"
                                      MouseLeftButtonUp="CredentialList_MouseLeftButtonUp">
@@ -116,6 +117,7 @@
                                     <!-- The typing stays in the field while the keys move in the list. -->
                                     <Style TargetType="ListBoxItem" BasedOn="{StaticResource SideListItem}">
                                         <Setter Property="Focusable" Value="False" />
+                                        <EventSetter Event="MouseEnter" Handler="CredentialItem_MouseEnter" />
                                     </Style>
                                 </ListBox.ItemContainerStyle>
                                 <ListBox.ItemTemplate>

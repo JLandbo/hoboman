@@ -18,5 +18,14 @@ public partial class ResponseView : UserControl
         set => SetValue(FooterProperty, value);
     }
 
+    void Header_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var below = HeaderLeft.ActualWidth + 12 + HeaderRight.ActualWidth > HeaderRow.ActualWidth;
+        Grid.SetRow(HeaderRight, below ? 1 : 0);
+        Grid.SetColumn(HeaderRight, below ? 0 : 1);
+        Grid.SetColumnSpan(HeaderRight, below ? 2 : 1);
+        HeaderRight.Margin = new(0, below ? 8 : 0, 0, 0);
+    }
+
     void Body_MarkToggled(object? sender, string path) => ((ResponseViewModel)BodyText.DataContext).Base64.ToggleDecode(path);
 }

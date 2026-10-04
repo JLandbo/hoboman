@@ -1,4 +1,6 @@
 using System.IO;
+using System.Runtime.InteropServices;
+using System.Windows.Interop;
 using Hoboman.Core.Languages;
 using Hoboman.ViewModels;
 using Microsoft.Win32;
@@ -37,11 +39,20 @@ public sealed class Dialogs(Translator translator) : IDialogs
 
     public void EditEnvironments(EnvironmentEditorViewModel editor) => new EnvironmentEditorWindow(editor).ShowDialog();
 
+    // A dialog shown after the window disables it while it is open, so it is enabled again to be used beside the dialog.
     public bool ShowOpenCredentials()
     {
-        _credentials?.Activate();
-        return _credentials is not null;
+        if (_credentials is not { } window)
+        {
+            return false;
+        }
+        EnableWindow(new WindowInteropHelper(window).Handle, true);
+        window.Activate();
+        return true;
     }
+
+    [DllImport("user32.dll")]
+    static extern bool EnableWindow(IntPtr window, bool enable);
 
     public void ShowCredentials(CredentialEditorViewModel editor)
     {

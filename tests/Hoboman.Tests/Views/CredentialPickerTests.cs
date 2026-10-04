@@ -190,9 +190,9 @@ public sealed class CredentialPickerTests
     }
 
     [Theory]
-    [InlineData(900, 0)]
-    [InlineData(480, 1)]
-    public async Task AuthEditor_WhenItHasThisWidth_ThenThePickerIsBesideOrBelowTheKinds(double width, int row)
+    [InlineData(900, 0, -60)]
+    [InlineData(480, 1, 0)]
+    public async Task AuthEditor_WhenItHasThisWidth_ThenThePickerAndItsListAreBesideOrBelowTheKinds(double width, int row, double listOffset)
     {
         using var harness = new Harness();
         await harness.SaveCredentialsAsync();
@@ -202,7 +202,7 @@ public sealed class CredentialPickerTests
             var editor = await ShowAsync(harness.Tab().Auth, width);
 
             // Assert
-            Assert.Equal(row, Grid.GetRow((FrameworkElement)editor.FindName("CredentialPicker")));
+            Assert.Equal((row, listOffset), (Grid.GetRow((FrameworkElement)editor.FindName("CredentialPicker")), ((Popup)editor.FindName("CredentialPopup")).HorizontalOffset));
         });
     }
 
@@ -347,6 +347,181 @@ public sealed class CredentialPickerTests
         });
     }
 
+    [Fact]
+    public async Task AuthEditor_WhenTheArrowIsClickedInADialog_ThenTheListOpensAndTheDialogStays()
+    {
+        using var harness = new Harness();
+        await harness.SaveCredentialsAsync();
+        await Ui.RunAsync(async () =>
+        {
+            // Arrange
+            await Ui.ShowAsync(harness, harness.Main());
+            var editor = new AuthEditor { DataContext = harness.Tab().Auth, Width = 480 };
+            Ui.Show(new DialogWindow { Content = editor, SizeToContent = SizeToContent.WidthAndHeight });
+            await Ui.IdleAsync();
+
+            // Act
+            Ui.Press((UIElement)editor.FindName("CredentialChevron"));
+
+            // Assert
+            Assert.True(((Popup)editor.FindName("CredentialPopup")).IsOpen);
+        });
+    }
+
+    [Fact]
+    public async Task AuthEditor_WhenTheArrowIsClickedWhileTheListIsOpen_ThenItCloses()
+    {
+        using var harness = new Harness();
+        await harness.SaveCredentialsAsync();
+        await Ui.RunAsync(async () =>
+        {
+            // Arrange
+            var editor = await ShowAsync(harness.Tab().Auth, 900);
+            Press(Search(editor), Key.Down);
+
+            // Act
+            Raise((UIElement)editor.FindName("CredentialChevron"), Mouse.PreviewMouseUpEvent);
+
+            // Assert
+            Assert.False(((Popup)editor.FindName("CredentialPopup")).IsOpen);
+        });
+    }
+
+    [Fact]
+    public async Task AuthEditor_WhenTheMousePointsAtACredentialAndEnterIsPressed_ThenThatOneIsFilledIn()
+    {
+        using var harness = new Harness();
+        await harness.SaveCredentialsAsync();
+        var auth = harness.Tab().Auth;
+        await Ui.RunAsync(async () =>
+        {
+            // Arrange
+            var editor = await ShowAsync(auth, 900);
+            Press(Search(editor), Key.Down);
+            await Ui.IdleAsync();
+            var list = (ListBox)editor.FindName("CredentialList");
+
+            // Act
+            ((ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(1)).RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = Mouse.MouseEnterEvent });
+            Press(Search(editor), Key.Enter);
+            await Ui.IdleAsync();
+
+            // Assert
+            Assert.Equal(AuthKind.Basic, auth.Kind);
+        });
+    }
+
+    [Fact]
+    public async Task AuthEditor_WhenEnterIsPressedWithTheListClosed_ThenItReachesTheDialog()
+    {
+        using var harness = new Harness();
+        await harness.SaveCredentialsAsync();
+        await Ui.RunAsync(async () =>
+        {
+            // Arrange
+            var editor = await ShowAsync(harness.Tab().Auth, 900);
+
+            // Act
+            var handled = Press(Search(editor), Key.Enter);
+
+            // Assert
+            Assert.False(handled);
+        });
+    }
+
+    [Fact]
+    public async Task AuthEditor_WhenTheFieldsOwnMenuOpens_ThenTheSearchGoesOn()
+    {
+        using var harness = new Harness();
+        await harness.SaveCredentialsAsync();
+        await Ui.RunAsync(async () =>
+        {
+            // Arrange
+            var editor = await ShowAsync(harness.Tab().Auth, 900);
+            Search(editor).Text = "a";
+            var menu = Search(editor).ContextMenu!;
+            menu.PlacementTarget = Search(editor);
+            menu.IsOpen = true;
+
+            // Act
+            Search(editor).RaiseEvent(new KeyboardFocusChangedEventArgs(Keyboard.PrimaryDevice, Environment.TickCount, Search(editor), menu) { RoutedEvent = Keyboard.LostKeyboardFocusEvent });
+
+            // Assert
+            var kept = (((Popup)editor.FindName("CredentialPopup")).IsOpen, Search(editor).Text);
+            menu.IsOpen = false;
+            Assert.Equal((true, "a"), kept);
+        });
+    }
+
+    [Fact]
+    public async Task AuthEditor_WhenTheTitleBarIsClicked_ThenTheListCloses()
+    {
+        using var harness = new Harness();
+        await harness.SaveCredentialsAsync();
+        await Ui.RunAsync(async () =>
+        {
+            // Arrange
+            var editor = await ShowAsync(harness.Tab().Auth, 900);
+            Press(Search(editor), Key.Down);
+
+            // Act
+            SendMessage(new System.Windows.Interop.WindowInteropHelper(Window.GetWindow(editor)).Handle, 0x00A1, IntPtr.Zero, IntPtr.Zero);
+
+            // Assert
+            Assert.False(((Popup)editor.FindName("CredentialPopup")).IsOpen);
+        });
+    }
+
+    [Fact]
+    public async Task AuthEditor_WhenAnotherAuthIsShown_ThenTheListCloses()
+    {
+        using var harness = new Harness();
+        await harness.SaveCredentialsAsync();
+        await Ui.RunAsync(async () =>
+        {
+            // Arrange
+            var editor = await ShowAsync(harness.Tab().Auth, 900);
+            Press(Search(editor), Key.Down);
+
+            // Act
+            editor.DataContext = harness.Tab().Auth;
+
+            // Assert
+            Assert.False(((Popup)editor.FindName("CredentialPopup")).IsOpen);
+        });
+    }
+
+    [Fact]
+    public async Task AuthEditor_WhenTheListOpensAgainAfterScrolling_ThenItShowsTheTop()
+    {
+        using var harness = new Harness();
+        var (dev, _) = await harness.SaveCredentialsAsync();
+        await harness.CredentialStore.SaveAsync([.. Enumerable.Range(1, 40).Select(number => new Credential(Guid.NewGuid(), dev.Id, $"Kunde {number:00}", new(AuthKind.Bearer)))], CancellationToken.None);
+        await harness.Credentials.LoadAsync(CancellationToken.None);
+        await Ui.RunAsync(async () =>
+        {
+            // Arrange
+            var editor = await ShowAsync(harness.Tab().Auth, 900);
+            Press(Search(editor), Key.Down);
+            await Ui.IdleAsync();
+            for (var step = 0; step < 39; step++)
+            {
+                Press(Search(editor), Key.Down);
+            }
+            await Ui.IdleAsync();
+            var scroller = Ui.Descendants<ScrollViewer>((ListBox)editor.FindName("CredentialList")).First();
+            var scrolled = scroller.VerticalOffset;
+            Press(Search(editor), Key.Escape);
+
+            // Act
+            Press(Search(editor), Key.Down);
+            await Ui.IdleAsync();
+
+            // Assert
+            Assert.Equal((true, 0d), (scrolled > 0, scroller.VerticalOffset));
+        });
+    }
+
     static async Task<AuthEditor> ShowAsync(AuthViewModel auth, double width)
     {
         var editor = new AuthEditor { DataContext = auth, Width = width };
@@ -354,6 +529,9 @@ public sealed class CredentialPickerTests
         await Ui.IdleAsync();
         return editor;
     }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    static extern IntPtr SendMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam);
 
     static TextBox Search(AuthEditor editor) => (TextBox)editor.FindName("CredentialSearch");
 

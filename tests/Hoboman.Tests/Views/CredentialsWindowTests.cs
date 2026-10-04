@@ -82,6 +82,37 @@ public sealed class CredentialsWindowTests
         });
     }
 
+    [Fact]
+    public async Task ShowOpenCredentials_WhenADialogShownAfterHasDisabledIt_ThenItCanBeUsedAgain()
+    {
+        using var harness = new Harness();
+        await harness.SaveCredentialsAsync();
+        await Ui.RunAsync(async () =>
+        {
+            // Arrange
+            await Ui.ShowAsync(harness, harness.Main());
+            await harness.CredentialEditor.LoadAsync(TestContext.Current.CancellationToken);
+            var dialogs = new Dialogs(harness.Translator);
+            dialogs.ShowCredentials(harness.CredentialEditor);
+            await Ui.IdleAsync();
+            var window = System.Windows.Application.Current.Windows.OfType<CredentialsWindow>().Single();
+            var handle = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+            EnableWindow(handle, false);
+
+            // Act
+            var shown = dialogs.ShowOpenCredentials();
+
+            // Assert
+            Assert.Equal((true, true), (shown, IsWindowEnabled(handle)));
+        });
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    static extern bool EnableWindow(IntPtr window, bool enable);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    static extern bool IsWindowEnabled(IntPtr window);
+
     static async Task<CredentialsWindow> ShowAsync(Harness harness)
     {
         await Ui.ShowAsync(harness, harness.Main());

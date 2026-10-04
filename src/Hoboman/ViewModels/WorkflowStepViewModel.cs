@@ -13,6 +13,9 @@ namespace Hoboman.ViewModels;
 public sealed class WorkflowStepViewModel : ObservableObject
 {
     readonly Translator _translator;
+    readonly EnvironmentsViewModel _environments;
+    AuthViewModel? _workflowAuth;
+    Func<string> _workflowName = () => "";
     readonly Guid _id;
     // Parts this kind of step does not edit are written back as they were, so the check tells of a step that holds more than one thing, and nothing of it is lost.
     readonly WorkflowStep _step;
@@ -24,6 +27,7 @@ public sealed class WorkflowStepViewModel : ObservableObject
     public WorkflowStepViewModel(WorkflowStep step, WorkflowServices services)
     {
         _translator = services.Translator;
+        _environments = services.Environments;
         _step = step;
         Kind = step.Kind;
         Section = Kind switch
@@ -60,6 +64,10 @@ public sealed class WorkflowStepViewModel : ObservableObject
                 {
                     OnPropertyChanged(nameof(AuthHeader));
                 }
+                if (e.PropertyName is nameof(AuthViewModel.Kind) or nameof(AuthViewModel.IsFetching))
+                {
+                    RelabelAuth();
+                }
             };
             Request.PropertyChanged += (_, e) =>
             {
@@ -70,6 +78,7 @@ public sealed class WorkflowStepViewModel : ObservableObject
                 if (e.PropertyName == nameof(RequestViewModel.Url))
                 {
                     OnPropertyChanged(nameof(Title));
+                    OnPropertyChanged(nameof(RefreshAuthTip));
                 }
             };
         }
@@ -95,6 +104,17 @@ public sealed class WorkflowStepViewModel : ObservableObject
         ? $"{_translator.Of("Editor.Auth")} ({_translator.Of("Workflow.AuthInheritShort")})"
         : AuthViewModel.HeaderOf(Auth?.Kind, _translator);
 
+    // The auth a token is fetched for: the step's own, or the workflow's when the step inherits it.
+    public AuthViewModel? EffectiveAuth => Auth?.Kind == AuthKind.Inherit ? _workflowAuth : Auth;
+
+    public bool HasOAuth => EffectiveAuth?.Kind == AuthKind.OAuth2;
+
+    public bool IsAuthRefreshing => EffectiveAuth?.IsFetching == true;
+
+    public bool CanRefreshAuth => HasOAuth && !IsAuthRefreshing;
+
+    public string RefreshAuthTip => _translator.Format("OAuth.Reauthenticate", Auth?.Kind == AuthKind.Inherit ? _workflowName() : Title, _environments.Selected?.Name ?? _translator.Of("Environment.None"));
+
     // What the last run saved, shown under the response it came from.
     public IReadOnlyList<KeyValue> SavedValues => _finished?.Saved is { } saved
         ? [.. saved.Select(value => new KeyValue(value.Key, RunValues.TextOf(value.Value) is { Length: > 80 } text ? $"{text[..80]}…" : RunValues.TextOf(value.Value)))]
@@ -104,6 +124,20 @@ public sealed class WorkflowStepViewModel : ObservableObject
     internal Guid? SecretsId => Auth is null ? null : _id;
 
     public bool IsRequest => Kind == StepKind.Request;
+
+    internal void Inherit(AuthViewModel workflowAuth, Func<string> workflowName)
+    {
+        (_workflowAuth, _workflowName) = (workflowAuth, workflowName);
+        RelabelAuth();
+    }
+
+    public void RelabelAuth()
+    {
+        OnPropertyChanged(nameof(HasOAuth));
+        OnPropertyChanged(nameof(IsAuthRefreshing));
+        OnPropertyChanged(nameof(CanRefreshAuth));
+        OnPropertyChanged(nameof(RefreshAuthTip));
+    }
 
     public bool IsScript => Kind == StepKind.Script;
 
@@ -117,6 +151,7 @@ public sealed class WorkflowStepViewModel : ObservableObject
             if (Set(ref field, value))
             {
                 OnPropertyChanged(nameof(Title));
+                OnPropertyChanged(nameof(RefreshAuthTip));
                 OnChanged();
             }
         }
@@ -165,6 +200,7 @@ public sealed class WorkflowStepViewModel : ObservableObject
             if (Set(ref field, value))
             {
                 OnPropertyChanged(nameof(Title));
+                OnPropertyChanged(nameof(RefreshAuthTip));
                 OnChanged();
             }
         }
@@ -361,6 +397,7 @@ public sealed class WorkflowStepViewModel : ObservableObject
         RelabelRequest();
         OnPropertyChanged(nameof(Badge));
         OnPropertyChanged(nameof(Title));
+        OnPropertyChanged(nameof(RefreshAuthTip));
         OnPropertyChanged(nameof(Elapsed));
         OnPropertyChanged(nameof(State));
         OnPropertyChanged(nameof(Error));
