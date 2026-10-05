@@ -1,6 +1,7 @@
 using System.Text;
 using Hoboman.Core.Environments;
 using Hoboman.Core.Requests;
+using Hoboman.Core.Text;
 
 namespace Hoboman.ViewModels;
 
@@ -10,8 +11,8 @@ public static class BodyLayout
 {
     public static string? Of(string body, BodyKind kind, bool useVariables = false) => kind switch
     {
-        BodyKind.Json => useVariables ? JsonOf(body) : ResponseDisplay.PrettyJsonOf(body),
-        BodyKind.Xml => useVariables ? XmlOf(body) : ResponseDisplay.PrettyXmlOf(body),
+        BodyKind.Json => useVariables ? JsonOf(body) : PrettyBody.Json(body),
+        BodyKind.Xml => useVariables ? XmlOf(body) : PrettyBody.Xml(body),
         _ => null,
     };
 
@@ -46,7 +47,7 @@ public static class BodyLayout
                 inText = !inText;
             }
         }
-        return ResponseDisplay.PrettyJsonOf(text.ToString()) is { } laidOut ? PutBack(laidOut, loose, StandIn) : null;
+        return PrettyBody.Json(text.ToString()) is { } laidOut ? PutBack(laidOut, loose, StandIn) : null;
     }
 
     // A variable can stand where XML takes only a name, such as <{{root}}>, so a name of its own stands in for each.
@@ -57,7 +58,7 @@ public static class BodyLayout
         string StandIn(int index) => $"{prefix}{index}e";
         var variables = new List<string>();
         var text = ApiEnvironment.WithVariablesAs(body, variable => StandIn(IndexOf(variables, variable)));
-        return ResponseDisplay.PrettyXmlOf(text) is { } laidOut ? PutBack(laidOut, variables, StandIn) : null;
+        return PrettyBody.Xml(text) is { } laidOut ? PutBack(laidOut, variables, StandIn) : null;
     }
 
     // The same variable gets the same stand-in, so <{{root}}> still ends with </{{root}}>.

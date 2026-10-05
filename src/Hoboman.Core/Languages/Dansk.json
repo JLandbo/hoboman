@@ -101,6 +101,8 @@
     "Fold.Elements": "{0} elementer",
     "Format.Json": "JSON",
     "Format.Xml": "XML",
+    "Format.Html": "HTML",
+    "Format.Browser": "Vis i browser",
     "Format.Raw": "Rå",
     "History.Delete": "Slet fra historikken",
     "History.DeleteFailed": "Kaldet kunne ikke slettes fra historikken",
@@ -162,6 +164,9 @@
     "Response.SaveFailed": "Svaret kunne ikke gemmes",
     "Response.Body": "Body",
     "Response.Headers": "Headers",
+    "Response.OnlyText": "Svaret er fra historikken, som kun gemmer teksten, så browseren kan ikke vise det.",
+    "Response.BrowserFailed": "Browseren kunne ikke starte.",
+    "Response.BrowserMissing": "Browseren kræver Microsoft Edge WebView2 Runtime, som ikke er installeret.",
     "Response.InvalidBase64": "Response-bodyen er ikke gyldig Base64.",
     "Response.InvalidBase64RequestBody": "Bodyen skal være gyldig JSON, når felter er valgt til Base64.",
     "Response.Failed": "Requesten kunne ikke sendes",
@@ -276,6 +281,11 @@
     "Workflow.ScriptFailed": "Scriptet kunne ikke oprettes",
     "Workflow.ShowScript": "Vis fil",
     "Workflow.Code": "Kode",
+    "Workflow.Output": "Output",
+    "Workflow.OutputJson": "JSON",
+    "Workflow.OutputHtml": "HTML",
+    "Workflow.OutputXml": "XML",
+    "Workflow.OutputText": "Tekst",
     "Workflow.NoUrl": "Ingen URL",
     "Workflow.MoveUp": "Flyt op",
     "Workflow.MoveDown": "Flyt ned",
@@ -316,6 +326,7 @@
     "WorkflowProblem.InvalidScript": "Syntaksfejl i scriptet: {0}",
     "WorkflowProblem.MixedStep": "Trinnet har mere end én af request, script og ventetid. Et trin kan kun være én af delene.",
     "WorkflowProblem.InvalidDelay": "Et vente-trin skal vente mellem 1 og {0} sekunder og kan ikke gemme noget.",
-    "WorkflowProblem.InvalidRetry": "Gentag virker kun på en request og skal have sti og værdi i par, gyldige stier, 1-{0} forsøg og 0-{1} sekunder imellem."
+    "WorkflowProblem.InvalidRetry": "Gentag virker kun på en request og skal have sti og værdi i par, gyldige stier, 1-{0} forsøg og 0-{1} sekunder imellem.",
+    "WorkflowProblem.InvalidOutput": "Kun et script-trin kan have et output."
   }
 }

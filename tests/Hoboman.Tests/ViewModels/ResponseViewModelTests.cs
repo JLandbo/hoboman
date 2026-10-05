@@ -15,6 +15,81 @@ public sealed class ResponseViewModelTests
     }
 
     [Fact]
+    public async Task ShowAsync_WhenTheResponseIsAPdf_ThenShowsItsBytesInTheBrowser()
+    {
+        // Arrange
+        using var harness = new Harness();
+
+        // Act
+        var result = await ShowAsync(harness, Pdf(_file));
+
+        // Assert
+        Assert.Equal((BodyFormat.Browser, _file, "application/pdf"), (result.BodyFormat, result.Page!.Bytes, result.Page.ContentType));
+    }
+
+    [Fact]
+    public async Task ShowAsync_WhenAFileHasOnlyItsText_ThenTellsTheBrowserCannotShowIt()
+    {
+        // Arrange
+        using var harness = new Harness();
+
+        // Act
+        var result = await ShowAsync(harness, Pdf(null));
+
+        // Assert
+        Assert.Equal((null, harness.Translator.Of("Response.OnlyText")), (result.Page, result.ResponseBodyProblem));
+    }
+
+    [Fact]
+    public async Task BodyFormat_WhenTheBrowserShowsInvalidBase64_ThenTellsIt()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var result = await ShowAsync(harness, new(200, "OK", 1, 3, [new("Content-Type", "text/plain")], "ikke base64!"));
+        result.Base64.DecodesWholeResponse = true;
+
+        // Act
+        result.BodyFormat = BodyFormat.Browser;
+        await result.Formatting;
+
+        // Assert
+        Assert.Equal((null, harness.Translator.Of("Response.InvalidBase64")), (result.Page, result.ResponseBodyProblem));
+    }
+
+    [Fact]
+    public async Task BodyFormat_WhenAnotherThanTheBrowserIsChosen_ThenHasNoPage()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var result = await ShowAsync(harness, Pdf(_file));
+
+        // Act
+        result.BodyFormat = BodyFormat.Raw;
+        await result.Formatting;
+
+        // Assert
+        Assert.Null(result.Page);
+    }
+
+    [Fact]
+    public async Task BodyFormat_WhenTheBrowserShowsAFileSentAsBase64_ThenShowsItDecodedWithoutAProblem()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var base64 = Convert.ToBase64String(_file);
+        var result = await ShowAsync(harness, new(200, "OK", 1, base64.Length, [new("Content-Type", "text/plain")], base64));
+        result.Base64.DecodesWholeResponse = true;
+
+        // Act
+        result.BodyFormat = BodyFormat.Browser;
+        await result.Formatting;
+
+        // Assert
+        Assert.Equal(_file, result.Page!.Bytes);
+        Assert.Null(result.ResponseBodyProblem);
+    }
+
+    [Fact]
     public async Task SaveAsAsync_WhenAPathIsChosen_ThenWritesTheBodyAsTheServerSentIt()
     {
         // Arrange

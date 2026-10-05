@@ -155,7 +155,7 @@ public sealed class WorkflowRunner(IRequestSender sender, AppFolder folder, Time
             return TokenRetry.SendAsync(() => sender.SendAsync(request, auth, used, cancellationToken), () => auth, fetchToken);
         }
 
-        // A script answers like a call, so its output is saved, shown and logged as a body without anything of its own.
+        // A script answers like a call, so its output is saved, shown and logged as a body with only the type of its output.
         // It runs off the caller's thread, as it can take a while and the caller may be the UI thread.
         // A script that returns nothing fails only when the step has something to save.
         async Task<ApiResponse> RunScriptAsync(CheckedStep step)
@@ -170,10 +170,11 @@ public sealed class WorkflowRunner(IRequestSender sender, AppFolder folder, Time
             {
                 all[name] = value;
             }
-            var output = await Task.Run(() => ScriptHost.Run(step.Step.Script!, step.Code!, all, cancellationToken), cancellationToken)
+            var kind = step.Step.Output ?? ScriptOutput.Json;
+            var output = await Task.Run(() => ScriptHost.Run(step.Step.Script!, step.Code!, all, kind, cancellationToken), cancellationToken)
                 ?? (step.Step.Saves is [] ? "" : throw new ScriptException($"{step.Step.Script} returned nothing to save."));
             var bytes = Encoding.UTF8.GetBytes(output);
-            return new(200, "OK", (long)Stopwatch.GetElapsedTime(scriptStarted).TotalMilliseconds, bytes.Length, [], output) { Bytes = bytes };
+            return new(200, "OK", (long)Stopwatch.GetElapsedTime(scriptStarted).TotalMilliseconds, bytes.Length, [new("Content-Type", kind.ContentType)], output) { Bytes = bytes };
         }
 
         // The log is written first, so it holds the event even when telling of it fails.

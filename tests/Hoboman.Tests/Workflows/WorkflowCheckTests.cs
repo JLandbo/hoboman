@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Hoboman.Core.Scripts;
 
 namespace Hoboman.Tests.Workflows;
 
@@ -101,6 +102,16 @@ public sealed class WorkflowCheckTests
 
         // Assert
         Assert.Equal([new(WorkflowProblemKind.InvalidDelay, 0, $"{seconds}")], checkedWorkflow.Problems);
+    }
+
+    [Fact]
+    public void Check_WhenAStepThatIsNoScriptHasAnOutput_ThenReportsIt()
+    {
+        // Act
+        var checkedWorkflow = Check(OrderSync(new WorkflowStep { DelaySeconds = 1, Output = ScriptOutput.Html }));
+
+        // Assert
+        Assert.Equal([new(WorkflowProblemKind.InvalidOutput, 0, "Html")], checkedWorkflow.Problems);
     }
 
     [Theory]

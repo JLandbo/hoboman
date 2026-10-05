@@ -107,7 +107,8 @@ public sealed class RunValues
                 ? JsonSerializer.SerializeToElement(found.Value)
                 : null;
         }
-        if (body.Value is null)
+        // "$" is the text as it is when the answer says it is no JSON, like pm.response.text() in Postman, while a path still reads JSON sent as another type.
+        if (from == JsonPath.Root && !MayBeJson(response) || body.Value is null)
         {
             return from == JsonPath.Root ? JsonSerializer.SerializeToElement(response.Body) : null;
         }
@@ -125,6 +126,8 @@ public sealed class RunValues
             return null;
         }
     }
+
+    static bool MayBeJson(ApiResponse response) => response.MediaType is not { } type || type.Is("json");
 
     static JsonDocument? DocumentOf(string text)
     {

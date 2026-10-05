@@ -62,6 +62,11 @@ public sealed partial class WorkflowCheck(WorkflowLibrary workflows, SecretStore
             {
                 problems.Add(new(WorkflowProblemKind.MixedStep, index, ""));
             }
+            // Only a script returns an output of its own.
+            if (step.Output is not null && step.Kind != StepKind.Script)
+            {
+                problems.Add(new(WorkflowProblemKind.InvalidOutput, index, step.Output.Value.ToString()));
+            }
             if (step.Retry is { } retry && !IsValid(retry, step.Kind))
             {
                 problems.Add(new(WorkflowProblemKind.InvalidRetry, index, retry.Until ?? ""));

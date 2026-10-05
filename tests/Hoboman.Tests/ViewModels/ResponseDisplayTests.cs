@@ -132,14 +132,112 @@ public sealed class ResponseDisplayTests
         Assert.Equal(BodyFormat.Raw, format);
     }
 
-    [Fact]
-    public void FormatOf_WhenTheContentTypeIsHtml_ThenChoosesRaw()
+    [Theory]
+    [InlineData("application/problem+json", BodyFormat.Json)]
+    [InlineData("application/x-ndjson", BodyFormat.Raw)]
+    [InlineData("application/atom+xml", BodyFormat.Xml)]
+    [InlineData("image/svg+xml", BodyFormat.Xml)]
+    public void FormatOf_WhenTheTypeHasASuffix_ThenChoosesByIt(string type, BodyFormat expected)
     {
         // Act
-        var format = ResponseDisplay.FormatOf(new ApiResponse(200, "OK", 5, 7, [new("Content-Type", "text/html")], "<p>hej</p>"));
+        var format = ResponseDisplay.FormatOf(new ApiResponse(200, "OK", 5, 7, [new("Content-Type", type)], ""));
 
         // Assert
-        Assert.Equal(BodyFormat.Raw, format);
+        Assert.Equal(expected, format);
+    }
+
+    [Theory]
+    [InlineData("image/png")]
+    [InlineData("application/pdf")]
+    public void FormatOf_WhenTheResponseIsAnImageOrAPdf_ThenChoosesTheBrowser(string type)
+    {
+        // Act
+        var format = ResponseDisplay.FormatOf(new ApiResponse(200, "OK", 5, 7, [new("Content-Type", type)], ""));
+
+        // Assert
+        Assert.Equal(BodyFormat.Browser, format);
+    }
+
+    [Theory]
+    [InlineData("text/html; charset=utf-8")]
+    [InlineData("application/xhtml+xml")]
+    public void FormatOf_WhenTheContentTypeIsHtml_ThenChoosesHtml(string type)
+    {
+        // Act
+        var format = ResponseDisplay.FormatOf(new ApiResponse(200, "OK", 5, 7, [new("Content-Type", type)], "<p>hej</p>"));
+
+        // Assert
+        Assert.Equal(BodyFormat.Html, format);
+    }
+
+    [Fact]
+    public void Format_WhenTheBodyIsHtml_ThenPutsEachTagOnALineAndTextInItsElement()
+    {
+        // Act
+        var body = ResponseDisplay.Format("""<!DOCTYPE html><html><body class="a>b"><h1>Faktura</h1><br><p>a < b</p></body></html>""", BodyFormat.Html).Body;
+
+        // Assert
+        Assert.Equal(string.Join(Environment.NewLine, "<!DOCTYPE html>", "<html>", "\t<body class=\"a>b\">", "\t\t<h1>Faktura</h1>", "\t\t<br>", "\t\t<p>a < b</p>", "\t</body>", "</html>"), body);
+    }
+
+    [Fact]
+    public void Format_WhenHtmlHasAScript_ThenKeepsItsCodeAsItIs()
+    {
+        // Act
+        var body = ResponseDisplay.Format("<div><script>if (a<b) {\n  go();\n}</script></div>", BodyFormat.Html).Body;
+
+        // Assert
+        Assert.Equal($"<div>{Environment.NewLine}\t<script>if (a<b) {{\n  go();\n}}</script>{Environment.NewLine}</div>", body);
+    }
+
+    [Fact]
+    public void Format_WhenHtmlHasACommentAndSelfClosingTags_ThenKeepsEachWholeOnItsLine()
+    {
+        // Act
+        var body = ResponseDisplay.Format("<div><!-- a > b --><br/><x /><p>a</p></div>", BodyFormat.Html).Body;
+
+        // Assert
+        Assert.Equal(string.Join(Environment.NewLine, "<div>", "\t<!-- a > b -->", "\t<br/>", "\t<x />", "\t<p>a</p>", "</div>"), body);
+    }
+
+    [Fact]
+    public void Format_WhenHtmlHasAStyle_ThenKeepsItAsItIs()
+    {
+        // Act
+        var body = ResponseDisplay.Format("<head><style>td > p {\n  color: red;\n}</style></head>", BodyFormat.Html).Body;
+
+        // Assert
+        Assert.Equal($"<head>{Environment.NewLine}\t<style>td > p {{\n  color: red;\n}}</style>{Environment.NewLine}</head>", body);
+    }
+
+    [Fact]
+    public void Format_WhenAnHtmlElementIsNeverClosed_ThenItHoldsTheRest()
+    {
+        // Act
+        var body = ResponseDisplay.Format("<ul><li>a<li>b</ul><p>c</p>", BodyFormat.Html).Body;
+
+        // Assert
+        Assert.Equal(string.Join(Environment.NewLine, "<ul>", "\t<li>", "\t\ta", "\t\t<li>", "\t\t\tb", "</ul>", "<p>c</p>"), body);
+    }
+
+    [Fact]
+    public void Format_WhenTheBrowserShowsTheBody_ThenLaysOutNoText()
+    {
+        // Act
+        var body = ResponseDisplay.Format("%PDF-1.4", BodyFormat.Browser).Body;
+
+        // Assert
+        Assert.Empty(body);
+    }
+
+    [Fact]
+    public void Format_WhenTheBodyIsNoHtml_ThenShowsItAsItIs()
+    {
+        // Act
+        var (body, coloring) = ResponseDisplay.Format("\"<p>hej</p>\"", BodyFormat.Html);
+
+        // Assert
+        Assert.Equal(("\"<p>hej</p>\"", BodyFormat.Raw), (body, coloring));
     }
 
     [Fact]

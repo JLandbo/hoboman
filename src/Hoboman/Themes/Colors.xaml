@@ -29,14 +29,30 @@
     <SolidColorBrush x:Key="MethodDELETE" Color="#F79A8E" />
     <SolidColorBrush x:Key="MethodHEAD" Color="#6BDD9A" />
     <SolidColorBrush x:Key="MethodOPTIONS" Color="#F15EB0" />
-    <SolidColorBrush x:Key="JsonKey" Color="#9CDCFE" />
-    <SolidColorBrush x:Key="JsonString" Color="#CE9178" />
-    <SolidColorBrush x:Key="JsonNumber" Color="#B5CEA8" />
-    <SolidColorBrush x:Key="JsonLiteral" Color="#569CD6" />
-    <SolidColorBrush x:Key="XmlTag" Color="#569CD6" />
-    <SolidColorBrush x:Key="XmlAttribute" Color="#9CDCFE" />
-    <SolidColorBrush x:Key="XmlValue" Color="#CE9178" />
-    <SolidColorBrush x:Key="XmlComment" Color="#6A9955" />
+    <SolidColorBrush x:Key="Json.FieldName" Color="#9CDCFE" />
+    <SolidColorBrush x:Key="Json.String" Color="#CE9178" />
+    <SolidColorBrush x:Key="Json.Number" Color="#B5CEA8" />
+    <SolidColorBrush x:Key="Json.Bool" Color="#569CD6" />
+    <SolidColorBrush x:Key="Json.Null" Color="#569CD6" />
+    <SolidColorBrush x:Key="Json.Punctuation" Color="#F2F2F2" />
+    <SolidColorBrush x:Key="XML.XmlTag" Color="#569CD6" />
+    <SolidColorBrush x:Key="XML.XmlDeclaration" Color="#569CD6" />
+    <SolidColorBrush x:Key="XML.DocType" Color="#569CD6" />
+    <SolidColorBrush x:Key="XML.AttributeName" Color="#9CDCFE" />
+    <SolidColorBrush x:Key="XML.AttributeValue" Color="#CE9178" />
+    <SolidColorBrush x:Key="XML.CData" Color="#CE9178" />
+    <SolidColorBrush x:Key="XML.Entity" Color="#CE9178" />
+    <SolidColorBrush x:Key="XML.BrokenEntity" Color="#FF6B6B" />
+    <SolidColorBrush x:Key="XML.Comment" Color="#6A9955" />
+    <SolidColorBrush x:Key="JavaScript.Digits" Color="#B5CEA8" />
+    <SolidColorBrush x:Key="JavaScript.Comment" Color="#6A9955" />
+    <SolidColorBrush x:Key="JavaScript.String" Color="#CE9178" />
+    <SolidColorBrush x:Key="JavaScript.Character" Color="#CE9178" />
+    <SolidColorBrush x:Key="JavaScript.Regex" Color="#CE9178" />
+    <SolidColorBrush x:Key="JavaScript.JavaScriptKeyWords" Color="#569CD6" />
+    <SolidColorBrush x:Key="JavaScript.JavaScriptIntrinsics" Color="#9CDCFE" />
+    <SolidColorBrush x:Key="JavaScript.JavaScriptLiterals" Color="#569CD6" />
+    <SolidColorBrush x:Key="JavaScript.JavaScriptGlobalFunctions" Color="#9CDCFE" />
     <!-- Lighter shades the code draws with: the editor's selection, the tint of a line chosen for Base64, saved from or not decodable, and the badge and drop marks. -->
     <SolidColorBrush x:Key="Selection" Color="#66F5C542" />
     <SolidColorBrush x:Key="AttentionTint" Color="#12F5C542" />

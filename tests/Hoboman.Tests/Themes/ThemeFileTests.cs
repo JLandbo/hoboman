@@ -36,10 +36,11 @@ public sealed partial class ThemeFileTests
     [GeneratedRegex(@"""#[0-9A-Fa-f]{3,8}""")]
     private static partial Regex HexColour();
 
-    [GeneratedRegex(@"x:Key=""(\w+)""")]
+    [GeneratedRegex(@"x:Key=""([\w.]+)""")]
     private static partial Regex Key();
 
     // Transparent is no colour of the theme, but the absence of one. A call, as on a theme's own colours, and the file Colors.xaml are none either.
-    [GeneratedRegex(@"Color\.From(?:Argb|Rgb|ScRgb)|(?:Colors|Brushes)\.(?!Transparent\b)[A-Z]\w*\b(?!\()")]
+    // A System.Drawing colour is only a theme's colour handed to WebView2, which takes no other kind.
+    [GeneratedRegex(@"(?<!Drawing\.)Color\.From(?:Argb|Rgb|ScRgb)|(?:Colors|Brushes)\.(?!Transparent\b)[A-Z]\w*\b(?!\()")]
     private static partial Regex MadeColour();
 }

@@ -76,7 +76,8 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
         var check = new WorkflowCheck(Workflows, Secrets, NullLogger<WorkflowCheck>.Instance);
         var workflowRunner = new WorkflowRunner(sender, Folder, TimeProvider.System, NullLogger<WorkflowRunner>.Instance);
         var tokens = new UnaskedTokens(oauth ?? new(_ => throw new OAuthException(OAuthProblem.Denied, "access_denied")), Secrets, NullLogger<UnaskedTokens>.Instance);
-        return new CliApplication(Library, Settings, Environments, runner, Workflows, check, workflowRunner, tokens, new(_output, _error), new(input ?? TextReader.Null, input is not null))
+        return new CliApplication(Library, Settings, Environments, runner, Workflows, check, workflowRunner, tokens, new(_output, _error), new(input ?? TextReader.Null, input is not null),
+            new(Library, Secrets, Folder, NullLogger<RequestDeletion>.Instance), new(Workflows, Secrets, NullLogger<WorkflowDeletion>.Instance))
             .RunAsync(arguments, cancellationToken ?? Cancellation);
     }
 
@@ -890,5 +891,206 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
 
         // Assert
         Assert.Equal((1, "Cancelled"), (exitCode, Event("run.finished").GetProperty("outcome").GetString()));
+    }
+
+    JsonElement Result => JsonSerializer.Deserialize<JsonElement>(Output);
+
+    [Fact]
+    public async Task RunAsync_WhenANewRequestIsMade_ThenItIsInTheFolderAndInheritsItsAuth()
+    {
+        // Arrange
+        await Library.FolderAtAsync("Shop", Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["new", "request", "Shop", "GET users/{id}", "--url", "https://dev.local/users", "--json", "{}"]);
+
+        // Assert
+        var request = await Library.LoadAtAsync("Shop/GET users/{id}", Cancellation);
+        Assert.Equal((0, "https://dev.local/users", AuthKind.Inherit, BodyKind.Json), (exitCode, request!.Url, request.Auth.Kind, request.BodyKind));
+        Assert.Equal(($"{request.Id}", "Shop/GET users/{id}"), (Result.GetProperty("id").GetString(), Result.GetProperty("path").GetString()));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenANewFolderIsMadeAtTheTop_ThenListsIt()
+    {
+        // Act
+        await RunAsync(["new", "folder", ".", "Shop"]);
+        var id = Result.GetProperty("id").GetString();
+        _output.SetLength(0);
+        await RunAsync(["list", "folders"]);
+
+        // Assert
+        Assert.Equal($"{id}\tShop{Environment.NewLine}", Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenANewWorkflowIsMade_ThenItHasTheName()
+    {
+        // Act
+        await RunAsync(["new", "workflow", "Ordre: sync"]);
+
+        // Assert
+        Assert.Equal("Ordre: sync", (await Workflows.LoadAsync(Guid.Parse(Result.GetProperty("id").GetString()!), Cancellation))!.Name);
+    }
+
+    [Theory]
+    [InlineData("new", "folder", ".", "  ")]
+    [InlineData("new", "folder", "Missing", "Shop")]
+    public async Task RunAsync_WhenTheNameOrFolderIsWrong_ThenMakesNothing(params string[] arguments)
+    {
+        // Act
+        var exitCode = await RunAsync(arguments);
+
+        // Assert
+        Assert.Equal(2, exitCode);
+        Assert.Empty((await Library.LoadAllAsync(Cancellation)).Folders);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenARequestIsRenamed_ThenHasTheNewName()
+    {
+        // Arrange
+        await Library.SaveAtAsync("Shop/Ping", Request, Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["rename", "shop/ping", "Pong"]);
+
+        // Assert
+        Assert.Equal(0, exitCode);
+        Assert.Equal(["Shop/Pong"], await Library.PathsAsync(Cancellation));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAFolderIsRenamed_ThenHasTheNewName()
+    {
+        // Arrange
+        await Library.FolderAtAsync("Shop/Ping", Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["rename", "shop/ping", "Pong"]);
+
+        // Assert
+        Assert.Equal((0, true), (exitCode, await Library.LoadFolderAtAsync("Shop/Pong", Cancellation) is not null));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAWorkflowIsRenamed_ThenHasTheNewName()
+    {
+        // Arrange
+        await Workflows.SaveAsync("Ping", new() { Id = Guid.NewGuid() }, Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["rename", "ping", "Pong"]);
+
+        // Assert
+        Assert.Equal((0, "Pong"), (exitCode, (await Workflows.ListAsync(Cancellation)).Single().Name));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAnUnreadableRequestIsRenamed_ThenTellsWhereItsFileIsWrong()
+    {
+        // Arrange
+        var id = Guid.NewGuid();
+        Directory.CreateDirectory(Folder.Requests);
+        await File.WriteAllTextAsync(Path.Combine(Folder.Requests, $"{id}.json"), "{", Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["rename", $"{id}", "Pong"]);
+
+        // Assert
+        Assert.Equal((2, "File is not valid."), (exitCode, Problem));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTwoHaveThePath_ThenAsksForTheIdAndChangesNothing()
+    {
+        // Arrange
+        await Library.SaveAtAsync("Ping", Request, Cancellation);
+        await Library.SaveAtAsync("Ping", ApiRequest.New(), Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["rename", "Ping", "Pong"]);
+
+        // Assert
+        Assert.Equal((2, "Target is ambiguous. Use its id."), (exitCode, Problem));
+        Assert.Equal(["Ping", "Ping"], await Library.PathsAsync(Cancellation));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenARequestIsMoved_ThenItIsInTheFolder()
+    {
+        // Arrange
+        var request = await Library.SaveAtAsync("Ping", Request, Cancellation);
+        await Library.FolderAtAsync("Shop/Orders", Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["move", $"{request.Id}", "shop/orders"]);
+
+        // Assert
+        Assert.Equal((0, "Shop/Orders/Ping"), (exitCode, Result.GetProperty("path").GetString()));
+        Assert.Equal(["Shop/Orders/Ping"], await Library.PathsAsync(Cancellation));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAFolderIsMovedIntoItself_ThenFailsAndMovesNothing()
+    {
+        // Arrange
+        await Library.FolderAtAsync("Shop/Orders", Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["move", "Shop", "Shop/Orders"]);
+
+        // Assert
+        Assert.Equal((2, "A folder cannot be moved into itself."), (exitCode, Problem));
+        Assert.Null((await Library.LoadFolderAtAsync("Shop", Cancellation))!.ParentId);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenDeletingWithoutYes_ThenTellsWhatWouldGoAndDeletesNothing()
+    {
+        // Arrange
+        await Library.SaveAtAsync("Shop/Orders/Ping", Request, Cancellation);
+        await Library.SaveAtAsync("Shop/Pong", ApiRequest.New(), Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["delete", "Shop"]);
+
+        // Assert
+        using var error = JsonDocument.Parse(Error);
+        Assert.Equal((2, 2, 2), (exitCode, error.RootElement.GetProperty("folders").GetInt32(), error.RootElement.GetProperty("requests").GetInt32()));
+        Assert.Equal(2, (await Library.PathsAsync(Cancellation)).Count);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAFolderIsDeletedWithYes_ThenDeletesItsRequestsAndTheirSecrets()
+    {
+        // Arrange
+        var request = await Library.SaveAtAsync("Shop/Orders/Ping", Request, Cancellation);
+        await Secrets.SaveAsync(request.Id, SecretKind.Token, "token", Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["delete", "Shop", "--yes"]);
+
+        // Assert
+        Assert.Equal(0, exitCode);
+        Assert.Empty((await Library.LoadAllAsync(Cancellation)).Folders);
+        Assert.Null(await Secrets.OfAsync(request.Id, SecretKind.Token, Cancellation));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAWorkflowIsDeletedWithYes_ThenForgetsTheSecretsOfItsSteps()
+    {
+        // Arrange
+        var step = Guid.NewGuid();
+        var workflow = await Workflows.SaveAsync("Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Call with { Id = step } }] }, Cancellation);
+        await Secrets.SaveAsync(step, SecretKind.Token, "token", Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["delete", $"{workflow.Id}", "--yes"]);
+
+        // Assert
+        Assert.Equal(0, exitCode);
+        Assert.Empty(await Workflows.ListAsync(Cancellation));
+        Assert.Null(await Secrets.OfAsync(step, SecretKind.Token, Cancellation));
     }
 }

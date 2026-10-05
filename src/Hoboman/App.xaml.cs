@@ -13,6 +13,7 @@ using Hoboman.Core.Sending;
 using Hoboman.Core.Settings;
 using Hoboman.Core.Storage;
 using Hoboman.Core.Workflows;
+using Hoboman.Controls;
 using Hoboman.Desktop;
 using Hoboman.Services;
 using Hoboman.Themes;
@@ -33,6 +34,8 @@ public partial class App : Application
     {
         base.OnStartup(e);
         _services = Services(new AppFolder(AppContext.BaseDirectory)).BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true });
+        // The browser's cache and cookies are no data of the user's to keep next to the app, so they go with the user's own.
+        BrowserView.DataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), typeof(App).Assembly.GetName().Name!, "WebView2");
         var logger = _services.GetRequiredService<ILogger<App>>();
         var translator = _services.GetRequiredService<Translator>();
         AppDomain.CurrentDomain.UnhandledException += (_, args) => logger.LogCritical(args.ExceptionObject as Exception, "Unhandled exception");
@@ -121,6 +124,7 @@ public partial class App : Application
         services.AddSingleton<HistoryCleanup>();
         services.AddSingleton<RequestRunner>();
         services.AddSingleton<WorkflowLibrary>();
+        services.AddSingleton<WorkflowDeletion>();
         services.AddSingleton<WorkflowCheck>();
         services.AddSingleton<WorkflowRunner>();
         services.AddSingleton<IBrowser, ShellBrowser>();

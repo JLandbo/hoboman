@@ -12,7 +12,7 @@ Hoboman er et skrivebordsværktøj til at bygge, sende og undersøge API-kald. R
 
 ## Det får du
 
-- **Request og svar i separate paneler** – panelerne ligger over hinanden med en justerbar splitter. Brug HTTP-metoder, query-parametre, headers og body som JSON, XML, tekst eller ingen body. Svaret viser status, svartid, størrelse, headers og indhold, og **Gem** i svarets statuslinje gemmer det, præcis som serveren sendte det, som en fil, fx en PDF.
+- **Request og svar i separate paneler** – panelerne ligger over hinanden med en justerbar splitter. Brug HTTP-metoder, query-parametre, headers og body som JSON, XML, tekst eller ingen body. Svaret viser status, svartid, størrelse, headers og indhold, og **Gem** i svarets statuslinje gemmer det, præcis som serveren sendte det, som en fil, fx en PDF. Billeder, PDF-filer og HTML kan vises i en indbygget browser.
 - **Samlinger med undermapper** – opret requests direkte i en mappe, flyt requests og mapper med drag-and-drop, og gem deres rækkefølge.
 - **Faner og drafts** – et draft, du opretter i en mappe, står i samlingerne med en prik, indtil det er gemt. Omdøb faner med dobbeltklik, og træk dem i den ønskede rækkefølge. Gemte faner og deres rækkefølge gendannes ved næste start.
 - **Historik** – de 100 seneste kald fra appen og CLI'et, grupperet pr. dag. Et kald åbnes i en fane, så du kan sende det igen. Gamle kald og kørsler kan slettes efter et antal dage.
@@ -22,8 +22,8 @@ Hoboman er et skrivebordsværktøj til at bygge, sende og undersøge API-kald. R
 - **OAuth uden omveje** – client credentials eller authorization code med PKCE og browser-login. Hent et nyt token med refresh-knappen ved Auth; ved client credentials hentes det automatisk, når det mangler eller er udløbet. Tokens holdes adskilt pr. miljø og følger miljøet, også når det omdøbes.
 - **Base64 efter dit valg** – markér bestemte JSON-felter til encoding ved afsendelse eller decoding i svaret. Hele bodyen kan også vælges.
 - **Workflows** – kæd requests, scripts og ventetider sammen, giv værdier fra ét svar videre til de næste trin, og kør det hele under **Workflows** i appen eller med `hoboman-cli run`. Hver kørsel skrives som JSON-linjer, som et script eller en AI kan følge.
-- **Kommandolinje og AI** – send gemte og direkte requests og kør workflows fra scripts og AI-agenter med `hoboman-cli.exe`. Se [CLI.md](CLI.md) og [AI-PROMPT.md](AI-PROMPT.md).
-- **Små værktøjer i hverdagen** – JSON/XML-formatering, sammenfoldning af JSON samt stringify/parse og Base64 af teksten i udklipsholderen.
+- **Kommandolinje og AI** – send gemte og direkte requests, kør workflows og opret, omdøb, flyt og slet requests, mapper og workflows fra scripts og AI-agenter med `hoboman-cli.exe`. Se [CLI.md](CLI.md) og [AI-PROMPT.md](AI-PROMPT.md).
+- **Små værktøjer i hverdagen** – formatering og sammenfoldning af JSON, XML og HTML samt stringify/parse og Base64 af teksten i udklipsholderen.
 - **Indstillinger og temaer** – dansk eller engelsk brugerflade, temaet Sort og gul eller dine egne temaer som filer, og **Ignorér certifikatfejl**.
 
 ## Kom hurtigt i gang
@@ -33,6 +33,7 @@ Hoboman er et skrivebordsværktøj til at bygge, sende og undersøge API-kald. R
 - Windows – appen bruger WPF og Windows' beskyttelse af hemmeligheder.
 - [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) til at bygge, teste og køre fra kildekoden.
 - En standardbrowser, hvis du bruger OAuth authorization code.
+- Microsoft Edge WebView2 Runtime til at vise svar i browseren. Den følger med Windows 11.
 
 Appen publiceres som én self-contained exe med .NET-runtime inkluderet, så den færdige app kræver ikke en separat installation af .NET. SDK'et kræves stadig til at bygge appen, også via `install.ps1`. Programmet skal ligge i en mappe, hvor din bruger kan skrive, fordi det gemmer data ved siden af sig selv.
 
@@ -64,7 +65,7 @@ Scriptet publicerer appen og `hoboman-cli.exe` til `publish\`, kopierer temafile
 3. **Vælg metode og URL.** Metoden er GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS eller en, du selv skriver under **Skriv egen metode…**. Skriv URL'en med variabler, fx `{{baseUrl}}/carts/add`. Variabler står i gult.
 4. **Udfyld Params, Headers, Body og Auth.** Fanerne viser, hvor mange params og headers der er slået til. Bodyen er **Ingen**, **JSON**, **XML** eller **Tekst**, og **Formatér** (Shift+Alt+F) formaterer JSON og XML.
 5. **Send** med **Send** eller Ctrl+Enter. Mens kaldet er i gang, kan du stoppe det med **Annullér**.
-6. **Læs svaret** under **Svar**: **Body** eller **Headers**, vist som **JSON**, **XML** eller **Rå** efter svarets Content-Type. Til højre står **Hele bodyen er Base64**, status, tid, størrelse og **Gem**, der gemmer svaret som fil.
+6. **Læs svaret** under **Svar**: **Body** eller **Headers**, vist som **JSON**, **XML**, **HTML**, **Rå** eller i browseren (globussen) efter svarets Content-Type. Til højre står **Hele bodyen er Base64**, status, tid, størrelse og **Gem**, der gemmer svaret som fil.
 7. **Gem requesten** med **Gem** eller Ctrl+S. En ny fane beder om et navn og gemmes øverst i samlingerne; et draft gemmes i sin mappe.
 
 ![En POST-request med variabler i URL og body og svaret 201 Created](docs/images/request.png)
@@ -88,6 +89,12 @@ Variabler kan bruges i både navne og værdier for parametre og headers. Ukendte
 ### Historik
 
 **Historik** viser de 100 seneste kald, grupperet pr. dag, med status eller **Fejl**, og **CLI** ved kald fra `hoboman-cli`. Et klik åbner kaldet i en fane med titlen i kursiv. Fanen erstattes af det næste kald, du åbner fra historikken, medmindre du fastgør den (**Hold fanen åben**), retter i den eller sender den. **✕** sletter kaldet fra historikken. Et svar fra historikken kan ikke gemmes som fil, for historikken har kun teksten.
+
+### Svar i browseren
+
+Globussen til højre for **Rå** viser svaret i en indbygget Edge-browser (WebView2), så billeder, PDF-filer og HTML ses, som de ville i en browser. Billeder og PDF-filer vises der af sig selv; alt andet, også HTML, kun når du vælger globussen. En SVG vises som XML, da den er tekst, og kan vises i browseren med globussen. Med **Hele bodyen er Base64** vises det decodede, og browseren finder selv ud af, hvad det er. Svar, som browseren ikke kan vise, fx CSV eller en SVG med forkert Content-Type, vises som HTML, og **Rå** viser dem, som de er. Et billede eller en PDF fra historikken kan ikke vises i browseren, da historikken kun gemmer teksten.
+
+Svaret må køre sine scripts og hente billeder, scripts og fonte fra nettet. Den, der har lavet svaret, kan derfor se, at du har åbnet det. Siden kan ikke forlade svaret: links, redirects og scripts, der skifter side, stoppes, og der åbnes ingen nye vinduer. Der gemmes heller intet i din Downloads-mappe, så PDF-viserens egen gem-knap virker ikke; brug **Gem** i statuslinjen. Hvert svar får sin egen adresse, så cookies og localStorage ikke deles mellem svar. Svaret kan ikke bede om kamera, mikrofon, position eller notifikationer, der vises ingen login-dialoger for det, det henter, og formularer udfyldes ikke automatisk.
 
 ### Base64 og udklipsholder
 
@@ -148,7 +155,7 @@ Et workflow er en række trin, som kører i rækkefølge. Hvert trin sender en r
 
 ![Workflowet Eksempel efter en kørsel med trin 5 valgt](docs/images/workflow.png)
 
-Hvert trin i listen viser metoden (eller **JS** og **VENT**), navnet, status (**OK** for et script) og tid og under det de navne, trinnet bruger → dem, det gemmer, i grønt. Under svaret står **Gemt** med de gemte værdier, og linjen, der blev gemt fra, har et grønt **i**.
+Hvert trin i listen viser metoden (eller **JS** og **VENT**), navnet, status (**OK** for et script) og tid og under det de navne, trinnet bruger → dem, det gemmer, i grønt. Under svaret står **Gemt** med de gemte værdier, og linjen, der blev gemt fra, har et grønt **i**. Når kørslen er færdig, vælges det sidste trin, der kørte, også når det fejlede.
 
 ### Script-trin
 
@@ -156,11 +163,15 @@ Hvert trin i listen viser metoden (eller **JS** og **VENT**), navnet, status (**
 
 ![Script-trinnet Byg ny kurv med koden og det, det returnerede](docs/images/workflow-script.png)
 
+**Output** over koden siger, hvad scriptet returnerer: **JSON**, **HTML**, **XML** eller **Tekst**. Ved JSON bliver det returnerede til JSON. Ved de andre returnerer scriptet en tekst, som bliver trinnets svar, som den er, og svaret vises som HTML, XML eller Rå.
+
+![Script-trinnet Formatér HTML med Output sat til HTML og den formaterede HTML i svaret](docs/images/workflow-script-html.png)
+
 ### Detaljer
 
 - Nye request-trin bruger workflowets auth med **Arv fra workflow** og kan altid få deres egen i stedet, fx til et andet API. Refresh-knappen ved Auth på workflowet og på et trin henter et nyt OAuth-token; på et trin, der arver, hentes workflowets. `{{variabler}}` i OAuth-felterne kommer kun fra miljøet.
 - **Brug environment-variabler i body** er slået til for nye trin, så `{{navn}}` også virker i bodyen.
-- **Gemmer** kan gemme fra `$.sti` i JSON-svaret, `$` for hele bodyen, `header:Navn`, `status` eller en fast JSON-værdi som `"tekst"` eller `1`. Et trin gemmer alle sine værdier eller ingen.
+- **Gemmer** kan gemme fra `$.sti` i JSON-svaret, `$` for hele bodyen (som tekst, når svaret ikke er JSON), `header:Navn`, `status` eller en fast JSON-værdi som `"tekst"` eller `1`. Et trin gemmer alle sine værdier eller ingen.
 - **Gentag indtil svaret er klar** på et request-trin sender det igen, til svaret er 2xx og har det, trinnet gemmer, og, hvis du vil, til en værdi under **Klar når**, fx `$.result.status`, er den, du venter på. Med **Stop hvis** fejler trinnet med det samme, når en værdi betyder fejl, som `failed`. Du vælger 1-100 forsøg og 0-300 sekunder imellem.
 - **+ Vent** venter 1-300 sekunder, fx mens et API laver noget færdigt i baggrunden.
 - **Kør** tjekker først, at alle `{{navne}}` har en værdi, og viser ellers **Workflowet kan ikke køre** med de trin, der er noget galt med. I en body bliver navne, som hverken workflowet eller miljøet har, stående som skrevet, så fx en Handlebars-template kan bruge sine egne `{{navne}}`. Workflowets egne navne vinder over miljøets.
@@ -173,7 +184,7 @@ Tandhjulet nederst i sidebaren åbner **Indstillinger** med **Sprog**, **Tema**,
 
 **Slet historik efter … dage** sletter kald i `history\` og workflow-kørsler i `runs\`, der er ældre end det antal dage, når Hoboman starter. Sletningen sker i baggrunden. Et tomt felt betyder, at intet slettes.
 
-Sort og gul er indbygget. Hver fil `themes\<navn>.json` er et tema med filens navn og holder `{"colors": {"Navn": "#AARRGGBB"}}` med navnene fra `src\Hoboman\Themes\Colors.xaml`; `#RRGGBB` virker også, og farver, filen udelader, er standardtemaets. Mappeknappen åbner `themes\`, og temaerne læses igen, hver gang **Indstillinger** åbnes.
+Sort og gul er indbygget. Hver fil `themes\<navn>.json` er et tema med filens navn og holder `{"colors": {"Navn": "#AARRGGBB"}}` med navnene fra `src\Hoboman\Themes\Colors.xaml`; syntaksfarverne hedder som AvalonEdits farver med formatet foran, fx `Json.FieldName` og `XML.AttributeValue`. `#RRGGBB` virker også, og farver, filen udelader, er standardtemaets. Mappeknappen åbner `themes\`, og temaerne læses igen, hver gang **Indstillinger** åbnes.
 
 ## Sådan hænger det sammen
 
@@ -201,7 +212,7 @@ flowchart LR
     Workflows --> Sender
 ```
 
-`App.xaml.cs` registrerer afhængighederne med dependency injection. Views og viewmodels ligger i `Hoboman`, mens HTTP, OAuth, variabler, Base64 og filbaseret lagring ligger i `Hoboman.Core` uden WPF. `Hoboman.Cli` er et tyndt konsolprogram oven på den samme core.
+`App.xaml.cs` registrerer afhængighederne med dependency injection. Views og viewmodels ligger i `Hoboman`, mens HTTP, OAuth, variabler, Base64, formatering af bodies og filbaseret lagring ligger i `Hoboman.Core` uden WPF. `Hoboman.Cli` er et tyndt konsolprogram oven på den samme core.
 
 `RequestRunner` finder den gældende auth, sender kaldet gennem `HttpRequestSender` og gemmer resultatet i historikken. Mangler et token, som kan hentes uden login, henter den et nyt og sender én gang til. `AuthRefreshService` samordner tokenhentning, og `CollectionChanges` sørger for, at appens gemning, flytning og sletning ikke udføres oven i hinanden.
 
@@ -214,7 +225,7 @@ En filovervåger opdaterer appen, når `requests\`, `folders\`, `request-order.j
 ```text
 Hoboman/
 ├─ src/Hoboman/            WPF, viewmodels, editor og Windows-integrationer
-├─ src/Hoboman.Core/       HTTP, OAuth, secrets, variabler, Base64 og lagring
+├─ src/Hoboman.Core/       HTTP, OAuth, secrets, variabler, Base64, formatering og lagring
 ├─ src/Hoboman.Cli/        Kommandolinjeværktøjet hoboman-cli
 ├─ tests/Hoboman.Tests/    xUnit-tests af core, viewmodels og UI
 ├─ docs/images/            Screenshots til denne README
@@ -266,6 +277,7 @@ Data gemmes ved siden af den kørende app. Efter `install.ps1` er det i `publish
 | `runs\<workflow-id>\` | Én JSON-linjefil pr. kørsel fra appen eller CLI'et med events, svar og gemte værdier. Slettes som `history\` |
 | `logs\` | Appens daglige logfiler, `hoboman-ÅÅÅÅMMDD.log`. CLI'et logger ikke |
 | `themes\<navn>.json` | Ét tema pr. fil, se [Indstillinger og temaer](#indstillinger-og-temaer) |
+| `%LocalAppData%\Hoboman\WebView2\` | Browserens egne data, fx cookies og cache. Ligger hos brugeren og ikke ved siden af appen |
 
 Requests, mapper og workflows hedder deres id på disken, så omdøbning og flytning kun ændrer indholdet i én fil. Et id har 36 tegn med bindestreger, fx `3f2c9a1e-7b4d-4c8a-9e2f-5d6b7a8c9d0e`, og er ikke kun nuller. Fil- eller mappenavnet vinder over et `id` i filen, og en fil eller mappe, hvis navn ikke er et id, fx en kopi lavet i Stifinder, springes over.
 

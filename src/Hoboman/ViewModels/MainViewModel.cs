@@ -746,14 +746,11 @@ public sealed class MainViewModel(
         }
         try
         {
-            // The steps' secrets go with the workflow, but only when it can be read, so they are known.
-            var owners = await StepIdsOfAsync(item.Id);
-            await workflowServices.Library.DeleteAsync(item.Id, CancellationToken.None);
+            await workflowServices.Deletion.DeleteAsync(item.Id, CancellationToken.None);
             if (Workflow is { } open && open.Id == item.Id)
             {
                 await CloseWorkflowAsync();
             }
-            await workflowServices.ForgetSecretsAsync(owners);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
@@ -761,19 +758,6 @@ public sealed class MainViewModel(
             dialogs.Tell(translator.Of("Workflow.DeleteFailed"), translator.DetailsOf(exception));
         }
         await WorkflowsChangedAsync();
-    }
-
-    async Task<IReadOnlyList<Guid>> StepIdsOfAsync(Guid id)
-    {
-        try
-        {
-            return await workflowServices.Library.LoadAsync(id, CancellationToken.None) is { } workflow ? [.. WorkflowLibrary.SecretOwnersOf(workflow)] : [];
-        }
-        catch (Exception exception) when (FileProblem.Is(exception))
-        {
-            logger.LogWarning(exception, "Could not read the workflow {Id}, so its secrets are kept", id);
-            return [];
-        }
     }
 
     async Task ReloadWorkflowsAsync()

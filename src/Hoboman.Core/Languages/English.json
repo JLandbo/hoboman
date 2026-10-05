@@ -101,6 +101,8 @@
     "Fold.Elements": "{0} items",
     "Format.Json": "JSON",
     "Format.Xml": "XML",
+    "Format.Html": "HTML",
+    "Format.Browser": "Show in browser",
     "Format.Raw": "Raw",
     "History.Delete": "Delete from the history",
     "History.DeleteFailed": "The call could not be deleted from the history",
@@ -162,6 +164,9 @@
     "Response.SaveFailed": "The response could not be saved",
     "Response.Body": "Body",
     "Response.Headers": "Headers",
+    "Response.OnlyText": "The response is from the history, which keeps only its text, so the browser cannot show it.",
+    "Response.BrowserFailed": "The browser could not start.",
+    "Response.BrowserMissing": "The browser needs the Microsoft Edge WebView2 Runtime, which is not installed.",
     "Response.InvalidBase64": "The response body is not valid Base64.",
     "Response.InvalidBase64RequestBody": "The body must be valid JSON when properties are chosen for Base64.",
     "Response.Failed": "The request could not be sent",
@@ -276,6 +281,11 @@
     "Workflow.ScriptFailed": "The script could not be created",
     "Workflow.ShowScript": "Show file",
     "Workflow.Code": "Code",
+    "Workflow.Output": "Output",
+    "Workflow.OutputJson": "JSON",
+    "Workflow.OutputHtml": "HTML",
+    "Workflow.OutputXml": "XML",
+    "Workflow.OutputText": "Text",
     "Workflow.NoUrl": "No URL",
     "Workflow.MoveUp": "Move up",
     "Workflow.MoveDown": "Move down",
@@ -316,6 +326,7 @@
     "WorkflowProblem.InvalidScript": "Syntax error in the script: {0}",
     "WorkflowProblem.MixedStep": "The step has more than one of a request, a script and a wait. A step can only be one of them.",
     "WorkflowProblem.InvalidDelay": "A wait step must wait between 1 and {0} seconds and cannot save anything.",
-    "WorkflowProblem.InvalidRetry": "Retry works only on a request and needs paths and values in pairs, valid paths, 1-{0} attempts and 0-{1} seconds between."
+    "WorkflowProblem.InvalidRetry": "Retry works only on a request and needs paths and values in pairs, valid paths, 1-{0} attempts and 0-{1} seconds between.",
+    "WorkflowProblem.InvalidOutput": "Only a script step can have an output."
   }
 }

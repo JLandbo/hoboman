@@ -4,6 +4,7 @@ using Hoboman.Core.Auth;
 using Hoboman.Core.Base64;
 using Hoboman.Core.Languages;
 using Hoboman.Core.Requests;
+using Hoboman.Core.Scripts;
 using Hoboman.Core.Sending;
 using Hoboman.Core.Workflows;
 using Hoboman.Mvvm;
@@ -37,6 +38,7 @@ public sealed class WorkflowStepViewModel : ObservableObject
             _ => StepSection.Body,
         };
         Script = step.Script;
+        Output = step.Output ?? ScriptOutput.Json;
         DelaySeconds = step.DelaySeconds ?? 0;
         Retries = step.Retry is not null;
         RetryUntil = step.Retry?.Until ?? "";
@@ -142,6 +144,8 @@ public sealed class WorkflowStepViewModel : ObservableObject
     public bool IsScript => Kind == StepKind.Script;
 
     public bool IsDelay => Kind == StepKind.Delay;
+
+    public ScriptOutput Output { get; set => Edit(ref field, value); }
 
     public int DelaySeconds
     {
@@ -278,6 +282,7 @@ public sealed class WorkflowStepViewModel : ObservableObject
         Name = Name.Trim() is { Length: > 0 } name ? name : null,
         Request = Request is { } request ? WorkflowRequest.From(request.ToRequest() with { Id = _id, Auth = Auth!.ToSettings() }) : _step.Request,
         Script = Script,
+        Output = !IsScript ? _step.Output : Output == ScriptOutput.Json ? null : Output,
         DelaySeconds = IsDelay ? DelaySeconds : _step.DelaySeconds,
         Retry = !IsRequest ? _step.Retry
             : Retries ? new()

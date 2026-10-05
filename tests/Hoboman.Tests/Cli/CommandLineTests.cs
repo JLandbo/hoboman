@@ -115,4 +115,28 @@ public sealed class CommandLineTests
         // Assert
         Assert.Equal("Invalid command arguments. Use --help for usage.", input.Problem);
     }
+
+    [Fact]
+    public void Parse_WhenANewRequestIsGiven_ThenTakesItsFolderNameAndRequest()
+    {
+        // Act
+        var input = new CommandLine().Parse(["new", "request", ".", "Ping", "--method", "POST", "--url", "https://dev.local", "-H", "A: 1", "--json", "{}"]);
+
+        // Assert
+        var created = input.New!;
+        Assert.Equal((SavedKind.Request, ".", "Ping", "POST", "https://dev.local", "A: 1", "{}"), (created.Kind, created.Folder, created.Name, created.Method, created.Url, created.Headers.Single(), created.JsonBody));
+    }
+
+    [Theory]
+    [InlineData("rename", "Pong", false)]
+    [InlineData("move", ".", false)]
+    [InlineData("delete", null, true)]
+    public void Parse_WhenRenamingMovingOrDeleting_ThenSelectsTheChange(string command, string? value, bool yes)
+    {
+        // Act
+        var input = new CommandLine().Parse(value is not null ? [command, "Ping", value] : [command, "Ping", "--yes"]);
+
+        // Assert
+        Assert.Equal(new ChangeInput(Enum.Parse<ChangeKind>(command, ignoreCase: true), "Ping", value, yes), input.Change);
+    }
 }

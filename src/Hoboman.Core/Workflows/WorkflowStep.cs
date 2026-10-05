@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Hoboman.Core.Scripts;
 
 namespace Hoboman.Core.Workflows;
 
@@ -10,6 +11,9 @@ public sealed record WorkflowStep
     public WorkflowRequest? Request { get; init; }
 
     public string? Script { get; init; }
+
+    // What a script returns, which is JSON when it is not given.
+    public ScriptOutput? Output { get; init; }
 
     public int? DelaySeconds { get; init; }
 

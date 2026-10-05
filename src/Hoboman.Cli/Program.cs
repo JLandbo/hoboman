@@ -39,7 +39,10 @@ try
     var tokens = new UnaskedTokens(oauth, secrets, NullLogger<UnaskedTokens>.Instance);
     var output = new CliOutput(Console.OpenStandardOutput(), Console.OpenStandardError());
     using var input = new StreamReader(Console.OpenStandardInput(), Encoding.UTF8);
-    return await new CliApplication(library, settings, environments, runner, workflows, check, workflowRunner, tokens, output, new(input, Console.IsInputRedirected)).RunAsync(args, cancellation.Token);
+    var deletion = new RequestDeletion(library, secrets, folder, NullLogger<RequestDeletion>.Instance);
+    var workflowDeletion = new WorkflowDeletion(workflows, secrets, NullLogger<WorkflowDeletion>.Instance);
+    return await new CliApplication(library, settings, environments, runner, workflows, check, workflowRunner, tokens, output, new(input, Console.IsInputRedirected), deletion, workflowDeletion)
+        .RunAsync(args, cancellation.Token);
 }
 finally
 {

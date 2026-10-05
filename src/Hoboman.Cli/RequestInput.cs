@@ -7,15 +7,17 @@ namespace Hoboman.Cli;
 static class RequestInput
 {
     // A direct request belongs to no folder, so its only auth is what its headers carry.
-    public static async Task<ApiRequest> CreateAsync(SendInput input, CancellationToken cancellationToken) => new()
+    public static async Task<ApiRequest> CreateAsync(SendInput input, CancellationToken cancellationToken) =>
+        await CreateAsync(input.Target[0], input.Target[1], input.Headers, input.JsonBody, input.TextBody, cancellationToken) with { Auth = AuthSettings.None };
+
+    // A saved request inherits the auth of its folder, as one made in the app does.
+    public static async Task<ApiRequest> CreateAsync(string method, string url, IReadOnlyList<string> headers, string? jsonBody, string? textBody, CancellationToken cancellationToken) => ApiRequest.New() with
     {
-        Id = Guid.NewGuid(),
-        Method = input.Target[0],
-        Url = input.Target[1],
-        Auth = AuthSettings.None,
-        Headers = [.. input.Headers.Select(HeaderOf)],
-        BodyKind = input.JsonBody is not null ? BodyKind.Json : input.TextBody is not null ? BodyKind.Text : BodyKind.None,
-        Body = (input.JsonBody ?? input.TextBody) is { } body ? await BodyOfAsync(body, cancellationToken) : "",
+        Method = method,
+        Url = url,
+        Headers = [.. headers.Select(HeaderOf)],
+        BodyKind = jsonBody is not null ? BodyKind.Json : textBody is not null ? BodyKind.Text : BodyKind.None,
+        Body = (jsonBody ?? textBody) is { } body ? await BodyOfAsync(body, cancellationToken) : "",
     };
 
     // Split at the first colon, as a value such as a time can hold more, and a line break would start a header of its own.

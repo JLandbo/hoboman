@@ -453,6 +453,7 @@ public sealed class WorkflowViewModel : ObservableObject
             {
                 IsDirty = false;
             }
+            WorkflowStepViewModel? last = null;
             var checkedWorkflow = await _services.Check.CheckAsync(workflow, environment, parameters, running.Token, new Dictionary<string, string>(_code, StringComparer.OrdinalIgnoreCase));
             if (checkedWorkflow.Problems.Count > 0)
             {
@@ -466,12 +467,21 @@ public sealed class WorkflowViewModel : ObservableObject
                     {
                         StepRunning?.Invoke(steps[started.Index]);
                     }
+                    if (workflowEvent is StepFinished done)
+                    {
+                        last = steps[done.Index];
+                    }
                     if (workflowEvent is RunFinished finished)
                     {
                         LastRun = finished;
                     }
                 },
                 running.Token);
+            // The last step that ran shows how the run ended, also when it failed and the rest were skipped. A step removed during the run is not chosen.
+            if (last is not null && Steps.Contains(last))
+            {
+                SelectedStep = last;
+            }
         }
         catch (OperationCanceledException) when (running.IsCancellationRequested)
         {
@@ -588,6 +598,7 @@ public sealed class WorkflowViewModel : ObservableObject
             WorkflowProblemKind.MixedStep => translator.Of("WorkflowProblem.MixedStep"),
             WorkflowProblemKind.InvalidDelay => translator.Format("WorkflowProblem.InvalidDelay", WorkflowCheck.MaxDelaySeconds),
             WorkflowProblemKind.InvalidRetry => translator.Format("WorkflowProblem.InvalidRetry", WorkflowCheck.MaxRetryTimes, WorkflowCheck.MaxDelaySeconds),
+            WorkflowProblemKind.InvalidOutput => translator.Of("WorkflowProblem.InvalidOutput"),
             _ => translator.Format("WorkflowProblem.UnknownName", problem.Detail),
         };
         return problem.Step is { } step ? translator.Format("Workflow.StepProblem", step + 1, text) : text;

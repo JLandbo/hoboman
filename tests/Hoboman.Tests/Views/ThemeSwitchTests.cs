@@ -13,7 +13,7 @@ public sealed class ThemeSwitchTests
     static readonly Color _blue = Color.FromRgb(0x1A, 0x66, 0xD9);
 
     // Leaves the text colour to the default, so nothing but the theme being used has the editors drawn again.
-    static readonly Theme _theme = Theme.Parse("Blå", """{ "colors": { "JsonKey": "#1A66D9", "MethodGET": "#1A66D9", "Attention": "#1A66D9" } }""");
+    static readonly Theme _theme = Theme.Parse("Blå", """{ "colors": { "Json.FieldName": "#1A66D9", "MethodGET": "#1A66D9", "Attention": "#1A66D9" } }""");
 
     [Fact]
     public async Task Apply_WhenABodyIsShown_ThenItIsDrawnWithTheThemesColours()

@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using Hoboman.Core.Scripts;
 
 namespace Hoboman.Tests.Workflows;
 
@@ -154,6 +155,19 @@ public sealed class WorkflowRunnerTests : IDisposable
         // Assert
         Assert.Equal((RunOutcome.Succeeded, 2, "processing", "new"),
             (outcome, Single<StepFinished>().Attempts, Single<StepRetrying>().Value, Single<RunFinished>().Variables["token"].GetString()));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenARetryWaitsOnTheWholeTextBody_ThenComparesTheTextAsItIs()
+    {
+        // Arrange
+        var answer = Ok("\"done\"", new ResponseHeader("Content-Type", "text/plain"));
+
+        // Act
+        var outcome = await RunAsync(Retrying(new() { Until = "$", Value = "\"done\"", Times = 2, WaitSeconds = 0 }), Answering(answer, answer));
+
+        // Assert
+        Assert.Equal((RunOutcome.Succeeded, 1), (outcome, Single<StepFinished>().Attempts));
     }
 
     [Fact]
@@ -323,6 +337,40 @@ public sealed class WorkflowRunnerTests : IDisposable
         // Assert
         var finished = Single<StepFinished>();
         Assert.Equal(Encoding.UTF8.GetBytes(finished.Body!), finished.Bytes);
+    }
+
+    [Theory]
+    [InlineData(null, "application/json", "\"<p>Dør</p>\"")]
+    [InlineData(ScriptOutput.Json, "application/json", "\"<p>Dør</p>\"")]
+    [InlineData(ScriptOutput.Html, "text/html; charset=utf-8", "<p>Dør</p>")]
+    [InlineData(ScriptOutput.Xml, "application/xml; charset=utf-8", "<p>Dør</p>")]
+    [InlineData(ScriptOutput.Text, "text/plain; charset=utf-8", "<p>Dør</p>")]
+    public async Task RunAsync_WhenAScriptHasAnOutput_ThenAnswersWithItsType(ScriptOutput? output, string type, string body)
+    {
+        // Arrange
+        Script("html.js", "return '<p>Dør</p>';");
+        var workflow = new Workflow { Id = Guid.NewGuid(), Steps = [new() { Script = "html.js", Output = output }] };
+
+        // Act
+        await RunAsync(workflow, Answering());
+
+        // Assert
+        var finished = Single<StepFinished>();
+        Assert.Equal((type, body), (Assert.Single(finished.Headers!).Value, finished.Body));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAScriptOfHtmlReturnsNoText_ThenFails()
+    {
+        // Arrange
+        Script("html.js", "return { navn: 'Dør' };");
+        var workflow = new Workflow { Id = Guid.NewGuid(), Steps = [new() { Script = "html.js", Output = ScriptOutput.Html }] };
+
+        // Act
+        var outcome = await RunAsync(workflow, Answering());
+
+        // Assert
+        Assert.Equal((RunOutcome.Failed, "html.js must return text when its output is Html."), (outcome, Single<StepFinished>().Error));
     }
 
     [Fact]
@@ -535,6 +583,37 @@ public sealed class WorkflowRunnerTests : IDisposable
 
         // Assert
         Assert.Equal("""{"location":"/imports/901","status":200,"text":"Oprettet"}""", JsonSerializer.Serialize(Single<StepFinished>().Saved));
+    }
+
+    [Theory]
+    [InlineData("text/plain; charset=utf-8", JsonValueKind.String)]
+    [InlineData("application/json", JsonValueKind.Object)]
+    [InlineData(null, JsonValueKind.Object)]
+    public async Task RunAsync_WhenTheWholeBodyIsSaved_ThenItIsTextUnlessTheAnswerMayBeJson(string? type, JsonValueKind saved)
+    {
+        // Arrange
+        var import = Request("https://dev.local/import");
+        var workflow = new Workflow { Id = Guid.NewGuid(), Variables = [new("body")], Steps = [new() { Request = import, Saves = [new("body", "$")] }] };
+
+        // Act
+        await RunAsync(workflow, Answering(type is null ? Ok("""{"id": 7}""") : Ok("""{"id": 7}""", new ResponseHeader("Content-Type", type))));
+
+        // Assert
+        Assert.Equal(saved, Single<RunFinished>().Variables["body"].ValueKind);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAPathIsSavedFromJsonSentAsText_ThenReadsIt()
+    {
+        // Arrange
+        var import = Request("https://dev.local/import");
+        var workflow = new Workflow { Id = Guid.NewGuid(), Variables = [new("id")], Steps = [new() { Request = import, Saves = [new("id", "$.id")] }] };
+
+        // Act
+        await RunAsync(workflow, Answering(Ok("""{"id": 7}""", new ResponseHeader("Content-Type", "text/html"))));
+
+        // Assert
+        Assert.Equal("7", Single<RunFinished>().Variables["id"].GetRawText());
     }
 
     [Fact]

@@ -13,10 +13,40 @@ public sealed class ScriptHostTests
     public void Run_WhenTheScriptReturnsAValue_ThenGivesItsJson()
     {
         // Act
-        var output = ScriptHost.Run("map.js", "return { count: vars.count + 1, name: vars.name };", Values, Cancellation);
+        var output = ScriptHost.Run("map.js", "return { count: vars.count + 1, name: vars.name };", Values, ScriptOutput.Json, Cancellation);
 
         // Assert
         Assert.Equal("""{"count":2,"name":"Søren"}""", output);
+    }
+
+    [Fact]
+    public void Run_WhenTheOutputIsTextAndTheScriptReturnsText_ThenGivesItAsItIs()
+    {
+        // Act
+        var output = ScriptHost.Run("html.js", "return `<p class=\"name\">${vars.name}</p>`;", Values, ScriptOutput.Html, Cancellation);
+
+        // Assert
+        Assert.Equal("""<p class="name">Søren</p>""", output);
+    }
+
+    [Fact]
+    public void Run_WhenTheOutputIsTextAndTheScriptReturnsNoText_ThenFails()
+    {
+        // Act
+        var exception = Assert.Throws<ScriptException>(() => ScriptHost.Run("html.js", "return { name: vars.name };", Values, ScriptOutput.Html, Cancellation));
+
+        // Assert
+        Assert.Equal("html.js must return text when its output is Html.", exception.Message);
+    }
+
+    [Fact]
+    public void Run_WhenTheOutputIsTextAndTheScriptReturnsNothing_ThenGivesNull()
+    {
+        // Act
+        var output = ScriptHost.Run("check.js", "if (!vars.name) { throw new Error('No name'); }", Values, ScriptOutput.Text, Cancellation);
+
+        // Assert
+        Assert.Null(output);
     }
 
     [Theory]
@@ -27,7 +57,7 @@ public sealed class ScriptHostTests
     public void Run_WhenTheScriptBreaksALimit_ThenFailsWithoutStoppingTheApp(string code)
     {
         // Act
-        var exception = Record.Exception(() => ScriptHost.Run("map.js", code, Values, Cancellation));
+        var exception = Record.Exception(() => ScriptHost.Run("map.js", code, Values, ScriptOutput.Json, Cancellation));
 
         // Assert
         Assert.IsType<ScriptException>(exception);
@@ -37,7 +67,7 @@ public sealed class ScriptHostTests
     public void Run_WhenTheScriptRunsForever_ThenTimesOut()
     {
         // Act
-        var exception = Record.Exception(() => ScriptHost.Run("map.js", "while (true) {}", Values, Cancellation));
+        var exception = Record.Exception(() => ScriptHost.Run("map.js", "while (true) {}", Values, ScriptOutput.Json, Cancellation));
 
         // Assert
         Assert.IsType<ScriptException>(exception);
@@ -47,7 +77,7 @@ public sealed class ScriptHostTests
     public void Run_WhenTheScriptThrows_ThenTellsItsFileAndLine()
     {
         // Act
-        var exception = Assert.Throws<ScriptException>(() => ScriptHost.Run("map.js", "const order = vars;\nthrow new Error('No order');", Values, Cancellation));
+        var exception = Assert.Throws<ScriptException>(() => ScriptHost.Run("map.js", "const order = vars;\nthrow new Error('No order');", Values, ScriptOutput.Json, Cancellation));
 
         // Assert
         Assert.Equal("map.js:2: No order", exception.Message);
@@ -57,7 +87,7 @@ public sealed class ScriptHostTests
     public void Run_WhenTheScriptUsesTooMuchMemory_ThenStopsBeforeTheTimeout()
     {
         // Act
-        var exception = Assert.Throws<ScriptException>(() => ScriptHost.Run("map.js", "const all = [];\nfor (;;) { all.push('x'.repeat(1000000) + all.length); }", Values, Cancellation));
+        var exception = Assert.Throws<ScriptException>(() => ScriptHost.Run("map.js", "const all = [];\nfor (;;) { all.push('x'.repeat(1000000) + all.length); }", Values, ScriptOutput.Json, Cancellation));
 
         // Assert
         Assert.Contains("memory", exception.Message);
@@ -67,7 +97,7 @@ public sealed class ScriptHostTests
     public void Run_WhenTheScriptMakesMuchGarbage_ThenRuns()
     {
         // Act
-        var output = ScriptHost.Run("map.js", "const orders = Array.from({ length: 2000 }, (_, id) => ({ id, total: id }));\nreturn Object.keys(orders.reduce((all, order) => ({ ...all, [order.id]: order.total }), {})).length;", Values, Cancellation);
+        var output = ScriptHost.Run("map.js", "const orders = Array.from({ length: 2000 }, (_, id) => ({ id, total: id }));\nreturn Object.keys(orders.reduce((all, order) => ({ ...all, [order.id]: order.total }), {})).length;", Values, ScriptOutput.Json, Cancellation);
 
         // Assert
         Assert.Equal("2000", output);
@@ -81,7 +111,7 @@ public sealed class ScriptHostTests
         cancellation.Cancel();
 
         // Act
-        var exception = Record.Exception(() => ScriptHost.Run("map.js", "while (true) {}", Values, cancellation.Token));
+        var exception = Record.Exception(() => ScriptHost.Run("map.js", "while (true) {}", Values, ScriptOutput.Json, cancellation.Token));
 
         // Assert
         Assert.IsAssignableFrom<OperationCanceledException>(exception);
@@ -91,7 +121,7 @@ public sealed class ScriptHostTests
     public void Run_WhenTheScriptReturnsNothing_ThenGivesNull()
     {
         // Act
-        var output = ScriptHost.Run("check.js", "if (!vars.name) { throw new Error('No name'); }", Values, Cancellation);
+        var output = ScriptHost.Run("check.js", "if (!vars.name) { throw new Error('No name'); }", Values, ScriptOutput.Json, Cancellation);
 
         // Assert
         Assert.Null(output);

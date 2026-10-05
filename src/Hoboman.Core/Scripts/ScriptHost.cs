@@ -8,7 +8,7 @@ using JsonElement = System.Text.Json.JsonElement;
 
 namespace Hoboman.Core.Scripts;
 
-// The only place that knows Jint. A script gets the values of the run as a frozen vars object, and what it returns is its output as JSON.
+// The only place that knows Jint. A script gets the values of the run as a frozen vars object, and what it returns is its output as JSON or as text.
 // It has no access to files, the network or .NET, and its limits stop it rather than the app.
 public static class ScriptHost
 {
@@ -31,7 +31,8 @@ public static class ScriptHost
     }
 
     // A script that returns nothing gives null, as it may only check the values.
-    public static string? Run(string name, string code, IReadOnlyDictionary<string, JsonElement> values, CancellationToken cancellationToken)
+    // Any output but JSON is text, such as HTML, that is given as it is instead of as a JSON text.
+    public static string? Run(string name, string code, IReadOnlyDictionary<string, JsonElement> values, ScriptOutput output, CancellationToken cancellationToken)
     {
         using var engine = new Engine(options =>
         {
@@ -49,8 +50,13 @@ public static class ScriptHost
             }
             engine.SetValue("vars", vars);
             engine.Execute("Object.freeze(vars)");
-            var output = new JsonSerializer(engine).Serialize(engine.Evaluate(code, name, _parsing));
-            return output.IsUndefined() ? null : output.AsString();
+            var returned = engine.Evaluate(code, name, _parsing);
+            if (output != ScriptOutput.Json)
+            {
+                return returned.IsUndefined() ? null : returned.IsString() ? returned.AsString() : throw new ScriptException($"{name} must return text when its output is {output}.");
+            }
+            var json = new JsonSerializer(engine).Serialize(returned);
+            return json.IsUndefined() ? null : json.AsString();
         }
         catch (JavaScriptException exception)
         {

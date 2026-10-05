@@ -7,7 +7,7 @@ using ICSharpCode.AvalonEdit.Folding;
 
 namespace Hoboman.Controls;
 
-// Folds the objects and lists of a JSON body and the elements of an XML one, with arrows in a margin of its own.
+// Folds the objects and lists of a JSON body and the elements of an XML or HTML one, with arrows in a margin of its own.
 // The folds belong to a document, so a new document, such as another tab's body, gets new ones.
 sealed class BodyFolding
 {
@@ -50,7 +50,7 @@ sealed class BodyFolding
 
     public FoldingManager? Manager { get; private set; }
 
-    public bool CanFold => _editor.Coloring is BodyFormat.Json or BodyFormat.Xml;
+    public bool CanFold => _editor.Coloring is BodyFormat.Json or BodyFormat.Xml or BodyFormat.Html;
 
     // Every change waits until things stand still, so a switch of tab, which changes the document and the coloring one after the other,
     // or the four texts of a new language, give one search. A search already at work is of a text that is no longer wanted.
@@ -84,22 +84,26 @@ sealed class BodyFolding
         }
         var coloring = _editor.Coloring;
         var text = document.CreateSnapshot();
-        var (json, xml, firstError) = await Task.Run(() => Find(coloring, text));
+        var (json, tags, firstError) = await Task.Run(() => Find(coloring, text));
         // The body, its coloring or its text changed while this one was at work.
         if (finding != _finding || manager != Manager)
         {
             return;
         }
         // With room inside the box AvalonEdit draws around it, so the name does not touch the brackets.
-        manager.UpdateFoldings(xml ?? json.Select(fold => new NewFolding(fold.Start, fold.End) { Name = $" {NameOf(fold)} " }), firstError);
+        manager.UpdateFoldings(tags ?? json.Select(fold => new NewFolding(fold.Start, fold.End) { Name = $" {NameOf(fold)} " }), firstError);
         Redraw();
     }
 
-    static (IReadOnlyList<JsonFold> Json, IReadOnlyList<NewFolding>? Xml, int FirstError) Find(BodyFormat coloring, ITextSource text)
+    static (IReadOnlyList<JsonFold> Json, IReadOnlyList<NewFolding>? Tags, int FirstError) Find(BodyFormat coloring, ITextSource text)
     {
         if (coloring == BodyFormat.Json)
         {
             return (JsonFolds.Of(text.Text), null, -1);
+        }
+        if (coloring == BodyFormat.Html)
+        {
+            return ([], HtmlFolds.Of(text.Text), -1);
         }
         var xml = _xml.CreateNewFoldings(new TextDocument(text), out var firstError);
         return ([], [.. xml], firstError);

@@ -48,6 +48,12 @@ sealed class CliOutput(Stream output, Stream error)
         await output.FlushAsync(CancellationToken.None);
     }
 
+    public async Task<int> WriteResultAsync<T>(T result)
+    {
+        await WriteJsonAsync(output, result, CancellationToken.None);
+        return 0;
+    }
+
     public Task<int> WriteErrorAsync(string problem) => WriteErrorAsync(new { error = problem });
 
     // Written even when the call was cancelled, so the caller learns why it stopped.

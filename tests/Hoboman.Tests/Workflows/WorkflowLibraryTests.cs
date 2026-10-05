@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Hoboman.Core.Scripts;
 
 namespace Hoboman.Tests.Workflows;
 
@@ -130,6 +131,34 @@ public sealed class WorkflowLibraryTests : IDisposable
 
         // Assert
         Assert.Null(Assert.Single(loaded!.Steps).Request);
+    }
+
+    [Theory]
+    [InlineData("""{"steps": [{"script": "html.js", "output": "Html"}]}""", ScriptOutput.Html)]
+    [InlineData("""{"steps": [{"script": "map.js"}]}""", null)]
+    public async Task LoadAsync_WhenAScriptStepHasAnOutputOrNot_ThenLoadsItAsItIs(string json, ScriptOutput? expected)
+    {
+        // Arrange
+        var id = WriteWorkflow(json);
+
+        // Act
+        var loaded = await Library().LoadAsync(id, Cancellation);
+
+        // Assert
+        Assert.Equal(expected, Assert.Single(loaded!.Steps).Output);
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenAStepHasAnOutput_ThenWritesItAsText()
+    {
+        // Arrange
+        var workflow = new Workflow { Id = Guid.NewGuid(), Steps = [new() { Script = "html.js", Output = ScriptOutput.Html }] };
+
+        // Act
+        await Library().SaveAsync(workflow, Cancellation);
+
+        // Assert
+        Assert.Contains(""""output": "Html"""", File.ReadAllText(Path.Combine(WorkflowsFolder, $"{workflow.Id}", "workflow.json")));
     }
 
     [Theory]

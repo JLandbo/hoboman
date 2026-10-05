@@ -43,8 +43,13 @@
                                          IsChecked="{Binding Result.BodyFormat, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:BodyFormat.Json}}" />
                             <RadioButton Content="{DynamicResource Format.Xml}" GroupName="BodyFormat" Style="{StaticResource Segment}"
                                          IsChecked="{Binding Result.BodyFormat, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:BodyFormat.Xml}}" />
+                            <RadioButton Content="{DynamicResource Format.Html}" GroupName="BodyFormat" Style="{StaticResource Segment}"
+                                         IsChecked="{Binding Result.BodyFormat, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:BodyFormat.Html}}" />
                             <RadioButton Content="{DynamicResource Format.Raw}" GroupName="BodyFormat" Style="{StaticResource Segment}"
                                          IsChecked="{Binding Result.BodyFormat, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:BodyFormat.Raw}}" />
+                            <RadioButton x:Name="BrowserFormat" Content="&#xE774;" FontFamily="{StaticResource IconFont}" GroupName="BodyFormat" Style="{StaticResource Segment}"
+                                         ToolTip="{DynamicResource Format.Browser}" AutomationProperties.Name="{DynamicResource Format.Browser}"
+                                         IsChecked="{Binding Result.BodyFormat, Converter={StaticResource IsEqual}, ConverterParameter={x:Static viewModels:BodyFormat.Browser}}" />
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -113,10 +118,22 @@
                     </TextBlock>
                     <Border CornerRadius="8" Background="{DynamicResource Input}">
                         <Grid>
-                            <controls:BodyView x:Name="BodyText" DataContext="{Binding Result}" Body="{Binding Response.Body}" Coloring="{Binding Response.Coloring, FallbackValue={x:Static viewModels:BodyFormat.Raw}}"
-                                               Marks="{Binding ResponseMarks}" MarkToggled="Body_MarkToggled" />
-                            <TextBlock Text="{DynamicResource Response.Loading}" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                       Visibility="{Binding IsLoading, ElementName=BodyText, Converter={StaticResource VisibleWhenTrue}}" />
+                            <Grid>
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsChecked, ElementName=BrowserFormat}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <controls:BodyView x:Name="BodyText" DataContext="{Binding Result}" Body="{Binding Response.Body}" Coloring="{Binding Response.Coloring, FallbackValue={x:Static viewModels:BodyFormat.Raw}}"
+                                                   Marks="{Binding ResponseMarks}" MarkToggled="Body_MarkToggled" />
+                                <TextBlock Text="{DynamicResource Response.Loading}" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Visibility="{Binding IsLoading, ElementName=BodyText, Converter={StaticResource VisibleWhenTrue}}" />
+                            </Grid>
+                            <controls:BrowserView Page="{Binding Result.Page}" Background="{DynamicResource Input}" Margin="6" Visibility="{Binding IsChecked, ElementName=BrowserFormat, Converter={StaticResource VisibleWhenTrue}}" />
                         </Grid>
                     </Border>
                 </DockPanel>

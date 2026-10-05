@@ -11,8 +11,10 @@ using Hoboman.Core.Workflows;
 namespace Hoboman.Cli;
 
 sealed class CliApplication(RequestLibrary library, SettingsStore settings, EnvironmentStore environments, RequestRunner runner, WorkflowLibrary workflows, WorkflowCheck check,
-    WorkflowRunner workflowRunner, UnaskedTokens tokens, CliOutput output, VariableInput variables)
+    WorkflowRunner workflowRunner, UnaskedTokens tokens, CliOutput output, VariableInput variables, RequestDeletion deletion, WorkflowDeletion workflowDeletion)
 {
+    sealed record Saved(SavedKind Kind, Guid Id, string Name, string Path);
+
     public async Task<int> RunAsync(string[] arguments, CancellationToken cancellationToken)
     {
         try
@@ -30,7 +32,15 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
             {
                 return await RunWorkflowAsync(input.Run, cancellationToken);
             }
-            return input.IsList ? await ListAsync(input.ListsWorkflows, cancellationToken) : await SendAsync(input.Send!, cancellationToken);
+            if (input.New is not null)
+            {
+                return await NewAsync(input.New, cancellationToken);
+            }
+            if (input.Change is not null)
+            {
+                return await ChangeAsync(input.Change, cancellationToken);
+            }
+            return input.IsList ? await ListAsync(input, cancellationToken) : await SendAsync(input.Send!, cancellationToken);
         }
         catch (Exception exception)
         {
@@ -40,12 +50,17 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
 
     // The id first, as a name can hold anything but a tab, so a line splits at its first tab.
     // A file that cannot be read has no name, so it is listed by its id alone, and send or run with the id tells what is wrong with it.
-    async Task<int> ListAsync(bool workflowNames, CancellationToken cancellationToken)
+    async Task<int> ListAsync(CommandInput input, CancellationToken cancellationToken)
     {
         IEnumerable<(Guid Id, string Name)> listed;
-        if (workflowNames)
+        if (input.ListsWorkflows)
         {
             listed = (await workflows.ListAsync(cancellationToken)).Select(workflow => (workflow.Id, workflow.Name ?? ""));
+        }
+        else if (input.ListsFolders)
+        {
+            var folders = await library.LoadAllAsync(cancellationToken);
+            listed = folders.Folders.Select(folder => (folder.Id, folders.FolderPathOf(folder.Id)));
         }
         else
         {
@@ -90,8 +105,7 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         }
         catch (InvalidFileException exception) when (!input.IsDirect && exception.InnerException is JsonException invalid)
         {
-            // Only where the file is wrong is told, as the message of the exception can quote a value from it.
-            return await output.WriteErrorAsync(new { error = "Saved request file is not valid.", file = exception.FilePath, path = invalid.Path, line = invalid.LineNumber + 1 });
+            return await InvalidFileAsync("Saved request file is not valid.", exception, invalid);
         }
         catch (Exception exception) when (!input.IsDirect && FileProblem.Is(exception))
         {
@@ -140,8 +154,9 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         Workflow? workflow;
         try
         {
+            // A workflow found by its id is read alone, without reading the others for their names.
             var found = RequestLibrary.TryIdOf(input.Workflow, out var id) ? [id]
-                : (await workflows.ListAsync(cancellationToken)).Where(named => string.Equals(named.Name, input.Workflow, StringComparison.OrdinalIgnoreCase)).Select(named => named.Id).ToList();
+                : Matching(input.Workflow, await workflows.ListAsync(cancellationToken), named => named.Id, named => named.Name ?? "").Select(named => named.Id).ToList();
             if (found.Count > 1)
             {
                 return await output.WriteErrorAsync("Workflow name is ambiguous. Use its id.");
@@ -150,8 +165,7 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         }
         catch (InvalidFileException exception) when (exception.InnerException is JsonException invalid)
         {
-            // Only where the file is wrong is told, as the message of the exception can quote a value from it.
-            return await output.WriteErrorAsync(new { error = "Workflow file is not valid.", file = exception.FilePath, path = invalid.Path, line = invalid.LineNumber + 1 });
+            return await InvalidFileAsync("Workflow file is not valid.", exception, invalid);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
@@ -175,6 +189,165 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         var outcome = await workflowRunner.RunAsync(checkedWorkflow, environment, auth => tokens.FetchAsync(auth, environment, cancellationToken), output.WriteEventAsync, cancellationToken);
         return outcome == RunOutcome.Succeeded ? 0 : 1;
     }
+
+    // Nothing is changed before the name, the target and the folder are known to be right, so a mistake changes nothing.
+    async Task<int> NewAsync(NewInput input, CancellationToken cancellationToken)
+    {
+        var name = input.Name.Trim();
+        if (!RequestLibrary.IsValidName(name))
+        {
+            return await output.WriteErrorAsync("Invalid name.");
+        }
+        if (input.Kind == SavedKind.Workflow)
+        {
+            return await SavedAsync(async () => (await workflows.CreateAsync(name, cancellationToken)).Id, name);
+        }
+        var collection = await library.LoadAllAsync(cancellationToken);
+        var (folder, problem) = FolderOf(input.Folder!, collection);
+        if (problem is not null)
+        {
+            return await output.WriteErrorAsync(problem);
+        }
+        var request = input.Kind == SavedKind.Request ? await RequestInput.CreateAsync(input.Method, input.Url, input.Headers, input.JsonBody, input.TextBody, cancellationToken) : null;
+        return await SavedAsync(async () =>
+        {
+            var id = Guid.NewGuid();
+            await (request is null
+                ? library.CreateFolderAsync(new() { Id = id, Name = name, ParentId = folder }, cancellationToken)
+                : library.CreateAsync(request with { Id = id, Name = name, FolderId = folder }, cancellationToken));
+            return id;
+        }, PathIn(collection, folder, name));
+    }
+
+    async Task<int> ChangeAsync(ChangeInput input, CancellationToken cancellationToken)
+    {
+        var collection = await library.LoadAllAsync(cancellationToken);
+        var (found, problem) = await FindAsync(input.Target, collection, cancellationToken);
+        if (found is null)
+        {
+            return await output.WriteErrorAsync(problem!);
+        }
+        return input.Command switch
+        {
+            ChangeKind.Rename => await RenameAsync(found, input.Value!.Trim(), collection, cancellationToken),
+            ChangeKind.Move => await MoveAsync(found, input.Value!, collection, cancellationToken),
+            ChangeKind.Delete => await DeleteAsync(found, input.Yes, collection, cancellationToken),
+            _ => throw new ArgumentOutOfRangeException(nameof(input)),
+        };
+    }
+
+    async Task<int> RenameAsync(Saved found, string name, RequestCollection collection, CancellationToken cancellationToken)
+    {
+        if (!RequestLibrary.IsValidName(name))
+        {
+            return await output.WriteErrorAsync("Invalid name.");
+        }
+        var parent = found.Kind switch
+        {
+            SavedKind.Request => collection.RequestOf(found.Id) is { } request ? collection.FolderIdOf(request) : null,
+            SavedKind.Folder => collection.ParentOf(collection.FolderOf(found.Id)!),
+            _ => null,
+        };
+        return await SavedAsync(async () =>
+        {
+            await (found.Kind switch
+            {
+                SavedKind.Request => library.RenameAsync(found.Id, name, cancellationToken),
+                SavedKind.Folder => library.RenameFolderAsync(found.Id, name, cancellationToken),
+                _ => workflows.RenameAsync(found.Id, name, cancellationToken),
+            });
+            return found.Id;
+        }, found.Kind == SavedKind.Workflow ? name : PathIn(collection, parent, name));
+    }
+
+    async Task<int> MoveAsync(Saved found, string target, RequestCollection collection, CancellationToken cancellationToken)
+    {
+        if (found.Kind == SavedKind.Workflow)
+        {
+            return await output.WriteErrorAsync("A workflow cannot be moved.");
+        }
+        var (folder, problem) = FolderOf(target, collection);
+        if (problem is not null)
+        {
+            return await output.WriteErrorAsync(problem);
+        }
+        if (found.Kind == SavedKind.Folder && collection.FoldersDownTo(folder).Any(above => above.Id == found.Id))
+        {
+            return await output.WriteErrorAsync("A folder cannot be moved into itself.");
+        }
+        return await SavedAsync(async () =>
+        {
+            await (found.Kind == SavedKind.Request ? library.MoveAsync(found.Id, folder, cancellationToken) : library.MoveFolderAsync(found.Id, folder, cancellationToken));
+            return found.Id;
+        }, PathIn(collection, folder, found.Name));
+    }
+
+    async Task<int> DeleteAsync(Saved found, bool yes, RequestCollection collection, CancellationToken cancellationToken)
+    {
+        if (!yes)
+        {
+            // What would go is told, so the caller can ask the user before it adds --yes.
+            var folders = found.Kind == SavedKind.Folder ? collection.FoldersIn(found.Id) : new HashSet<Guid>();
+            return await output.WriteErrorAsync(new { error = "Deleting needs --yes.", path = found.Path, folders = folders.Count,
+                requests = collection.Requests.Count(request => request.FolderId is { } inside && folders.Contains(inside)) });
+        }
+        return await SavedAsync(async () =>
+        {
+            await (found.Kind == SavedKind.Workflow ? workflowDeletion.DeleteAsync(found.Id, cancellationToken) : deletion.DeleteAsync(found.Id, found.Kind == SavedKind.Folder, cancellationToken));
+            return found.Id;
+        }, found.Path);
+    }
+
+    // Something saved is known by its id, or by its path or name when only one thing has it.
+    async Task<(Saved? Found, string? Problem)> FindAsync(string target, RequestCollection collection, CancellationToken cancellationToken)
+    {
+        var saved = collection.Requests.Select(request => new Saved(SavedKind.Request, request.Id, request.Name, collection.PathOf(request)))
+            .Concat(collection.Unreadable.Select(id => new Saved(SavedKind.Request, id, "", "")))
+            .Concat(collection.Folders.Select(folder => new Saved(SavedKind.Folder, folder.Id, folder.Name, collection.FolderPathOf(folder.Id))))
+            .Concat((await workflows.ListAsync(cancellationToken)).Select(workflow => new Saved(SavedKind.Workflow, workflow.Id, workflow.Name ?? "", workflow.Name ?? "")));
+        var found = Matching(target, saved, item => item.Id, item => item.Path);
+        return found.Count switch { 0 => (null, "Target could not be found."), 1 => (found[0], null), _ => (null, "Target is ambiguous. Use its id.") };
+    }
+
+    // . is the top, as a shell such as Git Bash turns / into a path, and a folder is otherwise known by its id or its path.
+    static (Guid? Id, string? Problem) FolderOf(string target, RequestCollection collection)
+    {
+        if (target == ".")
+        {
+            return (null, null);
+        }
+        var found = Matching(target, collection.Folders, folder => folder.Id, folder => collection.FolderPathOf(folder.Id));
+        return found.Count switch { 0 => (null, "Folder could not be found."), 1 => (found[0].Id, null), _ => (null, "Folder is ambiguous. Use its id.") };
+    }
+
+    // A path or name can be shared, so all that have it are given, and the caller tells when there is more than one.
+    static List<T> Matching<T>(string target, IEnumerable<T> items, Func<T, Guid> idOf, Func<T, string> pathOf) =>
+        RequestLibrary.TryIdOf(target, out var id) ? [.. items.Where(item => idOf(item) == id)] : [.. items.Where(item => pathOf(item).Equals(target, StringComparison.OrdinalIgnoreCase))];
+
+    static string PathIn(RequestCollection collection, Guid? folder, string name) => folder is null ? name : $"{collection.FolderPathOf(folder)}/{name}";
+
+    // The change is told by the id and path it has now, as list writes them.
+    async Task<int> SavedAsync(Func<Task<Guid>> change, string path)
+    {
+        Guid id;
+        try
+        {
+            id = await change();
+        }
+        catch (InvalidFileException exception) when (exception.InnerException is JsonException invalid)
+        {
+            return await InvalidFileAsync("File is not valid.", exception, invalid);
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            return await output.WriteErrorAsync("The change could not be saved.");
+        }
+        return await output.WriteResultAsync(new { id, path });
+    }
+
+    // Only where the file is wrong is told, as the message of the exception can quote a value from it.
+    Task<int> InvalidFileAsync(string error, InvalidFileException exception, JsonException invalid) =>
+        output.WriteErrorAsync(new { error, file = exception.FilePath, path = invalid.Path, line = invalid.LineNumber + 1 });
 
     // --env wins over the environment selected in the app, which is used without reading the environments when there is none.
     async Task<(ApiEnvironment? Environment, string? Problem)> EnvironmentAsync(string? name, CancellationToken cancellationToken)

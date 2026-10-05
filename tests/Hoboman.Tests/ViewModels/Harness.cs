@@ -30,7 +30,7 @@ public sealed class Harness : IDisposable
         Services = new(runner, Secrets, AuthRefresh, Library, snapshot, new(), Environments, Credentials, Dialogs, _translator, Clock, NullLogger<RequestTabViewModel>.Instance);
         WorkflowLibrary = new(Folder, NullLogger<WorkflowLibrary>.Instance);
         WorkflowServices = new(WorkflowLibrary, new(WorkflowLibrary, Secrets, NullLogger<WorkflowCheck>.Instance), new(Sender, Folder, Clock, NullLogger<WorkflowRunner>.Instance), Environments, Credentials, Dialogs, _translator, Clock,
-            Secrets, AuthRefresh, NullLogger<WorkflowViewModel>.Instance);
+            Secrets, AuthRefresh, NullLogger<WorkflowViewModel>.Instance, new(WorkflowLibrary, Secrets, NullLogger<WorkflowDeletion>.Instance));
     }
 
     public AppFolder Folder { get; }

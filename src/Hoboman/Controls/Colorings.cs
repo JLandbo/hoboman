@@ -23,7 +23,8 @@ static class Colorings
     public static IHighlightingDefinition? Of(BodyFormat coloring) => coloring switch
     {
         BodyFormat.Json => _json,
-        BodyFormat.Xml => _xml,
+        // HTML has the colors of XML, as its tags look the same, so the themes need no colors of their own for it.
+        BodyFormat.Xml or BodyFormat.Html => _xml,
         _ => null,
     };
 
@@ -37,24 +38,16 @@ static class Colorings
         editor.TextArea.SelectionForeground = null;
     }
 
-    // The built-in definitions have their own colors, so they get the theme's.
+    // The built-in definitions have their own colors, so they get the theme's: each named color has a key of the definition and its name, such as Json.FieldName.
     public static void Use(Func<string, Brush> brushOf)
     {
         FoldingElementGenerator.TextBrush = brushOf("Muted");
-        Recolor(_json, brushOf, [("FieldName", "JsonKey"), ("String", "JsonString"), ("Number", "JsonNumber"), ("Bool", "JsonLiteral"), ("Null", "JsonLiteral"), ("Punctuation", "Text")]);
-        Recolor(_xml, brushOf,
-            [("XmlTag", "XmlTag"), ("XmlDeclaration", "XmlTag"), ("DocType", "XmlTag"), ("AttributeName", "XmlAttribute"), ("AttributeValue", "XmlValue"),
-             ("CData", "XmlValue"), ("Entity", "XmlValue"), ("BrokenEntity", "Error"), ("Comment", "XmlComment")]);
-        Recolor(_javaScript, brushOf,
-            [("Digits", "JsonNumber"), ("Comment", "XmlComment"), ("String", "JsonString"), ("Character", "JsonString"), ("Regex", "JsonString"),
-             ("JavaScriptKeyWords", "JsonLiteral"), ("JavaScriptIntrinsics", "JsonKey"), ("JavaScriptLiterals", "JsonLiteral"), ("JavaScriptGlobalFunctions", "JsonKey")]);
-    }
-
-    static void Recolor(IHighlightingDefinition definition, Func<string, Brush> brushOf, ReadOnlySpan<(string Color, string Brush)> colors)
-    {
-        foreach (var (color, brush) in colors)
+        foreach (var definition in new[] { _json, _xml, _javaScript })
         {
-            definition.GetNamedColor(color).Foreground = new SimpleHighlightingBrush(((SolidColorBrush)brushOf(brush)).Color);
+            foreach (var color in definition.NamedHighlightingColors)
+            {
+                color.Foreground = new SimpleHighlightingBrush(((SolidColorBrush)brushOf($"{definition.Name}.{color.Name}")).Color);
+            }
         }
     }
 }

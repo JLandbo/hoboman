@@ -1,5 +1,6 @@
 using System.Net.Http;
 using System.Text.Json;
+using Hoboman.Core.Scripts;
 using Hoboman.Tests.Auth;
 using Hoboman.Tests.Workflows;
 
@@ -217,6 +218,22 @@ public sealed class WorkflowEditorTests
     }
 
     [Fact]
+    public async Task Output_WhenAScriptStepGetsAnother_ThenMarksTheWorkflowChangedAndSavesIt()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var workflow = await OpenScriptAsync(harness, "return '<p>1</p>';");
+
+        // Act
+        workflow.Steps.Single().Output = ScriptOutput.Html;
+        var changed = workflow.IsDirty;
+        await workflow.SaveAsync();
+
+        // Assert
+        Assert.Equal((true, ScriptOutput.Html), (changed, (await harness.WorkflowLibrary.LoadAsync("Flow", Cancellation))!.Steps.Single().Output));
+    }
+
+    [Fact]
     public async Task OpenWorkflowAsync_WhenAWaitHasSaves_ThenShowsThemSoTheyCanBeRemoved()
     {
         // Arrange
@@ -353,6 +370,23 @@ public sealed class WorkflowEditorTests
 
         // Assert
         Assert.Equal(file, await File.ReadAllBytesAsync(harness.Dialogs.SavePath, Cancellation));
+    }
+
+    [Theory]
+    [InlineData(200, 2)]
+    [InlineData(500, 1)]
+    public async Task RunAsync_WhenTheRunEnds_ThenChoosesTheLastStepThatRan(int second, int chosen)
+    {
+        // Arrange
+        var statuses = new Queue<int>([200, second, 200]);
+        using var harness = new Harness(send: () => Task.FromResult(new ApiResponse(statuses.Dequeue(), "", 1, 2, [], "{}")));
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request() }, new() { Request = Request() }, new() { Request = Request() }] }, harness);
+
+        // Act
+        await workflow.RunAsync();
+
+        // Assert
+        Assert.Same(workflow.Steps[chosen], workflow.SelectedStep);
     }
 
     [Fact]

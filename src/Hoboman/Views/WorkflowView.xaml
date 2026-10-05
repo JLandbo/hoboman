@@ -4,6 +4,7 @@
              xmlns:local="clr-namespace:Hoboman.Views"
              xmlns:controls="clr-namespace:Hoboman.Controls"
              xmlns:themes="clr-namespace:Hoboman.Themes"
+             xmlns:scripts="clr-namespace:Hoboman.Core.Scripts;assembly=Hoboman.Core"
              xmlns:viewModels="clr-namespace:Hoboman.ViewModels">
     <UserControl.Resources>
         <Style x:Key="Chip" TargetType="Border">
@@ -508,9 +509,26 @@
                                     </StackPanel>
                                 </StackPanel>
                             </ScrollViewer>
-                            <Border CornerRadius="8" Background="{DynamicResource Input}" Visibility="{Binding IsChecked, ElementName=StepCodeSection, Converter={StaticResource VisibleWhenTrue}}">
-                                <controls:ScriptEditor Code="{Binding DataContext.Code, RelativeSource={RelativeSource AncestorType=UserControl}}" />
-                            </Border>
+                            <DockPanel Visibility="{Binding IsChecked, ElementName=StepCodeSection, Converter={StaticResource VisibleWhenTrue}}">
+                                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="{DynamicResource Workflow.Output}" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" Margin="2,0,10,0" />
+                                    <Border Style="{StaticResource SegmentGroup}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <RadioButton Content="{DynamicResource Workflow.OutputJson}" GroupName="ScriptOutput" Style="{StaticResource Segment}"
+                                                         IsChecked="{Binding Output, Converter={StaticResource IsEqual}, ConverterParameter={x:Static scripts:ScriptOutput.Json}}" />
+                                            <RadioButton Content="{DynamicResource Workflow.OutputHtml}" GroupName="ScriptOutput" Style="{StaticResource Segment}"
+                                                         IsChecked="{Binding Output, Converter={StaticResource IsEqual}, ConverterParameter={x:Static scripts:ScriptOutput.Html}}" />
+                                            <RadioButton Content="{DynamicResource Workflow.OutputXml}" GroupName="ScriptOutput" Style="{StaticResource Segment}"
+                                                         IsChecked="{Binding Output, Converter={StaticResource IsEqual}, ConverterParameter={x:Static scripts:ScriptOutput.Xml}}" />
+                                            <RadioButton Content="{DynamicResource Workflow.OutputText}" GroupName="ScriptOutput" Style="{StaticResource Segment}"
+                                                         IsChecked="{Binding Output, Converter={StaticResource IsEqual}, ConverterParameter={x:Static scripts:ScriptOutput.Text}}" />
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                                <Border CornerRadius="8" Background="{DynamicResource Input}">
+                                    <controls:ScriptEditor Code="{Binding DataContext.Code, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                </Border>
+                            </DockPanel>
                             <DockPanel Visibility="{Binding IsChecked, ElementName=StepSavesSection, Converter={StaticResource VisibleWhenTrue}}">
                                 <!-- What a step saves is picked from its response, where the saved lines are marked. -->
                                 <local:KeyValueEditor DataContext="{Binding Saves}" local:SplitMemory.Columns="Saves" NameHeader="{DynamicResource Workflow.Variable}" ValueHeader="{DynamicResource Workflow.From}" CanDisable="False">

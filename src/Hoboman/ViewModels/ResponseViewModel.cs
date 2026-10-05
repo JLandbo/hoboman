@@ -1,4 +1,5 @@
 using System.IO;
+using Hoboman.Core.Base64;
 using Hoboman.Core.Languages;
 using Hoboman.Core.Sending;
 using Hoboman.Core.Storage;
@@ -35,6 +36,9 @@ public sealed class ResponseViewModel : ObservableObject
 
     public IReadOnlyList<Base64Mark> ResponseMarks { get; private set => Set(ref field, value); } = [];
 
+    // Only made while the browser is chosen, as it copies the body.
+    public BrowserPage? Page { get; private set => Set(ref field, value); }
+
     // Chosen from the Content-Type of each new response, and changed by the user when it does not fit.
     public BodyFormat BodyFormat
     {
@@ -66,6 +70,7 @@ public sealed class ResponseViewModel : ObservableObject
         Response = null;
         ResponseBodyProblem = null;
         ResponseMarks = [];
+        Page = null;
         if (response is not null)
         {
             Set(ref _bodyFormat, ResponseDisplay.FormatOf(response), nameof(BodyFormat));
@@ -91,19 +96,19 @@ public sealed class ResponseViewModel : ObservableObject
 
     // "response" with the ending its Content-Type usually has, so the file opens in the right program. Any other name can be typed instead.
     internal static string FileNameOf(ApiResponse response) =>
-        response.Headers.FirstOrDefault(header => header.Name.Equals("Content-Type", StringComparison.OrdinalIgnoreCase))?.Value.Split(';')[0].Trim().ToLowerInvariant() switch
+        response.MediaType switch
         {
-            "application/pdf" => "response.pdf",
-            "image/svg+xml" => "response.svg",
-            { } type when type.EndsWith("json", StringComparison.Ordinal) => "response.json",
-            { } type when type.EndsWith("xml", StringComparison.Ordinal) => "response.xml",
-            "text/html" => "response.html",
-            "text/plain" => "response.txt",
-            "text/csv" => "response.csv",
-            "application/zip" => "response.zip",
-            "image/png" => "response.png",
-            "image/jpeg" => "response.jpg",
-            "image/gif" => "response.gif",
+            { Type: "application", Subtype: "pdf" } => "response.pdf",
+            { Type: "image", Subtype: "svg+xml" } => "response.svg",
+            { } type when type.Is("json") => "response.json",
+            { } type when type.Is("xml") => "response.xml",
+            { Type: "text", Subtype: "html" } => "response.html",
+            { Type: "text", Subtype: "plain" } => "response.txt",
+            { Type: "text", Subtype: "csv" } => "response.csv",
+            { Type: "application", Subtype: "zip" } => "response.zip",
+            { Type: "image", Subtype: "png" } => "response.png",
+            { Type: "image", Subtype: "jpeg" } => "response.jpg",
+            { Type: "image", Subtype: "gif" } => "response.gif",
             _ => "response",
         };
 
@@ -113,6 +118,14 @@ public sealed class ResponseViewModel : ObservableObject
         {
             Formatting = FormatAsync(response);
         }
+    }
+
+    // The browser shows the bytes, so nothing is decoded as text, which a file such as a PDF is not.
+    (ShownResponse Shown, BrowserPage? Page) InBrowser(ApiResponse response, bool decodeWhole)
+    {
+        var page = BrowserPage.Of(response, decodeWhole);
+        var problem = page is not null ? null : decodeWhole ? _translator.Of("Response.InvalidBase64") : _translator.Of("Response.OnlyText");
+        return (new(ResponseDisplay.Of(response, BodyFormat.Browser), [], problem), page);
     }
 
     // Formatting a large body takes a while, so it is kept off the UI thread, and a newer response, format or choice of what to decode wins.
@@ -126,12 +139,14 @@ public sealed class ResponseViewModel : ObservableObject
         var saved = Saved;
         try
         {
-            var shown = await Task.Run(() => Base64ViewModel.ShowResponse(response, format, decode, _translator, formatting.Token, saved), formatting.Token);
+            var (shown, page) = await Task.Run(() => format == BodyFormat.Browser ? InBrowser(response, decode.Contains(JsonPath.Root))
+                : (Base64ViewModel.ShowResponse(response, format, decode, _translator, formatting.Token, saved), null), formatting.Token);
             if (ReferenceEquals(response, _response) && format == _bodyFormat && ReferenceEquals(decode, Base64.Decode))
             {
                 Response = StatusText is { } status ? shown.Display with { Status = status } : shown.Display;
                 ResponseMarks = shown.Marks;
                 ResponseBodyProblem = shown.Problem;
+                Page = page;
             }
         }
         catch (OperationCanceledException) when (formatting.IsCancellationRequested)

@@ -16,4 +16,5 @@ public enum WorkflowProblemKind
     MixedStep,
     InvalidDelay,
     InvalidRetry,
+    InvalidOutput,
 }

@@ -6,7 +6,8 @@
 
 Det kan:
 
-- vise de gemte requests (`list`) og workflows (`list workflows`)
+- vise de gemte requests (`list`), mapper (`list folders`) og workflows (`list workflows`)
+- oprette, omdøbe, flytte og slette requests, mapper og workflows (`new`, `rename`, `move`, `delete`)
 - sende en gemt request med dens egen metode, URL, headers, body, Base64-valg og auth, eller auth fra nærmeste mappe (`send <request>`)
 - sende et direkte kald med headers og en JSON- eller tekst-body (`send <METODE> <url>`)
 - køre et workflow med parametre og skrive hvert trin som en JSON-linje, mens det kører (`run <workflow>`)
@@ -138,7 +139,13 @@ Uden `-Encoding UTF8` læser Windows PowerShell æ, ø og å forkert.
 ## Kommandoer
 
 ```text
-hoboman-cli list [workflows]
+hoboman-cli list [workflows|folders]
+hoboman-cli new request <mappe> <navn> [--method <METODE>] [--url <url>] [-H "Navn: Værdi"]... [--json <tekst|@fil> | --text <tekst|@fil>]
+hoboman-cli new folder <mappe> <navn>
+hoboman-cli new workflow <navn>
+hoboman-cli rename <id|sti|navn> <nyt navn>
+hoboman-cli move <id|sti> <mappe>
+hoboman-cli delete <id|sti|navn> --yes
 hoboman-cli send <gemt request> [--env <navn>] [--var <navn=værdi>]... [--vars <fil|->] [--out <fil>]
 hoboman-cli send <METODE> <url> [--env <navn>] [-H "Navn: Værdi"]... [--json <tekst|@fil> | --text <tekst|@fil>] [--var <navn=værdi>]... [--vars <fil|->] [--out <fil>]
 hoboman-cli run <workflow> [--env <navn>] [--param <navn=værdi>]... [--params <fil|->]
@@ -148,7 +155,17 @@ hoboman-cli --version
 
 - `list` skriver én linje pr. gemt request, sorteret efter stien: id'et, en tabulator og stien gennem mapperne med `/`, fx `3f2c…<tab>Brugere/Hent bruger`. Del linjen ved den første tabulator, for et navn kan selv indeholde `/`.
 - `list workflows` skriver på samme måde id'et og navnet på hvert workflow, sorteret efter navnet.
+- `list folders` skriver id'et og stien på hver mappe, fx `<id><tab>Shop/Orders`.
 - En request eller et workflow, hvis fil ikke kan læses, står med id'et og intet navn. `send` eller `run` med id'et fortæller, hvad der er galt med filen.
+
+### Oprette, omdøbe, flytte og slette
+
+- `<mappe>` er en mappes id eller sti fra `list folders`, eller `.` for øverste niveau. Det, der ændres, er et id eller en sti/et navn fra `list`, `list folders` eller `list workflows`.
+- `new request` laver en request, der arver auth fra sin mappe. Metoden er `GET`, når `--method` ikke gives. `-H`, `--json` og `--text` virker som ved et direkte kald.
+- `move` flytter en request eller mappe. En mappe kan ikke flyttes ind i sig selv, og et workflow kan ikke flyttes.
+- `delete` sletter en request, en mappe med alt i den eller et workflow, og deres hemmeligheder. Uden `--yes` slettes intet, og fejlen fortæller, hvor mange mapper og requests der ville forsvinde.
+- Navne må ikke være tomme eller indeholde linjeskift. Matcher en sti eller et navn flere ting, giver det `Target is ambiguous. Use its id.`.
+- Ved succes skrives `{"id": ..., "path": ...}` på stdout med exitkode 0. Ved fejl skrives fejlen på stderr med exitkode 2, og intet er ændret. Nye requests og mapper står sidst i deres mappe. Indholdet af en request ændres i appen; CLI'et kan slette og oprette den igen, men så får den et nyt id.
 - `<gemt request>` og `<workflow>` er et id eller en sti/et navn fra `list`, uden forskel på store og små bogstaver. Navne behøver ikke være unikke; har flere samme sti eller navn, giver det en fejl, og så skal id'et bruges.
 - Ét argument efter `send` er en gemt request. To er en metode og en URL.
 - `--out <fil>` gemmer svarets body byte for byte i filen og overskriver den, hvis den findes. Relative stier læses fra den mappe, du står i, og mappen skal findes.
@@ -206,6 +223,13 @@ Fejl, før der kommer et svar, skrives som `{"error":"..."}` på stderr, og stdo
 | `Saved request name is ambiguous. Use its id.` | Flere requests har stien. Brug id'et fra `list` |
 | `Workflow could not be loaded.` / `Workflow file is not valid.` | Workflowet findes ikke, eller `workflow.json` er ugyldig |
 | `Workflow name is ambiguous. Use its id.` | Flere workflows har navnet. Brug id'et fra `list workflows` |
+| `Invalid name.` | `new` eller `rename` fik et tomt navn eller et med linjeskift |
+| `Target could not be found.` / `Target is ambiguous. Use its id.` | Det, der skal omdøbes, flyttes eller slettes, findes ikke, eller flere har stien eller navnet |
+| `Folder could not be found.` / `Folder is ambiguous. Use its id.` | Mappen findes ikke, eller flere har stien. Brug id'et fra `list folders` |
+| `A folder cannot be moved into itself.` / `A workflow cannot be moved.` | `move` blev afvist |
+| `Deleting needs --yes.` | `delete` uden `--yes`. `path`, `folders` og `requests` fortæller, hvad der ville blive slettet |
+| `File is not valid.` | Filen, der skulle ændres, er ugyldig JSON. `file`, `path` og `line` viser hvor |
+| `The change could not be saved.` | En fil kunne ikke skrives eller slettes, fx fordi den er låst |
 | `Selected environment was not found.` | Miljøet findes ikke |
 | `Environment settings could not be read.` | `settings.json` eller `environments.json` kan ikke læses |
 | `Workflow cannot run.` | Tjekket fejlede, se [Workflows](#workflows) |
@@ -251,7 +275,7 @@ Fejl, før der kommer et svar, skrives som `{"error":"..."}` på stderr, og stdo
 - Ved client credentials henter `run` selv et nyt token til trinnet eller workflowet, når det mangler, er udløbet, eller serveren svarer 401, ligesom `send`. Mangler client secret, fejler trinnet med `Fetch a new OAuth token in Hoboman before sending this request.` Authorization code kræver, at brugeren henter et token under Auth på trinnet eller workflowet i Hoboman.
 - Et trins `name` er valgfrit og vises i appen og i events. Uden navn bruges scriptets filnavn, `Wait 30 seconds` for en ventetid eller metoden og requestens adresse uden skema og query, fx `POST dummyjson.com/auth/login`.
 - Parametre gives ved start og kan ikke gemmes i. En parameters `default` kan være enhver JSON-værdi, og uden `default` er parameteren påkrævet. Variabler er de navne, trinnene gemmer i med `saves`, og får deres værdi derfra. En variabel kan også have en `default`, som den har, indtil et trin gemmer i den. Appen skriver listen over variabler ud fra trinnene, når workflowet gemmes, og beholder deres `default`, så en fast værdi, som intet trin gemmer i, gives som en parameter med `default`. Et trin kan også gemme en fast værdi i en variabel, se `from` nedenfor.
-- Et trin kan i stedet for `request` have `"script": "map.js"`, en JavaScript-fil i workflowets mappe. Scriptet får alle parametre, variabler og miljøets variabler i `vars`, som ikke kan ændres. Et navn, workflowet selv har, vinder over miljøet, som i en request, og det, det returnerer, er trinnets output. Outputtet gemmes med `saves` som et svar, fx `"from": "$"` eller `"$.id"`. I events har trinnet `JS` som `method`, en tom `address` og outputtet som `body`. Returnerer scriptet intet, fejler trinnet kun, hvis det har noget i `saves`, med `map.js returned nothing to save.` Et script kører som strict JavaScript uden adgang til filer, netværk eller .NET og stoppes efter 5 sekunder, eller når det holder mere end 512 MB hukommelse. Tal over 2^53 kan ændre sig, når de går gennem et script.
+- Et trin kan i stedet for `request` have `"script": "map.js"`, en JavaScript-fil i workflowets mappe. Scriptet får alle parametre, variabler og miljøets variabler i `vars`, som ikke kan ændres. Et navn, workflowet selv har, vinder over miljøet, som i en request, og det, det returnerer, er trinnets output. Outputtet gemmes med `saves` som et svar, fx `"from": "$"` eller `"$.id"`. Med `"output"` siger trinnet, hvad scriptet returnerer: `Json` (standard, også når den mangler), `Html`, `Xml` eller `Text`. Ved `Json` bliver det returnerede til JSON. Ved de andre skal scriptet returnere en tekst, som bliver outputtet, som den er, ellers fejler trinnet med fx `html.js must return text when its output is Html.` I events har trinnet `JS` som `method`, en tom `address`, outputtet som `body` og outputtets `Content-Type` i `headers`: `application/json`, `text/html; charset=utf-8`, `application/xml; charset=utf-8` eller `text/plain; charset=utf-8`. Returnerer scriptet intet, fejler trinnet kun, hvis det har noget i `saves`, med `map.js returned nothing to save.` Et script kører som strict JavaScript uden adgang til filer, netværk eller .NET og stoppes efter 5 sekunder, eller når det holder mere end 512 MB hukommelse. Tal over 2^53 kan ændre sig, når de går gennem et script.
 - Et request-trin kan gentages, indtil svaret er klar, fx mens et API laver noget færdigt i baggrunden: `"retry": { "until": "$.result.status", "equals": "succeeded", "times": 60, "waitSeconds": 5 }`.
   - Svaret er klar, når det er 2xx, og alt i `saves` findes. Med `until` skal værdien dér også være `equals`, uden hensyn til store og små bogstaver. `until` er en kilde i svaret som `from` i `saves` (`$`, en sti, `header:Navn` eller `status`), men ikke en fast værdi, og `until` og `equals` gives sammen eller slet ikke.
   - Med `"stopIf": "$.result.status", "stopEquals": "failed"` fejler trinnet med det samme, når værdien dér er `stopEquals`, uden hensyn til store og små bogstaver, fx når det, der ventes på, er fejlet. `error` er så `Stopped as $.result.status was failed.` `stopIf` er en kilde i svaret som `until`, og `stopIf` og `stopEquals` gives sammen eller slet ikke.
@@ -260,7 +284,7 @@ Fejl, før der kommer et svar, skrives som `{"error":"..."}` på stderr, og stdo
   - Er svaret ikke klar efter sidste forsøg, fejler trinnet med det sidste svar: et svar, der ikke er 2xx, har sin `status` uden `error`, en manglende værdi giver `Nothing to save was found at <sti>.`, og en `until`-værdi, der ikke passer, giver `The answer was not ready after 60 attempts.` Ender sidste forsøg i en fejl, fx en timeout, står fejlen i `error`. `attempts` står på `step.finished` i alle tilfældene.
   - Gentag ikke en POST eller anden request, der opretter noget, medmindre API'et tåler det. Et forsøg, der fik en fejl, kan være udført hos serveren alligevel.
 - Et trin kan også bare vente: `{ "name": "Vent", "delaySeconds": 30 }`. Det venter mellem 1 og 300 sekunder, har `WAIT` som `method` og en tom `address` i events og kan ikke have `saves`. Afbrydes kørslen, stopper ventetiden med det samme.
-- `from` i `saves` er `$` for hele bodyen (rå tekst, hvis den ikke er JSON), en sti som `$.data.items[0].id`, `header:Navn`, `status` eller en fast JSON-værdi, der gemmes, som den er, fx `"from": "1"` for tallet 1 og `"from": "\"ja\""` for teksten ja. En sti kan ikke bruge `[*]`. Der gemmes kun efter et 2xx-svar, og et trin gemmer alle sine værdier eller ingen.
+- `from` i `saves` er `$` for hele bodyen (som tekst, hvis svarets `Content-Type` ikke er JSON, dvs. `json` eller en type med `+json` som `application/problem+json`, eller hvis bodyen ikke er JSON; en sti læser JSON uanset `Content-Type`), en sti som `$.data.items[0].id`, `header:Navn`, `status` eller en fast JSON-værdi, der gemmes, som den er, fx `"from": "1"` for tallet 1 og `"from": "\"ja\""` for teksten ja. En sti kan ikke bruge `[*]`. Der gemmes kun efter et 2xx-svar, og et trin gemmer alle sine værdier eller ingen.
 - `{{navn}}` udfyldes i URL, query og headers, i Basic-brugernavn og -password og i Bearer-token og i body, når `useEnvironmentVariablesInBody` er `true`. Navnet får sin værdi fra workflowets parametre og variabler. Kun et navn, som workflowet ikke selv har, hentes fra miljøet. Tekst indsættes uændret, og alt andet som kompakt JSON. OAuth-felterne udfyldes kun fra miljøet.
 - `--param navn=værdi` giver en parameter som tekst og kan gentages. `--params fil.json` eller `--params -` (stdin) læser et JSON-objekt, hvor værdierne beholder deres type, fx `{"orderId":"o-17","pageSize":50}`. `--param` vinder over `--params`.
 - Før første kald tjekkes hele workflowet: at hvert trin har en URL, at parametrene er kendte, at de påkrævede er givet, og at hvert `{{navn}}` i en request har en værdi, når trinnet kører. Et navn, der kun står i bodyen, og som hverken workflowet eller miljøet har, bliver stående som skrevet og tjekkes ikke, så fx en Handlebars-template kan bruge sine egne `{{navne}}`. Navne, et script læser i `vars`, tjekkes ikke. Fejler tjekket, sendes intet. Der er ingen måde kun at tjekke eller kun at køre ét trin.
@@ -324,6 +348,7 @@ Ved exitkode 2 står fejlen som JSON på stderr. Fejler tjekket, følger problem
 | `MixedStep` | Trinnet har mere end én af `request`, `script` og `delaySeconds` |
 | `InvalidRetry` | `retry` står på et trin, der ikke er en request, har kun den ene af `until` og `equals` eller af `stopIf` og `stopEquals`, en ugyldig `until` eller `stopIf`, eller `times` eller `waitSeconds` uden for grænserne. `detail` er `until` |
 | `InvalidDelay` | `delaySeconds` er ikke mellem 1 og 300, eller ventetrinnet har `saves`. `detail` er antallet af sekunder |
+| `InvalidOutput` | `output` står på et trin, der ikke er et script. `detail` er værdien |
 
 En ugyldig `workflow.json`, fx med en ukendt eller stavet forkert egenskab, angives med fil, JSON-sti og linje:
 

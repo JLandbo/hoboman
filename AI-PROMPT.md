@@ -13,6 +13,7 @@ En AI arbejder med Hoboman udefra, gennem kommandolinjeprogrammet `hoboman-cli.e
 | Hente en fil, fx en PDF | `hoboman-cli send … --out <fil>` | Svaret gemmes byte for byte i filen |
 | Køre et workflow | `hoboman-cli run <id>` | Alle trin i rækkefølge. Hvert trin skrives som en JSON-linje, mens det kører, og i `runs\` |
 | Følge en kørsel, du startede i appen | Læse den nyeste fil i `runs\<workflow-id>\` | Intet skrives |
+| Oprette, omdøbe, flytte eller slette requests, mapper og workflows, når du beder om det | `hoboman-cli new`, `rename`, `move`, `delete <…> --yes` | Ændringen står i appen med det samme |
 | Bygge eller rette et workflow, når du beder om det | Skrive `workflow.json` og `.js`-filer i `workflows\<id>\` | Workflowet står i appen med det samme |
 | Stoppe en kørsel | Ctrl+C | Kørslen slutter som `Cancelled` |
 
@@ -47,7 +48,7 @@ Du kan sende API-kald og køre workflows gennem **Hoboman**, et API-værktøj p�
 
 ## Regler
 
-1. **Rør ikke Hobomans datafiler.** Du må ikke oprette, ændre eller slette noget i `requests\`, `folders\`, `workflows\` eller `environments.json`, medmindre brugeren udtrykkeligt beder om det. `secrets.json`, `credentials.json`, `settings.json`, `request-order.json` og `pending-secret-cleanup.json` skriver du aldrig i.
+1. **Rør ikke Hobomans datafiler.** Du må ikke oprette, ændre eller slette noget i `requests\`, `folders\`, `workflows\` eller `environments.json`, medmindre brugeren udtrykkeligt beder om det. Opret, omdøb, flyt og slet med CLI'et (`new`, `rename`, `move`, `delete`) i stedet for at skrive filerne, og brug kun `delete --yes`, når brugeren har bedt om netop den sletning. Øverste niveau skrives `.`. `secrets.json`, `credentials.json`, `settings.json`, `request-order.json` og `pending-secret-cleanup.json` skriver du aldrig i.
 2. **Læs altid exitkoden** (`$LASTEXITCODE`), før du bruger outputtet. stdout og stderr er JSON, bortset fra `list`, `--help` og `--version`, der skriver tekst.
 3. **Giv følsomme værdier via stdin** med `--vars -` eller `--params -`, aldrig som `--var`/`--param` på kommandolinjen, så de ikke havner i shellens historik. `run` skriver dog parametre og variabler i klartekst på stdout og i run-loggen, så giv kun en hemmelighed som parameter, når brugeren har bedt om det.
 4. **Gentag ikke hemmeligheder** som tokens, passwords og API-nøgler i dine svar til brugeren. Opsummér i stedet, fx "login lykkedes, token gemt".
@@ -192,7 +193,7 @@ switch ($finished.outcome) {
 
 - Skriv egenskaberne i camelCase og enums som tekst, fx `"Json"`, `"Inherit"`, `"OAuth2"`. En ukendt eller stavet forkert egenskab giver `Workflow file is not valid.` med fil, sti og linje.
 - Skriv ikke `id` i trinenes `request`; appen giver dem et, når brugeren gemmer workflowet. Skal et trin have auth med en hemmelighed, så bed brugeren udfylde den under Auth i appen og gemme. Auth kan også gives som en header med et token fra et tidligere trin, fx `Authorization: Bearer {{token}}`.
-- Et script læser `vars.navn`, som ikke kan ændres, og returnerer det, trinnet gemmer fra med `saves`, fx `"from": "$.cart"`. Det kører som strict JavaScript uden filer, netværk, .NET og `eval` og stoppes efter 5 sekunder.
+- Et script læser `vars.navn`, som ikke kan ændres, og returnerer det, trinnet gemmer fra med `saves`, fx `"from": "$.cart"`. Det returnerede bliver JSON. Skal scriptet lave HTML, XML eller tekst, så giv trinnet `"output": "Html"`, `"Xml"` eller `"Text"` og returnér en tekst. Den bliver outputtet, som den er, og `"from": "$"` gemmer den. Det kører som strict JavaScript uden filer, netværk, .NET og `eval` og stoppes efter 5 sekunder.
 - Appen viser workflowet med det samme. Kan `workflow.json` ikke læses, står det under **Workflows** som **Kan ikke læses (xxxxxxxx…)**. Har brugeren ugemte ændringer i det samme workflow, genindlæses det ikke, og brugerens næste gem overskriver din fil, så sig til, når du har skrevet. Når brugeren gemmer, skriver appen `variables` ud fra trinenes `saves`.
 - Vil du teste workflowet, så spørg først: `run` sender med det samme.
 - Slet ikke workflow-mapper selv. Slettes et workflow i appen, slettes dets hemmeligheder også.
@@ -221,6 +222,12 @@ Ved `run` står de samme tekster som `error` i et trins `step.finished` (exitkod
 | `Invalid variable input.` / `Invalid parameter input.` | `--var`/`--param` skal være `navn=værdi`, og `--vars`/`--params` et JSON-objekt. `-` kræver, at der pipes noget ind |
 | `Workflow could not be loaded.` | Workflowet findes ikke. Kør `list workflows`, og brug et id derfra |
 | `Workflow name is ambiguous. Use its id.` | Flere workflows har navnet. Brug id'et fra `list workflows` |
+| `Invalid name.` / `Target could not be found.` / `Folder could not be found.` | Ret navnet eller målet. Find id'er med `list`, `list folders` eller `list workflows` |
+| `Target is ambiguous. Use its id.` / `Folder is ambiguous. Use its id.` | Flere har stien eller navnet. Brug id'et |
+| `A folder cannot be moved into itself.` / `A workflow cannot be moved.` | Flytningen er ikke mulig. Fortæl brugeren det |
+| `Deleting needs --yes.` | Fortæl brugeren, hvad der ville blive slettet (`path`, `folders`, `requests`), og brug kun `--yes`, hvis brugeren siger ja |
+| `File is not valid.` | Filen er ugyldig JSON. `file`, `path` og `line` viser hvor. Fortæl brugeren det |
+| `The change could not be saved.` | En fil er låst eller kunne ikke skrives. Prøv igen senere, eller fortæl brugeren det |
 | `Workflow file is not valid.` | `workflow.json` er ugyldig. `file`, `path` og `line` viser hvor. Fortæl brugeren det |
 | `Workflow cannot run.` | Se `problems` nedenfor |
 
@@ -232,14 +239,14 @@ Ved `run` står de samme tekster som `error` i et trins `step.finished` (exitkod
 | `UnknownParameter` | Fjern eller ret parameteren. Se `parameters` i `workflow.json` |
 | `UsedBeforeSaved` | Et trin bruger en variabel, før et tidligere trin har gemt den. Workflowet skal rettes |
 | `UnknownName` | Navnet findes hverken i workflowet eller i det valgte miljø. Tjek, at det rigtige miljø er valgt (`--env`). Ellers skal workflowet eller miljøet rettes |
-| `MissingUrl`, `InvalidName`, `DuplicateName`, `NotAVariable`, `InvalidSource`, `MixedStep`, `InvalidDelay`, `InvalidRetry` | Workflowet er sat forkert op. Har du selv skrevet det, så ret det; ellers bed brugeren rette det i Hoboman |
+| `MissingUrl`, `InvalidName`, `DuplicateName`, `NotAVariable`, `InvalidSource`, `MixedStep`, `InvalidDelay`, `InvalidRetry`, `InvalidOutput` | Workflowet er sat forkert op. Har du selv skrevet det, så ret det; ellers bed brugeren rette det i Hoboman |
 | `ScriptNotFound`, `InvalidScript` | Et script-trins `.js`-fil mangler eller har en syntaksfejl (`detail` viser fil og linje). Ret den, hvis du selv har skrevet den; ellers bed brugeren rette den |
 
 Et trin, hvor en værdi i `saves` mangler i svaret, fejler med `error` = `Nothing to save was found at <sti>.` Svaret havde ikke den forventede form. Værdier gemmes kun efter et 2xx-svar.
 
 Et trin med `retry`, hvis svar aldrig blev klar, fejler med det sidste svar, og `attempts` viser antallet af forsøg. Passede `until`-værdien ikke, er `error` `The answer was not ready after <n> attempts.`: det, API'et lavede, blev ikke færdigt i tide. Ellers er det sidste svars `status` eller `error` som ved et almindeligt trin. Fortæl brugeren, hvad det sidste svar sagde, fx en status. Er `error` `Stopped as <sti> was <værdi>.`, stoppede trinnet med det samme, fordi API'et svarede, at det, der ventes på, er fejlet. Det er ikke en timeout.
 
-Et script-trin har `JS` som `method`, `status` 200, en tom `address` og scriptets filnavn som `name`, hvis det intet navn har. Fejler det, er `error` fil, linje og scriptets fejltekst, fx `map.js:2: No order`. Returnerer det intet, mens trinnet har `saves`, er `error` `map.js returned nothing to save.` Et ventetrin har `WAIT` som `method`, en tom `address` og `Wait <n> seconds` som `name`, hvis det intet navn har.
+Et script-trin har `JS` som `method`, `status` 200, en tom `address` og scriptets filnavn som `name`, hvis det intet navn har. Fejler det, er `error` fil, linje og scriptets fejltekst, fx `map.js:2: No order`. Returnerer det intet, mens trinnet har `saves`, er `error` `map.js returned nothing to save.` Returnerer det ikke en tekst, mens trinnet har et andet `output` end `Json`, er `error` fx `html.js must return text when its output is Html.` Et ventetrin har `WAIT` som `method`, en tom `address` og `Wait <n> seconds` som `name`, hvis det intet navn har.
 
 ## Godt at vide
 
