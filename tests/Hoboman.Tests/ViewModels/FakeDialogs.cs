@@ -25,12 +25,12 @@ public sealed class FakeDialogs(string? answer = null, bool accept = false) : ID
     // What happens elsewhere while the values are asked for, as the real dialog lets the app go on.
     public Action? Asking { get; set; }
 
-    // Like the real dialog, a name with a problem is never given back.
+    // Like the real dialog, a name is given back trimmed, and a name with a problem never.
     public string? AskName(string title, string name, string confirm, Func<string, string?> problemOf)
     {
         Asked++;
         NameQuestion = (title, name, confirm, problemOf);
-        return Answer is not null && problemOf(Answer) is null ? Answer : null;
+        return Answer?.Trim() is { } answer && problemOf(answer) is null ? answer : null;
     }
 
     public bool Confirm(string title, string message, string confirm, IReadOnlyList<string> items)

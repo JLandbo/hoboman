@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Text.Json;
 using Hoboman.Tests.Auth;
+using Hoboman.Tests.Workflows;
 
 namespace Hoboman.Tests.ViewModels;
 
@@ -60,7 +61,7 @@ public sealed class WorkflowEditorTests
 
         // Assert
         Assert.NotEqual(Guid.Empty, (await harness.WorkflowLibrary.LoadAsync("Ordre-sync", Cancellation))!.Id);
-        Assert.Equal(["Ordre-sync"], main.Workflows.Names);
+        Assert.Equal(["Ordre-sync"], main.Workflows.Names());
         Assert.Equal(SidebarSection.Workflows, main.Section);
         Assert.Same(main.Workflow, main.Content);
         Assert.Equal("Ordre-sync", main.Workflow!.Name);
@@ -116,9 +117,9 @@ public sealed class WorkflowEditorTests
         await workflow.SaveAsync();
 
         // Assert
-        Assert.Equal(["Renamed"], main.Workflows.Names);
+        Assert.Equal(["Renamed"], main.Workflows.Names());
         Assert.Equal("token", (await harness.WorkflowLibrary.LoadAsync("Renamed", Cancellation))!.Parameters.Single().Name);
-        Assert.False(Directory.Exists(Path.Combine(harness.Folder.Workflows, "Flow")));
+        Assert.Single(Directory.GetDirectories(harness.Folder.Workflows));
     }
 
     [Fact]
@@ -133,7 +134,7 @@ public sealed class WorkflowEditorTests
         await main.DeleteWorkflowAsync("Flow");
 
         // Assert
-        Assert.Empty(main.Workflows.Names);
+        Assert.Empty(main.Workflows.Names());
         Assert.Null(main.Workflow);
         Assert.Null(main.Content);
     }
@@ -150,7 +151,8 @@ public sealed class WorkflowEditorTests
         var workflow = new Workflow { Id = Guid.NewGuid(), Steps = [new() { Request = Request() with { Id = id, Auth = new(AuthKind.Bearer) } }] };
         if (copied)
         {
-            await harness.WorkflowLibrary.SaveAsync("Flow - kopi", workflow, Cancellation);
+            // A copy is another workflow, with its own id, whose step has the same id.
+            await harness.WorkflowLibrary.SaveAsync("Flow - kopi", workflow with { Id = Guid.NewGuid() }, Cancellation);
         }
         var main = harness.Main();
         await OpenAsync(main, "Flow", workflow, harness);
@@ -416,7 +418,7 @@ public sealed class WorkflowEditorTests
 
         // Assert
         Assert.Equal((AuthKind.Bearer, "abc"), ((await harness.WorkflowLibrary.LoadAsync("Flow", Cancellation))!.Auth!.Kind, await harness.Secrets.OfAsync(id, SecretKind.Token, Cancellation)));
-        Assert.DoesNotContain("abc", await File.ReadAllTextAsync(Path.Combine(harness.Folder.Workflows, "Flow", "workflow.json"), Cancellation));
+        Assert.DoesNotContain("abc", await File.ReadAllTextAsync(Path.Combine(FolderOf(harness, "Flow"), "workflow.json"), Cancellation));
     }
 
     [Fact]
@@ -559,7 +561,7 @@ public sealed class WorkflowEditorTests
         // Assert
         var saved = (await harness.WorkflowLibrary.LoadAsync("Flow", Cancellation))!.Steps.Single().Request!;
         Assert.Equal((AuthKind.Bearer, "abc"), (saved.Auth!.Kind, await harness.Secrets.OfAsync(saved.Id, SecretKind.Token, Cancellation)));
-        Assert.DoesNotContain("abc", await File.ReadAllTextAsync(Path.Combine(harness.Folder.Workflows, "Flow", "workflow.json"), Cancellation));
+        Assert.DoesNotContain("abc", await File.ReadAllTextAsync(Path.Combine(FolderOf(harness, "Flow"), "workflow.json"), Cancellation));
     }
 
     [Fact]
@@ -734,7 +736,7 @@ public sealed class WorkflowEditorTests
         await harness.Secrets.SaveAsync(id, SecretKind.Token, "abc", Cancellation);
         var main = harness.Main();
         await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request() with { Id = id, Auth = new(AuthKind.Bearer) } }] }, harness);
-        Directory.Delete(Path.Combine(harness.Folder.Workflows, "Flow"), recursive: true);
+        Directory.Delete(FolderOf(harness, "Flow"), recursive: true);
 
         // Act
         await main.WorkflowsChangedAsync();
@@ -828,7 +830,7 @@ public sealed class WorkflowEditorTests
 
         // Assert
         Assert.NotNull(harness.Dialogs.ConfirmQuestion);
-        Assert.Equal(["Flow"], main.Workflows.Names);
+        Assert.Equal(["Flow"], main.Workflows.Names());
         Assert.Same(workflow, main.Workflow);
     }
 
@@ -886,7 +888,7 @@ public sealed class WorkflowEditorTests
         {
             workflow.Parameters.Rows[0].Name = "mine";
         }
-        Directory.Delete(Path.Combine(harness.Folder.Workflows, "Flow"), recursive: true);
+        Directory.Delete(FolderOf(harness, "Flow"), recursive: true);
 
         // Act
         await main.WorkflowsChangedAsync();
@@ -927,16 +929,89 @@ public sealed class WorkflowEditorTests
         await workflow.SaveAsync();
 
         // Assert
-        Assert.Equal(harness.Translator.Of("Workflow.ScriptTemplate"), await File.ReadAllTextAsync(Path.Combine(harness.Folder.Workflows, "Flow", "map.js"), Cancellation));
+        Assert.Equal(harness.Translator.Of("Workflow.ScriptTemplate"), await File.ReadAllTextAsync(Path.Combine(FolderOf(harness, "Flow"), "map.js"), Cancellation));
         Assert.Equal("map.js", Assert.Single((await harness.WorkflowLibrary.LoadAsync("Flow", Cancellation))!.Steps).Script);
     }
 
+    [Fact]
+    public async Task WorkflowsChangedAsync_WhenAWorkflowCannotBeRead_ThenListsItByItsId()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var id = Guid.NewGuid();
+        Directory.CreateDirectory(Path.Combine(harness.Folder.Workflows, $"{id}"));
+        await File.WriteAllTextAsync(Path.Combine(harness.Folder.Workflows, $"{id}", "workflow.json"), "{", Cancellation);
+        var main = harness.Main();
+
+        // Act
+        await main.WorkflowsChangedAsync();
+
+        // Assert
+        Assert.Equal(new WorkflowItem(id, $"Cannot be read ({$"{id}"[..8]}…)"), Assert.Single(main.Workflows.Items));
+    }
+
+    [Fact]
+    public async Task WorkflowsChangedAsync_WhenTheOpenWorkflowIsRenamedOnDisk_ThenShowsTheNewName()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var main = harness.Main();
+        var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid() }, harness);
+        await harness.WorkflowLibrary.RenameAsync("Flow", "Ordre: sync", Cancellation);
+
+        // Act
+        await main.WorkflowsChangedAsync();
+
+        // Assert
+        Assert.Equal(["Ordre: sync"], main.Workflows.Names());
+        Assert.Equal("Ordre: sync", workflow.Name);
+    }
+
+    [Fact]
+    public async Task WorkflowsChangedAsync_WhenAnEditedWorkflowIsRenamedOnDisk_ThenItsSaveKeepsTheNewName()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var main = harness.Main();
+        var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid() }, harness);
+        workflow.Parameters.Rows[0].Name = "token";
+        await harness.WorkflowLibrary.RenameAsync("Flow", "Ordre: sync", Cancellation);
+        await main.WorkflowsChangedAsync();
+
+        // Act
+        await workflow.SaveAsync();
+
+        // Assert
+        var saved = await harness.WorkflowLibrary.LoadAsync(workflow.Id, Cancellation);
+        Assert.Equal(("Ordre: sync", "token"), (saved!.Name, saved.Parameters.Single().Name));
+    }
+
+    [Fact]
+    public async Task RenameWorkflowAsync_WhenTheWorkflowHasRun_ThenKeepsTheRunShown()
+    {
+        // Arrange
+        using var harness = new Harness(new FakeDialogs(answer: "Renamed"), send: () => Task.FromResult(new ApiResponse(200, "", 1, 0, [], "")));
+        var main = harness.Main();
+        var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request() }] }, harness);
+        await workflow.RunAsync();
+
+        // Act
+        await main.RenameWorkflowAsync("Flow");
+
+        // Assert
+        Assert.Equal("Renamed", workflow.Name);
+        Assert.NotNull(workflow.Summary);
+    }
+
+    // The folder of the workflow with the name, which is named by its id.
+    static string FolderOf(Harness harness, string name) => Task.Run(() => harness.WorkflowLibrary.FolderAsync(name)).GetAwaiter().GetResult();
+
     static async Task<WorkflowViewModel> OpenScriptAsync(Harness harness, string code, params WorkflowStep[] more)
     {
-        Directory.CreateDirectory(Path.Combine(harness.Folder.Workflows, "Flow"));
-        await File.WriteAllTextAsync(Path.Combine(harness.Folder.Workflows, "Flow", "map.js"), code, TestContext.Current.CancellationToken);
         var workflow = new Workflow { Id = Guid.NewGuid(), Parameters = [new("orderId") { Default = JsonSerializer.SerializeToElement("o-17") }], Variables = [new("value")],
             Steps = [new() { Script = "map.js", Saves = [new("value", "$.value")] }, .. more] };
+        Directory.CreateDirectory(Path.Combine(harness.Folder.Workflows, $"{workflow.Id}"));
+        await File.WriteAllTextAsync(Path.Combine(harness.Folder.Workflows, $"{workflow.Id}", "map.js"), code, TestContext.Current.CancellationToken);
         return await OpenAsync(harness.Main(), "Flow", workflow, harness);
     }
 
@@ -971,7 +1046,7 @@ public sealed class WorkflowEditorTests
 
         // Assert
         Assert.Equal((true, false), (unsaved, workflow.IsDirty));
-        Assert.Equal("return { value: 2 };", await File.ReadAllTextAsync(Path.Combine(harness.Folder.Workflows, "Flow", "map.js"), Cancellation));
+        Assert.Equal("return { value: 2 };", await File.ReadAllTextAsync(Path.Combine(FolderOf(harness, "Flow"), "map.js"), Cancellation));
     }
 
     [Fact]
@@ -996,7 +1071,7 @@ public sealed class WorkflowEditorTests
         // Arrange
         using var harness = new Harness();
         var workflow = await OpenScriptAsync(harness, "return { value: 1 };");
-        await File.WriteAllTextAsync(Path.Combine(harness.Folder.Workflows, "Flow", "map.js"), "return { value: 3 };", Cancellation);
+        await File.WriteAllTextAsync(Path.Combine(FolderOf(harness, "Flow"), "map.js"), "return { value: 3 };", Cancellation);
 
         // Act
         await workflow.ReloadAsync();
@@ -1018,7 +1093,7 @@ public sealed class WorkflowEditorTests
         {
             workflow.Code = "return { value: 2 };";
         }
-        await File.WriteAllTextAsync(Path.Combine(harness.Folder.Workflows, "Flow", "map.js"), "return { value: 3 };", Cancellation);
+        await File.WriteAllTextAsync(Path.Combine(FolderOf(harness, "Flow"), "map.js"), "return { value: 3 };", Cancellation);
 
         // Act
         await workflow.ReloadAsync();
@@ -1125,7 +1200,7 @@ public sealed class WorkflowEditorTests
         await workflow.SaveAsync();
 
         // Assert
-        Assert.Equal("return 1;", await File.ReadAllTextAsync(Path.Combine(harness.Folder.Workflows, "Flow", "map.js"), Cancellation));
+        Assert.Equal("return 1;", await File.ReadAllTextAsync(Path.Combine(FolderOf(harness, "Flow"), "map.js"), Cancellation));
     }
 
     [Fact]
@@ -1135,7 +1210,7 @@ public sealed class WorkflowEditorTests
         using var harness = new Harness(new FakeDialogs(answer: "map"));
         var workflow = await OpenScriptAsync(harness, "return 1;");
         workflow.RemoveStep(workflow.Steps.Single());
-        await File.WriteAllTextAsync(Path.Combine(harness.Folder.Workflows, "Flow", "map.js"), "return 2;", Cancellation);
+        await File.WriteAllTextAsync(Path.Combine(FolderOf(harness, "Flow"), "map.js"), "return 2;", Cancellation);
 
         // Act
         await workflow.AddScriptAsync();
@@ -1151,7 +1226,7 @@ public sealed class WorkflowEditorTests
         using var harness = new Harness(new FakeDialogs(answer: "map.js"));
         var main = harness.Main();
         var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid() }, harness);
-        var path = Path.Combine(harness.Folder.Workflows, "Flow", "map.js");
+        var path = Path.Combine(FolderOf(harness, "Flow"), "map.js");
         await File.WriteAllTextAsync(path, "return 1;", Cancellation);
 
         // Act
@@ -1245,14 +1320,15 @@ public sealed class WorkflowEditorTests
         var main = harness.Main();
         var workflow = await OpenAsync(main, "Flow", new() { Id = Guid.NewGuid() }, harness);
         workflow.Parameters.Rows[0].Name = "token";
-        Directory.Delete(Path.Combine(harness.Folder.Workflows, "Flow"), recursive: true);
+        var folder = FolderOf(harness, "Flow");
+        Directory.Delete(folder, recursive: true);
 
         // Act
         await workflow.SaveAsync();
 
         // Assert
         Assert.Equal(harness.Translator.Of("Workflow.SaveFailed"), harness.Dialogs.Notification!.Value.Title);
-        Assert.False(Directory.Exists(Path.Combine(harness.Folder.Workflows, "Flow")));
+        Assert.False(Directory.Exists(folder));
     }
 
     [Fact]

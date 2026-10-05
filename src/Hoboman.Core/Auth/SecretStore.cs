@@ -67,9 +67,6 @@ public sealed class SecretStore(AppFolder folder, ILogger<SecretStore> logger)
         logger.LogInformation("Deleted the secrets of {Count} removed environments", environments.Count);
     }
 
-    // Secrets were saved under the environment's name before environments had ids, and nothing reads them now.
-    public Task ForgetEnvironmentNamesAsync(CancellationToken cancellationToken) => ForgetAsync(environment => !Guid.TryParse(environment, out _), cancellationToken);
-
     public Task DeleteAsync(Guid id, CancellationToken cancellationToken) => DeleteAsync(new HashSet<Guid> { id }, cancellationToken);
 
     public async Task DeleteAsync(IReadOnlySet<Guid> ids, CancellationToken cancellationToken)
@@ -118,7 +115,6 @@ public sealed class SecretStore(AppFolder folder, ILogger<SecretStore> logger)
 
     static string KeyOf(Guid id, SecretKind kind, Guid environment) => environment == Guid.Empty ? $"{id}/{kind}" : $"{id}/{kind}/{environment}";
 
-    // The environment is everything after the id and the kind, so an old name with a slash in it is still one name.
     static string? EnvironmentOf(string key)
     {
         var kind = key.IndexOf('/');

@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using Hoboman.Controls;
+using Hoboman.Tests.Requests;
 using Hoboman.Tests.ViewModels;
 
 namespace Hoboman.Tests.Views;
@@ -12,7 +13,7 @@ public sealed class CollectionInteractionTests
 {
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
-    static RequestNodeViewModel Node(MainViewModel main, string path) => RequestTreeViewModel.Flatten(main.Tree.Nodes).Single(node => node.Path == path);
+    static RequestNodeViewModel Node(MainViewModel main, string path) => main.Tree.NodeAt(path);
 
     [Fact]
     public async Task NewRequest_WhenShown_ThenSelectsJsonBodyAndUsesMatchingSwitchesWithoutTheCount()
@@ -71,7 +72,7 @@ public sealed class CollectionInteractionTests
     public async Task Tab_WhenDoubleClicked_ThenRenamesTheRequestWithoutSavingItsBody()
     {
         using var harness = new Harness(new FakeDialogs(answer: "Renamed", accept: true));
-        await harness.Library.SaveAsync("Original", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Original", ApiRequest.New(), Cancellation);
         await Ui.RunAsync(async () =>
         {
             var main = harness.Main();
@@ -82,9 +83,9 @@ public sealed class CollectionInteractionTests
             var tabs = (ListBox)window.FindName("RequestTabs");
             var item = (ListBoxItem)tabs.ItemContainerGenerator.ContainerFromItem(main.SelectedTab);
             Ui.Press(Ui.Descendants<TextBlock>(item).Single(text => text.Text == "Original"), 2);
-            await Ui.UntilAsync(() => !main.IsChangingCollection && main.SelectedTab!.Name == "Renamed" && RequestTreeViewModel.Flatten(main.Tree.Nodes).Any(node => node.Path == "Renamed" && node.Tab is not null));
+            await Ui.UntilAsync(() => !main.IsChangingCollection && main.SelectedTab!.Name == "Renamed" && RequestTreeViewModel.Flatten(main.Tree.Nodes).Any(node => main.Tree.PathOf(node) == "Renamed" && node.Tab is not null));
             Assert.Equal("unsaved", main.SelectedTab!.Editor.Body);
-            Assert.Equal("", (await harness.Library.LoadAsync("Renamed", Cancellation))!.Body);
+            Assert.Equal("", (await harness.Library.LoadAtAsync("Renamed", Cancellation))!.Body);
         });
     }
 
@@ -92,9 +93,9 @@ public sealed class CollectionInteractionTests
     public async Task TreeDrag_WhenOverFolderBetweenRowsOrInvalidTarget_ThenShowsTheCorrectMarkerAndMovesTheFolder()
     {
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Folder/Child", ApiRequest.New(), Cancellation);
-        await harness.Library.CreateFolderAsync("Target", Cancellation);
-        await harness.Library.SaveAsync("Request", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Folder/Child", ApiRequest.New(), Cancellation);
+        await harness.Library.FolderAtAsync("Target", Cancellation);
+        await harness.Library.SaveAtAsync("Request", ApiRequest.New(), Cancellation);
         await Ui.RunAsync(async () =>
         {
             var main = harness.Main();
@@ -122,8 +123,8 @@ public sealed class CollectionInteractionTests
             await Ui.IdleAsync();
             Assert.Equal(Visibility.Collapsed, marker.Visibility);
             Ui.Drag(tree, source, middle, DragDrop.DropEvent);
-            await Ui.UntilAsync(() => !main.IsChangingCollection && RequestTreeViewModel.Flatten(main.Tree.Nodes).Any(node => node.Path == "Target/Folder/Child"));
-            Assert.False(harness.Library.FolderExists("Folder"));
+            await Ui.UntilAsync(() => !main.IsChangingCollection && RequestTreeViewModel.Flatten(main.Tree.Nodes).Any(node => main.Tree.PathOf(node) == "Target/Folder/Child"));
+            Assert.False(harness.Library.FolderExistsAt("Folder"));
             Assert.Equal(Visibility.Collapsed, marker.Visibility);
         });
     }
@@ -163,8 +164,8 @@ public sealed class CollectionInteractionTests
         using var harness = new Harness(new FakeDialogs(accept: true));
         var a = ApiRequest.New();
         var b = ApiRequest.New();
-        await harness.Library.SaveAsync("A", a, Cancellation);
-        await harness.Library.SaveAsync("B", b, Cancellation);
+        await harness.Library.SaveAtAsync("A", a, Cancellation);
+        await harness.Library.SaveAtAsync("B", b, Cancellation);
         await Ui.RunAsync(async () =>
         {
             var main = harness.Main();
@@ -188,8 +189,8 @@ public sealed class CollectionInteractionTests
     public async Task TreeDrag_WhenHoveringThenDroppingAtRoot_ThenOpensTheFolderAndMovesTheRequestOut()
     {
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Folder/Request", ApiRequest.New(), Cancellation);
-        await harness.Library.CreateFolderAsync("Target", Cancellation);
+        await harness.Library.SaveAtAsync("Folder/Request", ApiRequest.New(), Cancellation);
+        await harness.Library.FolderAtAsync("Target", Cancellation);
         await Ui.RunAsync(async () =>
         {
             var main = harness.Main();
@@ -209,9 +210,9 @@ public sealed class CollectionInteractionTests
             var marker = AdornerLayer.GetAdornerLayer(view).GetAdorners(view).OfType<DropIndicator>().Single();
             Assert.True(marker.IsBox);
             Ui.Drag(root, source, point, DragDrop.DropEvent);
-            await Ui.UntilAsync(() => !main.IsChangingCollection && main.Tree.Nodes.Any(node => node.Path == "Request"));
-            Assert.True(harness.Library.Exists("Request"));
-            Assert.False(harness.Library.Exists("Folder/Request"));
+            await Ui.UntilAsync(() => !main.IsChangingCollection && main.Tree.Nodes.Any(node => main.Tree.PathOf(node) == "Request"));
+            Assert.True(harness.Library.ExistsAt("Request"));
+            Assert.False(harness.Library.ExistsAt("Folder/Request"));
         });
     }
 
@@ -219,7 +220,7 @@ public sealed class CollectionInteractionTests
     public async Task ContextMenu_WhenCloneIsClicked_ThenOpensANewIndependentRequest()
     {
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Original", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Original", ApiRequest.New(), Cancellation);
         await Ui.RunAsync(async () =>
         {
             var main = harness.Main();
@@ -233,7 +234,7 @@ public sealed class CollectionInteractionTests
             clone.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
             item.ContextMenu.IsOpen = false;
             await Ui.UntilAsync(() => !main.IsChangingCollection && main.SelectedTab!.Name == "Original (1)");
-            Assert.NotEqual(main.SelectedTab!.Id, (await harness.Library.LoadAsync("Original", Cancellation))!.Id);
+            Assert.NotEqual(main.SelectedTab!.Id, (await harness.Library.LoadAtAsync("Original", Cancellation))!.Id);
         });
     }
 }

@@ -6,6 +6,8 @@ public sealed class AppFolder(string root)
 
     public string Requests => Path.Combine(root, "requests");
 
+    public string Folders => Path.Combine(root, "folders");
+
     public string Environments => Path.Combine(root, "environments.json");
 
     public string History => Path.Combine(root, "history");

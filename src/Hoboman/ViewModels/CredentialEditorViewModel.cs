@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Runtime.InteropServices;
 using Hoboman.Core.Auth;
 using Hoboman.Core.Environments;
 using Hoboman.Core.Languages;
@@ -108,21 +107,6 @@ public sealed class CredentialEditorViewModel(CredentialStore store, SecretStore
         group.Drafts.Remove(selected);
         Shown.Remove(selected);
         Selected = Shown.ElementAtOrDefault(Math.Min(index, Shown.Count - 1));
-    }
-
-    // Another program can hold the clipboard open for longer than it is waited for.
-    public bool Copy(string text)
-    {
-        try
-        {
-            clipboard.Put(text);
-            return true;
-        }
-        catch (ExternalException exception)
-        {
-            logger.LogWarning(exception, "Could not copy to the clipboard");
-            return false;
-        }
     }
 
     // The window stays open, so the credentials can be tried in the main window while it is.

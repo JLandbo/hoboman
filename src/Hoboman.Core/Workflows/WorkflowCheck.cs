@@ -14,14 +14,14 @@ namespace Hoboman.Core.Workflows;
 public sealed partial class WorkflowCheck(WorkflowLibrary workflows, SecretStore secrets, ILogger<WorkflowCheck> logger)
 {
     // The app gives the code that is in its editor, so a run uses it before it is saved, as it does with the rest of the workflow.
-    public async Task<CheckedWorkflow> CheckAsync(string name, Workflow workflow, ApiEnvironment environment, IReadOnlyDictionary<string, JsonElement> parameters, CancellationToken cancellationToken,
+    public async Task<CheckedWorkflow> CheckAsync(Workflow workflow, ApiEnvironment environment, IReadOnlyDictionary<string, JsonElement> parameters, CancellationToken cancellationToken,
         IReadOnlyDictionary<string, string>? code = null)
     {
         var scripts = new Dictionary<string, string?>();
         foreach (var script in workflow.Steps.Select(step => step.Script).OfType<string>().Distinct())
         {
             scripts[script] = !WorkflowLibrary.IsValidScriptName(script) ? null
-                : code?.GetValueOrDefault(script) ?? await workflows.LoadScriptAsync(name, script, cancellationToken).ConfigureAwait(false);
+                : code?.GetValueOrDefault(script) ?? await workflows.LoadScriptAsync(workflow.Id, script, cancellationToken).ConfigureAwait(false);
         }
         var authTexts = new Dictionary<int, IReadOnlyList<string>>();
         foreach (var (index, step) in workflow.Steps.Index())
@@ -33,19 +33,15 @@ public sealed partial class WorkflowCheck(WorkflowLibrary workflows, SecretStore
                     : await AuthTextsAsync(request.Id, request.Auth, cancellationToken).ConfigureAwait(false);
             }
         }
-        return Check(name, workflow, environment, parameters, scripts, authTexts);
+        return Check(workflow, environment, parameters, scripts, authTexts);
     }
 
     // A name the workflow declares gets its value from the workflow only, so an old value in the environment cannot hide steps in the wrong order.
     // A script reads every value through vars, so it has no names to check.
-    public static CheckedWorkflow Check(string name, Workflow workflow, ApiEnvironment environment, IReadOnlyDictionary<string, JsonElement> parameters, IReadOnlyDictionary<string, string?>? scripts = null,
+    public static CheckedWorkflow Check(Workflow workflow, ApiEnvironment environment, IReadOnlyDictionary<string, JsonElement> parameters, IReadOnlyDictionary<string, string?>? scripts = null,
         IReadOnlyDictionary<int, IReadOnlyList<string>>? authTexts = null)
     {
         var problems = new List<WorkflowProblem>();
-        if (workflow.Id == Guid.Empty)
-        {
-            problems.Add(new(WorkflowProblemKind.MissingId, null, name));
-        }
         var declared = workflow.Parameters.Concat(workflow.Variables);
         problems.AddRange(declared.Where(value => !IsValidName(value.Name)).Select(value => new WorkflowProblem(WorkflowProblemKind.InvalidName, null, value.Name)));
         problems.AddRange(declared.GroupBy(value => value.Name).Where(group => group.Count() > 1).Select(group => new WorkflowProblem(WorkflowProblemKind.DuplicateName, null, group.Key)));
@@ -105,7 +101,7 @@ public sealed partial class WorkflowCheck(WorkflowLibrary workflows, SecretStore
             }
             set.UnionWith(step.Saves.Select(save => save.Variable).Where(variableNames.Contains));
         }
-        return new(name, workflow, parameters, steps, problems);
+        return new(workflow, parameters, steps, problems);
     }
 
     public const int MaxDelaySeconds = 300;

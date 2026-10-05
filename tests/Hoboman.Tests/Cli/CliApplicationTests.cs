@@ -3,7 +3,9 @@ using System.Text;
 using System.Text.Json;
 using Hoboman.Cli;
 using Hoboman.Tests.Auth;
+using Hoboman.Tests.Requests;
 using Hoboman.Tests.Sending;
+using Hoboman.Tests.Workflows;
 
 namespace Hoboman.Tests.Cli;
 
@@ -24,7 +26,7 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
 
     SettingsStore Settings => new(Folder, NullLogger<SettingsStore>.Instance);
 
-    EnvironmentStore Environments => new(Folder, Secrets, NullLogger<EnvironmentStore>.Instance);
+    EnvironmentStore Environments => new(Folder, NullLogger<EnvironmentStore>.Instance);
 
     SecretStore Secrets => new(Folder, NullLogger<SecretStore>.Instance);
 
@@ -98,30 +100,118 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     public async Task RunAsync_WhenListing_ThenWritesTheNamesSorted()
     {
         // Arrange
-        await Library.SaveAsync("z-last", Request, Cancellation);
-        await Library.SaveAsync("Nested/b", Request, Cancellation);
-        await Library.SaveAsync("a-first", Request, Cancellation);
+        var last = await Library.SaveAtAsync("z-last", Request, Cancellation);
+        var nested = await Library.SaveAtAsync("Nested/b", Request, Cancellation);
+        var first = await Library.SaveAtAsync("a-first", Request, Cancellation);
 
         // Act
         await RunAsync(["list"]);
 
         // Assert
-        Assert.Equal($"a-first{Environment.NewLine}Nested/b{Environment.NewLine}z-last{Environment.NewLine}", Output);
+        Assert.Equal($"{first.Id}\ta-first{Environment.NewLine}{nested.Id}\tNested/b{Environment.NewLine}{last.Id}\tz-last{Environment.NewLine}", Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenSendingById_ThenSendsThatRequest()
+    {
+        // Arrange
+        var saved = await Library.SaveAtAsync("Folder/Send", Request with { Url = $"{server.Http}by-id" }, Cancellation);
+
+        // Act
+        await RunAsync(["send", $"{saved.Id}"]);
+
+        // Assert
+        Assert.Equal("/by-id", Echo.Target);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTwoRequestsHaveThePath_ThenAsksForTheId()
+    {
+        // Arrange
+        await Library.SaveAtAsync("a/b/c", Request, Cancellation);
+        var folder = await Library.FolderAtAsync("a", Cancellation);
+        await Library.SaveAsync(Request with { Name = "b/c", FolderId = folder }, Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["send", "a/b/c"]);
+
+        // Assert
+        Assert.Equal((2, "Saved request name is ambiguous. Use its id."), (exitCode, Problem));
     }
 
     [Fact]
     public async Task RunAsync_WhenListingWorkflows_ThenWritesTheirNamesSorted()
     {
         // Arrange
-        await Workflows.SaveAsync("b", new() { Id = Guid.NewGuid() }, Cancellation);
-        await Workflows.SaveAsync("a", new() { Id = Guid.NewGuid() }, Cancellation);
-        await Library.SaveAsync("request", Request, Cancellation);
+        var b = await Workflows.SaveAsync("b", new() { Id = Guid.NewGuid() }, Cancellation);
+        var a = await Workflows.SaveAsync("a", new() { Id = Guid.NewGuid() }, Cancellation);
+        await Library.SaveAtAsync("request", Request, Cancellation);
 
         // Act
         await RunAsync(["list", "workflows"]);
 
         // Assert
-        Assert.Equal($"a{Environment.NewLine}b{Environment.NewLine}", Output);
+        Assert.Equal($"{a.Id}\ta{Environment.NewLine}{b.Id}\tb{Environment.NewLine}", Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTwoWorkflowsHaveTheName_ThenAsksForTheId()
+    {
+        // Arrange
+        await Workflows.SaveAsync("Flow", new() { Id = Guid.NewGuid() }, Cancellation);
+        await Workflows.SaveAsync("Flow", new() { Id = Guid.NewGuid() }, Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["run", "Flow"]);
+
+        // Assert
+        Assert.Equal((2, "Workflow name is ambiguous. Use its id."), (exitCode, Problem));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RunAsync_WhenListingAndAFileCannotBeRead_ThenListsItByItsIdAlone(bool workflow)
+    {
+        // Arrange
+        var id = Guid.NewGuid();
+        var file = workflow ? Path.Combine(Folder.Workflows, $"{id}", "workflow.json") : Path.Combine(Folder.Requests, $"{id}.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        await File.WriteAllTextAsync(file, "{", Cancellation);
+
+        // Act
+        await RunAsync(workflow ? ["list", "workflows"] : ["list"]);
+
+        // Assert
+        Assert.Equal($"{id}\t{Environment.NewLine}", Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenSendingAPathInAnotherCase_ThenSendsThatRequest()
+    {
+        // Arrange
+        await Library.SaveAtAsync("Folder/Send", Request with { Url = $"{server.Http}by-path" }, Cancellation);
+
+        // Act
+        await RunAsync(["send", "folder/send"]);
+
+        // Assert
+        Assert.Equal("/by-path", Echo.Target);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RunAsync_WhenRunByIdOrByTheNameInAnotherCase_ThenRunsTheWorkflow(bool byId)
+    {
+        // Arrange
+        var workflow = await Workflows.SaveAsync("Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Call }] }, Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["run", byId ? $"{workflow.Id}" : "flow"]);
+
+        // Assert
+        Assert.Equal(0, exitCode);
     }
 
     [Fact]
@@ -153,7 +243,7 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     public async Task RunAsync_WhenListing_ThenReadsNoOtherData()
     {
         // Arrange
-        await Library.SaveAsync("a", Request, Cancellation);
+        await Library.SaveAtAsync("a", Request, Cancellation);
         foreach (var path in new[] { Folder.Settings, Folder.Environments, Folder.Secrets, Folder.RequestOrder })
         {
             await File.WriteAllTextAsync(path, "{", Cancellation);
@@ -306,34 +396,6 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     }
 
     [Fact]
-    public async Task RunAsync_WhenSendingASavedRequest_ThenRemembersItByName()
-    {
-        // Arrange
-        await Library.SaveAsync("Folder/Send", Request, Cancellation);
-
-        // Act
-        await RunAsync(["send", "Folder/Send"]);
-
-        // Assert
-        Assert.Equal("Folder/Send", Assert.Single(await CallsAsync()).Entry.Name);
-    }
-
-    [Fact]
-    public async Task RunAsync_WhenNoEnvironmentIsGiven_ThenUsesTheSelectedOne()
-    {
-        // Arrange
-        await Settings.UpdateAsync(_ => new(EnvironmentName: "Selected"), Cancellation);
-        await Environments.SaveAsync([new("Selected", []), new("Other", [])], Cancellation);
-        var sender = Answering();
-
-        // Act
-        await RunAsync(["send", "GET", "https://localhost/"], sender);
-
-        // Assert
-        Assert.Equal("Selected", sender.Environment?.Name);
-    }
-
-    [Fact]
     public async Task RunAsync_WhenSettingsHoldAnEnvironmentId_ThenUsesThatEnvironment()
     {
         // Arrange
@@ -354,7 +416,7 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     {
         // Arrange
         await Environments.SaveAsync([new("Dev", []) { Id = Guid.NewGuid() }], Cancellation);
-        await Settings.UpdateAsync(_ => new(EnvironmentName: "Dev", EnvironmentId: Guid.NewGuid()), Cancellation);
+        await Settings.UpdateAsync(_ => new(EnvironmentId: Guid.NewGuid()), Cancellation);
         var sender = Answering();
 
         // Act
@@ -368,8 +430,9 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     public async Task RunAsync_WhenAnEnvironmentIsGiven_ThenUsesIt()
     {
         // Arrange
-        await Settings.UpdateAsync(_ => new(EnvironmentName: "Selected"), Cancellation);
-        await Environments.SaveAsync([new("Selected", []), new("Other", [])], Cancellation);
+        var selected = new ApiEnvironment("Selected", []) { Id = Guid.NewGuid() };
+        await Settings.UpdateAsync(_ => new(EnvironmentId: selected.Id), Cancellation);
+        await Environments.SaveAsync([selected, new("Other", []) { Id = Guid.NewGuid() }], Cancellation);
         var sender = Answering();
 
         // Act
@@ -401,7 +464,7 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     {
         // Arrange
         await Environments.SaveAsync([new("Dev", [])], Cancellation);
-        await Settings.UpdateAsync(_ => new(EnvironmentName: selected ? "dev" : null), Cancellation);
+        await Settings.UpdateAsync(_ => new(EnvironmentId: selected ? Guid.NewGuid() : null), Cancellation);
         string[] options = selected ? [] : ["--env", "dev"];
         var sender = Answering();
 
@@ -435,8 +498,8 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     public async Task RunAsync_WhenAValueFromAResponseIsGivenToTheNextCall_ThenSendsIt()
     {
         // Arrange
-        await Library.SaveAsync("Create", Request with { Method = "POST", BodyKind = BodyKind.Json, Body = """{"id":42}""" }, Cancellation);
-        await Library.SaveAsync("Next", Request with { Url = $"{server.Http}items/{{{{id}}}}" }, Cancellation);
+        await Library.SaveAtAsync("Create", Request with { Method = "POST", BodyKind = BodyKind.Json, Body = """{"id":42}""" }, Cancellation);
+        await Library.SaveAtAsync("Next", Request with { Url = $"{server.Http}items/{{{{id}}}}" }, Cancellation);
         await RunAsync(["send", "Create"]);
         using var input = new StringReader(Echo.Body);
         _output.SetLength(0);
@@ -467,7 +530,7 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
 
     [Theory]
     [InlineData(new[] { "send", "missing" }, "Saved request could not be loaded.")]
-    [InlineData(new[] { "send", "../outside" }, "Saved request could not be loaded.")]
+    [InlineData(new[] { "send", "5b8a7e1c-3f2d-4c9b-8a6e-1d2c3b4a5f60" }, "Saved request could not be loaded.")]
     [InlineData(new[] { "send", "POST", "https://localhost/", "--text", "@missing" }, "Input could not be read.")]
     [InlineData(new[] { "send", "GET", "https://localhost/", "--vars", "missing" }, "Input could not be read.")]
     [InlineData(new[] { "send", "GET", "https://localhost/", "-H", "missing-colon" }, "Invalid request input.")]
@@ -489,11 +552,11 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     public async Task RunAsync_WhenAFileIsCorrupt_ThenFailsBeforeSending(bool environments, string problem)
     {
         // Arrange
-        await Library.SaveAsync("Send", Request, Cancellation);
-        await File.WriteAllTextAsync(environments ? Folder.Environments : Path.Combine(Folder.Requests, "Send.json"), "{", Cancellation);
+        var saved = await Library.SaveAtAsync("Send", Request, Cancellation);
+        await File.WriteAllTextAsync(environments ? Folder.Environments : Path.Combine(Folder.Requests, $"{saved.Id}.json"), "{", Cancellation);
 
         // Act
-        var exitCode = await RunAsync(["send", "Send", "--env", "Dev"]);
+        var exitCode = await RunAsync(["send", $"{saved.Id}", "--env", "Dev"]);
 
         // Assert
         Assert.Equal((2, problem, 0), (exitCode, Problem, (await CallsAsync()).Count));
@@ -582,7 +645,7 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     {
         // Arrange
         var request = Request with { Auth = new(AuthKind.OAuth2) };
-        await Library.SaveAsync("Send", request, Cancellation);
+        await Library.SaveAtAsync("Send", request, Cancellation);
         if (expired)
         {
             await Secrets.SaveAsync(request.Id, SecretKind.OAuthToken, new OAuthToken("expired", "Bearer", DateTimeOffset.UtcNow.AddMinutes(-1), null).ToJson(), Cancellation);
@@ -600,7 +663,7 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     {
         // Arrange
         var oauth = new FakeOAuthClient(_ => Task.FromResult(_fetched));
-        await Library.SaveAsync("Send", Request with { Auth = new(AuthKind.OAuth2) }, Cancellation);
+        await Library.SaveAtAsync("Send", Request with { Auth = new(AuthKind.OAuth2) }, Cancellation);
         await Environments.SaveAsync([new("Dev", [new("clientId", "saved")])], Cancellation);
 
         // Act
@@ -614,7 +677,7 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     public async Task RunAsync_WhenNoTokenCanBeFetched_ThenAsksForItToBeFetchedInHoboman()
     {
         // Arrange
-        await Library.SaveAsync("Send", Request with { Auth = new(AuthKind.OAuth2) }, Cancellation);
+        await Library.SaveAtAsync("Send", Request with { Auth = new(AuthKind.OAuth2) }, Cancellation);
 
         // Act
         var exitCode = await RunAsync(["send", "Send"]);
@@ -734,7 +797,7 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
 
     [Theory]
     [InlineData("missing")]
-    [InlineData("../outside")]
+    [InlineData("5b8a7e1c-3f2d-4c9b-8a6e-1d2c3b4a5f60")]
     public async Task RunAsync_WhenTheWorkflowCannotBeLoaded_ThenFailsBeforeStarting(string name)
     {
         // Act
@@ -748,12 +811,13 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     public async Task RunAsync_WhenTheSavedRequestFileIsInvalid_ThenTellsTheFileThePathAndTheLineWithoutTheValue()
     {
         // Arrange
-        var path = Path.Combine(Folder.Requests, "Send.json");
+        var id = Guid.NewGuid();
+        var path = Path.Combine(Folder.Requests, $"{id}.json");
         Directory.CreateDirectory(Folder.Requests);
         await File.WriteAllTextAsync(path, "{\n  \"headers\": \"secret-value\"\n}", Cancellation);
 
         // Act
-        var exitCode = await RunAsync(["send", "Send"]);
+        var exitCode = await RunAsync(["send", $"{id}"]);
 
         // Assert
         Assert.Equal((2, JsonSerializer.Serialize(new { error = "Saved request file is not valid.", file = path, path = "$.headers", line = 2 }, CompactJson.Options)), (exitCode, Error.TrimEnd()));
@@ -765,12 +829,13 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     public async Task RunAsync_WhenTheWorkflowFileIsInvalid_ThenTellsTheFileThePathAndTheLineWithoutTheValue(string json, string jsonPath, int line)
     {
         // Arrange
-        var path = Path.Combine(Folder.Workflows, "Flow", "workflow.json");
+        var id = Guid.NewGuid();
+        var path = Path.Combine(Folder.Workflows, $"{id}", "workflow.json");
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         await File.WriteAllTextAsync(path, json, Cancellation);
 
         // Act
-        var exitCode = await RunAsync(["run", "Flow"]);
+        var exitCode = await RunAsync(["run", $"{id}"]);
 
         // Assert
         Assert.Equal((2, JsonSerializer.Serialize(new { error = "Workflow file is not valid.", file = path, path = jsonPath, line }, CompactJson.Options)), (exitCode, Error.TrimEnd()));

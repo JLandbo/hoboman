@@ -135,6 +135,7 @@ public partial class App : Application
         services.AddSingleton<CredentialEditorViewModel>();
         services.AddSingleton<CredentialsViewModel>();
         services.AddSingleton<FolderAuthViewModel>();
+        services.AddSingleton<RequestSnapshot>();
         services.AddSingleton<RequestTreeViewModel>();
         services.AddSingleton<HistoryViewModel>();
         services.AddSingleton<WorkflowsViewModel>();

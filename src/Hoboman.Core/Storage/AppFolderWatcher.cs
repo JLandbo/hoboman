@@ -87,7 +87,7 @@ public sealed class AppFolderWatcher : IDisposable
 
     void Settle(string path)
     {
-        var timer = IsIn(path, _folder.Requests) || path.StartsWith(_folder.RequestOrder, StringComparison.OrdinalIgnoreCase) ? _requests
+        var timer = IsIn(path, _folder.Requests) || IsIn(path, _folder.Folders) || path.StartsWith(_folder.RequestOrder, StringComparison.OrdinalIgnoreCase) ? _requests
             : IsIn(path, _folder.History) ? _history
             : path.StartsWith(_folder.Environments, StringComparison.OrdinalIgnoreCase) ? _environments
             : IsIn(path, _folder.Workflows) ? _workflows

@@ -1,5 +1,7 @@
 using System.Text.Json;
+using Hoboman.Tests.Requests;
 using Hoboman.Tests.Sending;
+using Hoboman.Tests.Workflows;
 
 namespace Hoboman.Tests.Cli;
 
@@ -30,22 +32,22 @@ public sealed class CliProcessTests(CliTestServer server) : IClassFixture<CliTes
     public async Task RunAsync_WhenListingFromAnotherDirectory_ThenListsTheRequestsNextToTheProgram()
     {
         // Arrange
-        await Library.SaveAsync("Ærø", Request, Cancellation);
+        var saved = await Library.SaveAtAsync("Ærø", Request, Cancellation);
         Directory.CreateDirectory(Path.Combine(_process.WorkingDirectory, "requests"));
-        await File.WriteAllTextAsync(Path.Combine(_process.WorkingDirectory, "requests", "Wrong.json"), "{}", Cancellation);
+        await File.WriteAllTextAsync(Path.Combine(_process.WorkingDirectory, "requests", $"{Guid.NewGuid()}.json"), """{ "name": "Wrong", "url": "" }""", Cancellation);
 
         // Act
         var result = await _process.RunAsync(["list"]);
 
         // Assert
-        Assert.Equal($"Ærø{Environment.NewLine}", result.Output);
+        Assert.Equal($"{saved.Id}\tÆrø{Environment.NewLine}", result.Output);
     }
 
     [Fact]
     public async Task RunAsync_WhenListing_ThenChangesNoFiles()
     {
         // Arrange
-        await Library.SaveAsync("Send", Request, Cancellation);
+        await Library.SaveAtAsync("Send", Request, Cancellation);
         var original = _process.Snapshot(includeOutput: true);
 
         // Act
@@ -59,7 +61,7 @@ public sealed class CliProcessTests(CliTestServer server) : IClassFixture<CliTes
     public async Task RunAsync_WhenSending_ThenChangesNoFilesButTheHistory()
     {
         // Arrange
-        await Library.SaveAsync("Send", Request, Cancellation);
+        await Library.SaveAtAsync("Send", Request, Cancellation);
         var original = _process.Snapshot();
 
         // Act
@@ -128,7 +130,7 @@ public sealed class CliProcessTests(CliTestServer server) : IClassFixture<CliTes
     {
         // Arrange
         var request = Request with { Auth = new(AuthKind.OAuth2, OAuth: new() { TokenUrl = $"{server.Http}token", ClientId = "cli" }) };
-        await Library.SaveAsync("Send", request, Cancellation);
+        await Library.SaveAtAsync("Send", request, Cancellation);
         await Secrets.SaveAsync(request.Id, SecretKind.ClientSecret, "secret", Cancellation);
 
         // Act

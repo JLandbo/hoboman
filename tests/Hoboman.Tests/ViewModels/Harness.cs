@@ -16,7 +16,7 @@ public sealed class Harness : IDisposable
         OAuth = oauth ?? new FakeOAuthClient();
         Library = new(Folder, NullLogger<RequestLibrary>.Instance);
         Secrets = new(Folder, NullLogger<SecretStore>.Instance);
-        EnvironmentStore = new(Folder, Secrets, NullLogger<EnvironmentStore>.Instance);
+        EnvironmentStore = new(Folder, NullLogger<EnvironmentStore>.Instance);
         SettingsStore = new(Folder, NullLogger<SettingsStore>.Instance);
         Environments = Restarted();
         CredentialStore = new(Folder, Secrets, NullLogger<CredentialStore>.Instance);
@@ -25,7 +25,9 @@ public sealed class Harness : IDisposable
         Credentials = new(CredentialStore, Secrets, Environments, CredentialEditor, Dialogs, NullLogger<CredentialsViewModel>.Instance);
         Sender = new(send ?? (() => Task.FromResult(new ApiResponse(200, "OK", 0, 2, [], "{}"))));
         var runner = new RequestRunner(Sender, Library, History(), NullLogger<RequestRunner>.Instance);
-        Services = new(runner, Secrets, AuthRefresh, Library, new(), Environments, Credentials, Dialogs, _translator, Clock, NullLogger<RequestTabViewModel>.Instance);
+        var snapshot = new RequestSnapshot();
+        Tree = new(Library, snapshot, Dialogs, _translator, NullLogger<RequestTreeViewModel>.Instance);
+        Services = new(runner, Secrets, AuthRefresh, Library, snapshot, new(), Environments, Credentials, Dialogs, _translator, Clock, NullLogger<RequestTabViewModel>.Instance);
         WorkflowLibrary = new(Folder, NullLogger<WorkflowLibrary>.Instance);
         WorkflowServices = new(WorkflowLibrary, new(WorkflowLibrary, Secrets, NullLogger<WorkflowCheck>.Instance), new(Sender, Folder, Clock, NullLogger<WorkflowRunner>.Instance), Environments, Credentials, Dialogs, _translator, Clock,
             Secrets, AuthRefresh, NullLogger<WorkflowViewModel>.Instance);
@@ -65,18 +67,21 @@ public sealed class Harness : IDisposable
 
     public FakeClipboard Clipboard { get; } = new();
 
+    // One for the app, as it writes the snapshot the tabs read their folders from.
+    public RequestTreeViewModel Tree { get; }
+
     public RequestTabServices Services { get; }
 
     public WorkflowLibrary WorkflowLibrary { get; }
 
     public WorkflowServices WorkflowServices { get; }
 
-    public RequestTabViewModel Tab(ApiRequest? request = null, string? name = null) => new(Services, request ?? ApiRequest.New(), name);
+    public RequestTabViewModel Tab(ApiRequest? request = null, bool saved = false) => new(Services, request ?? ApiRequest.New(), saved);
 
     public MainViewModel Main() => new(
-        new(Library, Dialogs, _translator, NullLogger<RequestTreeViewModel>.Instance),
+        Tree,
         new(History(), _translator, TimeProvider.System, NullLogger<HistoryViewModel>.Instance),
-        new(WorkflowLibrary, NullLogger<WorkflowsViewModel>.Instance),
+        new(WorkflowLibrary, _translator, NullLogger<WorkflowsViewModel>.Instance),
         WorkflowServices,
         Environments,
         new(SettingsStore, _translator, new(Folder.Themes), NullLogger<SettingsViewModel>.Instance),

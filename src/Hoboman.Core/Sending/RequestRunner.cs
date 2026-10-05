@@ -11,7 +11,7 @@ public sealed class RequestRunner(IRequestSender sender, RequestLibrary library,
 {
     // The calls are awaited without ConfigureAwait(false), so the token is fetched where the caller called from, such as the UI thread.
     // A call is one entry in the history with how it ended, so a token fetched on the way leaves no failed call that was never sent.
-    public async Task<ApiResponse> RunAsync(ApiRequest request, string? name, ApiEnvironment? environment, HistorySource source, Func<AuthSource, Task<bool>> fetchToken, CancellationToken cancellationToken)
+    public async Task<ApiResponse> RunAsync(ApiRequest request, ApiEnvironment? environment, HistorySource source, Func<AuthSource, Task<bool>> fetchToken, CancellationToken cancellationToken)
     {
         AuthSource? auth = null;
         ApiResponse response;
@@ -29,12 +29,12 @@ public sealed class RequestRunner(IRequestSender sender, RequestLibrary library,
 
         async Task<ApiResponse> SendOnceAsync()
         {
-            auth = await library.AuthOfAsync(name, request, cancellationToken).ConfigureAwait(false);
+            auth = await library.AuthOfAsync(request, cancellationToken).ConfigureAwait(false);
             return await sender.SendAsync(request, auth, environment, cancellationToken).ConfigureAwait(false);
         }
 
         HistoryEntry EntryOf(ApiResponse? answer, string? error) =>
-            new(DateTimeOffset.Now, source, AddressOf(request, environment), request, name, environment?.Name, answer, error);
+            new(DateTimeOffset.Now, source, AddressOf(request, environment), request, environment?.Name, answer, error);
     }
 
     async Task RememberAsync(HistoryEntry entry)

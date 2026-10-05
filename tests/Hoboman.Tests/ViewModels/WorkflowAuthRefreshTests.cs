@@ -1,4 +1,5 @@
 using Hoboman.Tests.Auth;
+using Hoboman.Tests.Workflows;
 
 namespace Hoboman.Tests.ViewModels;
 

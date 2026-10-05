@@ -12,10 +12,13 @@ public sealed class WorkflowLibraryTests : IDisposable
 
     WorkflowLibrary Library() => new(new AppFolder(_temporary.Path), NullLogger<WorkflowLibrary>.Instance);
 
-    void WriteWorkflow(string name, string json)
+    // A workflow's folder is named by its id.
+    Guid WriteWorkflow(string json)
     {
-        Directory.CreateDirectory(Path.Combine(WorkflowsFolder, name));
-        File.WriteAllText(Path.Combine(WorkflowsFolder, name, "workflow.json"), json);
+        var id = Guid.NewGuid();
+        Directory.CreateDirectory(Path.Combine(WorkflowsFolder, $"{id}"));
+        File.WriteAllText(Path.Combine(WorkflowsFolder, $"{id}", "workflow.json"), json);
+        return id;
     }
 
     public void Dispose() => _temporary.Dispose();
@@ -43,6 +46,7 @@ public sealed class WorkflowLibraryTests : IDisposable
         var workflow = new Workflow
         {
             Id = Guid.NewGuid(),
+            Name = "Ordre: sync / v2",
             Parameters = [new("orderId"), new("pageSize") { Default = JsonSerializer.SerializeToElement(new { size = 50, name = "Æble" }) }],
             Variables = [new("token")],
             Steps =
@@ -67,23 +71,36 @@ public sealed class WorkflowLibraryTests : IDisposable
                 },
             ],
         };
-        await Library().SaveAsync("Ordre-sync", workflow, Cancellation);
+        await Library().SaveAsync(workflow, Cancellation);
 
         // Act
-        var loaded = await Library().LoadAsync("Ordre-sync", Cancellation);
+        var loaded = await Library().LoadAsync(workflow.Id, Cancellation);
 
         // Assert
         Assert.Equal(JsonSerializer.Serialize(workflow), JsonSerializer.Serialize(loaded));
     }
 
     [Fact]
+    public async Task LoadAsync_WhenTheIdInTheFileIsAnother_ThenTheFolderNameWins()
+    {
+        // Arrange
+        var id = WriteWorkflow($$"""{"id": "{{Guid.NewGuid()}}", "name": "Ordre-sync"}""");
+
+        // Act
+        var loaded = await Library().LoadAsync(id, Cancellation);
+
+        // Assert
+        Assert.Equal(id, loaded!.Id);
+    }
+
+    [Fact]
     public async Task LoadAsync_WhenADefaultIsNull_ThenKeepsItAsAValue()
     {
         // Arrange
-        WriteWorkflow("Ordre-sync", """{"variables": [{"name": "order", "default": null}]}""");
+        var id = WriteWorkflow("""{"variables": [{"name": "order", "default": null}]}""");
 
         // Act
-        var loaded = await Library().LoadAsync("Ordre-sync", Cancellation);
+        var loaded = await Library().LoadAsync(id, Cancellation);
 
         // Assert
         Assert.Equal(JsonValueKind.Null, Assert.Single(loaded!.Variables).Default.ValueKind);
@@ -96,20 +113,20 @@ public sealed class WorkflowLibraryTests : IDisposable
         var workflow = new Workflow { Id = Guid.NewGuid(), Variables = [new("token")] };
 
         // Act
-        await Library().SaveAsync("Ordre-sync", workflow, Cancellation);
+        await Library().SaveAsync(workflow, Cancellation);
 
         // Assert
-        Assert.DoesNotContain("default", File.ReadAllText(Path.Combine(WorkflowsFolder, "Ordre-sync", "workflow.json")));
+        Assert.DoesNotContain("default", File.ReadAllText(Path.Combine(WorkflowsFolder, $"{workflow.Id}", "workflow.json")));
     }
 
     [Fact]
     public async Task LoadAsync_WhenAStepHasNoRequest_ThenLoadsItWithoutOne()
     {
         // Arrange
-        WriteWorkflow("Ordre-sync", """{"steps": [{}]}""");
+        var id = WriteWorkflow("""{"steps": [{}]}""");
 
         // Act
-        var loaded = await Library().LoadAsync("Ordre-sync", Cancellation);
+        var loaded = await Library().LoadAsync(id, Cancellation);
 
         // Assert
         Assert.Null(Assert.Single(loaded!.Steps).Request);
@@ -118,43 +135,52 @@ public sealed class WorkflowLibraryTests : IDisposable
     [Theory]
     [InlineData("../secret.js")]
     [InlineData("..\\secret.js")]
+    [InlineData("map\\..\\..\\secret.js")]
     [InlineData("secret.txt")]
     public async Task LoadScriptAsync_WhenTheNameLeadsOutOfTheFolderOrIsNotJavaScript_ThenGivesNoCode(string script)
     {
         // Arrange
-        WriteWorkflow("Ordre-sync", "{}");
+        var id = WriteWorkflow("{}");
         File.WriteAllText(Path.Combine(WorkflowsFolder, "secret.js"), "return 1;");
-        File.WriteAllText(Path.Combine(WorkflowsFolder, "Ordre-sync", "secret.txt"), "return 1;");
+        File.WriteAllText(Path.Combine(WorkflowsFolder, $"{id}", "secret.txt"), "return 1;");
 
         // Act
-        var code = await Library().LoadScriptAsync("Ordre-sync", script, Cancellation);
+        var code = await Library().LoadScriptAsync(id, script, Cancellation);
 
         // Assert
         Assert.Null(code);
     }
 
     [Fact]
-    public async Task LoadAsync_WhenTheNameHasASlash_ThenThrows()
+    public async Task ListAsync_WhenAFolderHasNoWorkflowFileOrIsNoId_ThenLeavesItOut()
     {
+        // Arrange
+        var id = WriteWorkflow("""{"name": "Ordre-sync"}""");
+        Directory.CreateDirectory(Path.Combine(WorkflowsFolder, $"{Guid.NewGuid()}"));
+        foreach (var other in new[] { "Copy", $"{Guid.NewGuid():B}" })
+        {
+            Directory.CreateDirectory(Path.Combine(WorkflowsFolder, other));
+            File.WriteAllText(Path.Combine(WorkflowsFolder, other, "workflow.json"), """{"name": "Copy"}""");
+        }
+
         // Act
-        var failure = await Record.ExceptionAsync(() => Library().LoadAsync("Shop/Ordre-sync", Cancellation));
+        var workflows = await Library().ListAsync(Cancellation);
 
         // Assert
-        Assert.IsType<ArgumentException>(failure);
+        Assert.Equal([(id, "Ordre-sync")], workflows);
     }
 
     [Fact]
-    public async Task NamesAsync_WhenAFolderHasNoWorkflowFile_ThenLeavesItOut()
+    public async Task ListAsync_WhenAWorkflowCannotBeRead_ThenGivesItWithoutAName()
     {
         // Arrange
-        WriteWorkflow("Ordre-sync", "{}");
-        Directory.CreateDirectory(Path.Combine(WorkflowsFolder, "Empty"));
+        var id = WriteWorkflow("{");
 
         // Act
-        var names = await Library().NamesAsync(Cancellation);
+        var workflows = await Library().ListAsync(Cancellation);
 
         // Assert
-        Assert.Equal(["Ordre-sync"], names);
+        Assert.Equal([(id, (string?)null)], workflows);
     }
 
     [Fact]
@@ -164,58 +190,60 @@ public sealed class WorkflowLibraryTests : IDisposable
         var created = await Library().CreateAsync("Ordre-sync", Cancellation);
 
         // Assert
-        var loaded = await Library().LoadAsync("Ordre-sync", Cancellation);
-        Assert.Equal((true, created.Id), (created.Id != Guid.Empty, loaded?.Id));
+        var loaded = await Library().LoadAsync(created.Id, Cancellation);
+        Assert.Equal((true, created.Id, "Ordre-sync"), (created.Id != Guid.Empty, loaded?.Id, loaded?.Name));
     }
 
     [Fact]
-    public async Task CreateAsync_WhenTheWorkflowExists_ThenThrows()
+    public async Task CreateAsync_WhenTheNameIsTaken_ThenMakesAnotherWorkflowWithIt()
     {
         // Arrange
-        await Library().CreateAsync("Ordre-sync", Cancellation);
+        var first = await Library().CreateAsync("Ordre-sync", Cancellation);
 
         // Act
-        var failure = await Record.ExceptionAsync(() => Library().CreateAsync("Ordre-sync", Cancellation));
+        var second = await Library().CreateAsync("Ordre-sync", Cancellation);
 
         // Assert
-        Assert.IsType<IOException>(failure);
+        Assert.NotEqual(first.Id, second.Id);
+        Assert.Equal(["Ordre-sync", "Ordre-sync"], (await Library().ListAsync(Cancellation)).Select(workflow => workflow.Name));
     }
 
     [Fact]
     public async Task SaveAsync_WhenTheFolderIsGoneAndMayNotBeCreated_ThenThrows()
     {
         // Act
-        var failure = await Record.ExceptionAsync(() => Library().SaveAsync("Ordre-sync", new Workflow(), Cancellation, createDirectory: false));
+        var failure = await Record.ExceptionAsync(() => Library().SaveAsync(new Workflow { Id = Guid.NewGuid(), Name = "Ordre-sync" }, Cancellation, createDirectory: false));
 
         // Assert
         Assert.IsType<DirectoryNotFoundException>(failure);
     }
 
     [Fact]
-    public async Task RenameAsync_WhenCalled_ThenMovesTheFolderWithEverythingInIt()
+    public async Task RenameAsync_WhenCalled_ThenChangesOnlyTheNameAndKeepsTheFolder()
     {
         // Arrange
-        WriteWorkflow("Ordre-sync", "{}");
-        File.WriteAllText(Path.Combine(WorkflowsFolder, "Ordre-sync", "map.js"), "");
+        var id = WriteWorkflow("""{"name": "Ordre-sync", "parameters": [{"name": "orderId"}]}""");
+        File.WriteAllText(Path.Combine(WorkflowsFolder, $"{id}", "map.js"), "");
 
         // Act
-        await Library().RenameAsync("Ordre-sync", "Ordre-import", Cancellation);
+        await Library().RenameAsync(id, "Ordre: import", Cancellation);
 
         // Assert
-        Assert.Equal(["Ordre-import"], await Library().NamesAsync(Cancellation));
-        Assert.True(File.Exists(Path.Combine(WorkflowsFolder, "Ordre-import", "map.js")));
+        var loaded = await Library().LoadAsync(id, Cancellation);
+        Assert.Equal(("Ordre: import", "orderId"), (loaded!.Name, loaded.Parameters.Single().Name));
+        Assert.True(File.Exists(Path.Combine(WorkflowsFolder, $"{id}", "map.js")));
     }
 
     [Fact]
     public async Task DeleteAsync_WhenCalled_ThenRemovesTheFolder()
     {
         // Arrange
-        WriteWorkflow("Ordre-sync", "{}");
+        var id = WriteWorkflow("{}");
 
         // Act
-        await Library().DeleteAsync("Ordre-sync", Cancellation);
+        await Library().DeleteAsync(id, Cancellation);
 
         // Assert
-        Assert.False(Directory.Exists(Path.Combine(WorkflowsFolder, "Ordre-sync")));
+        Assert.False(Directory.Exists(Path.Combine(WorkflowsFolder, $"{id}")));
     }
 }

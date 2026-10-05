@@ -8,6 +8,7 @@ public sealed class WorkflowRunnerTests : IDisposable
 {
     readonly TemporaryFolder _temporary = new();
     readonly List<WorkflowEvent> _events = [];
+    readonly Dictionary<string, string> _scripts = [];
     readonly WatchedClock _clock = new();
 
     AppFolder Folder => new(_temporary.Path);
@@ -33,8 +34,14 @@ public sealed class WorkflowRunnerTests : IDisposable
         Func<AuthSource, Task<bool>>? fetchToken = null)
     {
         environment ??= ApiEnvironment.None;
-        var check = new WorkflowCheck(new WorkflowLibrary(Folder, NullLogger<WorkflowLibrary>.Instance), new SecretStore(Folder, NullLogger<SecretStore>.Instance), NullLogger<WorkflowCheck>.Instance);
-        var checkedWorkflow = await check.CheckAsync("Ordre-sync", workflow, environment, parameters ?? [], Cancellation);
+        var library = new WorkflowLibrary(Folder, NullLogger<WorkflowLibrary>.Instance);
+        foreach (var (name, code) in _scripts)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(library.ScriptPathOf(workflow.Id, name))!);
+            await library.CreateScriptAsync(workflow.Id, name, code, Cancellation);
+        }
+        var check = new WorkflowCheck(library, new SecretStore(Folder, NullLogger<SecretStore>.Instance), NullLogger<WorkflowCheck>.Instance);
+        var checkedWorkflow = await check.CheckAsync(workflow, environment, parameters ?? [], Cancellation);
         var runner = new WorkflowRunner(sender, Folder, _clock, NullLogger<WorkflowRunner>.Instance);
         return await runner.RunAsync(checkedWorkflow, environment, fetchToken ?? (_ => Task.FromResult(false)), workflowEvent =>
         {
@@ -46,11 +53,8 @@ public sealed class WorkflowRunnerTests : IDisposable
 
     T Single<T>() where T : WorkflowEvent => Assert.Single(_events.OfType<T>());
 
-    async Task ScriptAsync(string name, string code)
-    {
-        Directory.CreateDirectory(Path.Combine(Folder.Workflows, "Ordre-sync"));
-        await new WorkflowLibrary(Folder, NullLogger<WorkflowLibrary>.Instance).CreateScriptAsync("Ordre-sync", name, code, Cancellation);
-    }
+    // A script lies in the folder of the workflow it belongs to, which is known only when the workflow runs.
+    void Script(string name, string code) => _scripts[name] = code;
 
     public void Dispose() => _temporary.Dispose();
 
@@ -248,7 +252,7 @@ public sealed class WorkflowRunnerTests : IDisposable
         // Arrange
         var order = Request("https://dev.local/orders/1");
         var import = Request("https://dev.local/import/{{reference}}");
-        await ScriptAsync("map.js", "return { reference: `${vars.order.id}-${vars.order.lines.length}` };");
+        Script("map.js", "return { reference: `${vars.order.id}-${vars.order.lines.length}` };");
         var workflow = new Workflow
         {
             Id = Guid.NewGuid(),
@@ -268,7 +272,7 @@ public sealed class WorkflowRunnerTests : IDisposable
     {
         // Arrange
         var echo = Request("https://dev.local/{{result}}");
-        await ScriptAsync("map.js", "return { result: `${vars.host}-${vars.tenant}` };");
+        Script("map.js", "return { result: `${vars.host}-${vars.tenant}` };");
         var workflow = new Workflow
         {
             Id = Guid.NewGuid(),
@@ -291,7 +295,7 @@ public sealed class WorkflowRunnerTests : IDisposable
     public async Task RunAsync_WhenAScriptReturnsNothing_ThenFailsOnlyIfItHasSomethingToSave(bool saves, RunOutcome expected)
     {
         // Arrange
-        await ScriptAsync("check.js", "if (!vars.order) { throw new Error('No order'); }");
+        Script("check.js", "if (!vars.order) { throw new Error('No order'); }");
         var workflow = new Workflow
         {
             Id = Guid.NewGuid(),
@@ -310,7 +314,7 @@ public sealed class WorkflowRunnerTests : IDisposable
     public async Task RunAsync_WhenAScriptAnswers_ThenItsOutputCanBeSavedAsBytes()
     {
         // Arrange
-        await ScriptAsync("map.js", "return { navn: 'Dør' };");
+        Script("map.js", "return { navn: 'Dør' };");
         var workflow = new Workflow { Id = Guid.NewGuid(), Steps = [new() { Script = "map.js" }] };
 
         // Act
@@ -326,7 +330,7 @@ public sealed class WorkflowRunnerTests : IDisposable
     {
         // Arrange
         var ping = Request("https://dev.local/ping");
-        await ScriptAsync("map.js", "const order = vars;\nthrow new Error('No order');");
+        Script("map.js", "const order = vars;\nthrow new Error('No order');");
         var workflow = new Workflow { Id = Guid.NewGuid(), Steps = [new() { Script = "map.js" }, new() { Request = ping }] };
 
         // Act

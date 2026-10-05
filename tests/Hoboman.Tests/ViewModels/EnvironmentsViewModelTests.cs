@@ -53,29 +53,13 @@ public sealed class EnvironmentsViewModelTests
         // Arrange
         using var harness = new Harness();
         await harness.EnvironmentStore.SaveAsync([_dev], Cancellation);
-        await harness.SettingsStore.UpdateAsync(settings => settings with { EnvironmentName = "Gone" }, Cancellation);
+        await harness.SettingsStore.UpdateAsync(settings => settings with { EnvironmentId = Guid.NewGuid() }, Cancellation);
 
         // Act
         await harness.Environments.LoadAsync(Cancellation);
 
         // Assert
         Assert.Null(harness.Environments.Selected);
-    }
-
-    [Fact]
-    public async Task LoadAsync_WhenSettingsHoldOnlyTheLegacyName_ThenChoosesByNameAndSavesTheId()
-    {
-        // Arrange
-        using var harness = new Harness();
-        await harness.EnvironmentStore.SaveAsync([_dev, _prod], Cancellation);
-        await harness.SettingsStore.UpdateAsync(settings => settings with { EnvironmentName = "Prod" }, Cancellation);
-
-        // Act
-        await harness.Environments.LoadAsync(Cancellation);
-
-        // Assert
-        var settings = await harness.SettingsStore.LoadAsync(Cancellation);
-        Assert.Equal((_prod.Id, _prod.Id, null), (harness.Environments.Selected?.Id, settings.EnvironmentId, settings.EnvironmentName));
     }
 
     [Fact]

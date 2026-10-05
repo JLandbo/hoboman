@@ -121,9 +121,10 @@ public sealed class OAuthClient(HttpClients clients, IBrowser browser, Translato
         using var response = await client.SendAsync(message, cancellationToken).ConfigureAwait(false);
         var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         // Some providers, such as GitHub, answer an error with 200.
-        if (!response.IsSuccessStatusCode || ErrorOf(body) is not null)
+        var error = ErrorOf(body);
+        if (!response.IsSuccessStatusCode || error is not null)
         {
-            throw new OAuthException(OAuthProblem.Rejected, ErrorOf(body) ?? $"{(int)response.StatusCode} {response.ReasonPhrase}".Trim());
+            throw new OAuthException(OAuthProblem.Rejected, error ?? $"{(int)response.StatusCode} {response.ReasonPhrase}".Trim());
         }
         var token = TokenOf(body);
         logger.LogInformation("Got an OAuth token that expires at {ExpiresAt}", token.ExpiresAt);

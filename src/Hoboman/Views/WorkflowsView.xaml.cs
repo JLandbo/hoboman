@@ -23,15 +23,15 @@ public partial class WorkflowsView : UserControl
         }
     }
 
-    async void Rename_Click(object sender, RoutedEventArgs e) => await ViewModel.RenameWorkflowAsync((string)((FrameworkElement)sender).DataContext);
+    async void Rename_Click(object sender, RoutedEventArgs e) => await ViewModel.RenameWorkflowAsync((WorkflowItem)((FrameworkElement)sender).DataContext);
 
-    async void Delete_Click(object sender, RoutedEventArgs e) => await ViewModel.DeleteWorkflowAsync((string)((FrameworkElement)sender).DataContext);
+    async void Delete_Click(object sender, RoutedEventArgs e) => await ViewModel.DeleteWorkflowAsync((WorkflowItem)((FrameworkElement)sender).DataContext);
 
     async Task OpenAsync(DependencyObject source)
     {
-        if (ItemsControl.ContainerFromElement(Names, source) is ListBoxItem { DataContext: string name })
+        if (ItemsControl.ContainerFromElement(Names, source) is ListBoxItem { DataContext: WorkflowItem item })
         {
-            await ViewModel.OpenWorkflowAsync(name);
+            await ViewModel.OpenWorkflowAsync(item.Id);
         }
     }
 }

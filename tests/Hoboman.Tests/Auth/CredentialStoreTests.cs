@@ -33,21 +33,6 @@ public sealed class CredentialStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task AllAsync_WhenSavedByTheFirstVersion_ThenIsAnOAuthClientWithItsClientId()
-    {
-        // Arrange
-        var id = Guid.NewGuid();
-        Directory.CreateDirectory(Folder.Root);
-        File.WriteAllText(Folder.Credentials, $$"""[{ "id": "{{id}}", "environmentId": "{{_dev}}", "name": "Docs dev", "clientId": "docs-client" }]""");
-
-        // Act
-        var credentials = await Store().AllAsync(Cancellation);
-
-        // Assert
-        Assert.Equal([new Credential(id, _dev, "Docs dev", new(AuthKind.OAuth2, OAuth: new() { ClientId = "docs-client" }))], credentials);
-    }
-
-    [Fact]
     public async Task SaveAsync_WhenACredentialIsLeftOut_ThenItsSecretsAreDeleted()
     {
         // Arrange

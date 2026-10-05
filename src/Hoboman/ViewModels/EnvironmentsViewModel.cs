@@ -21,7 +21,7 @@ public sealed class EnvironmentsViewModel(EnvironmentStore store, SettingsStore 
         logger.LogInformation("Environment changed to {Environment}", environment?.Name);
         try
         {
-            await settings.UpdateAsync(saved => saved with { EnvironmentId = environment?.Id, EnvironmentName = null }, CancellationToken.None);
+            await settings.UpdateAsync(saved => saved with { EnvironmentId = environment?.Id }, CancellationToken.None);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
@@ -42,11 +42,6 @@ public sealed class EnvironmentsViewModel(EnvironmentStore store, SettingsStore 
                 Items.Add(environment);
             }
             Selected = saved is null ? Items.FirstOrDefault(environment => environment.Id == id) : saved.EnvironmentIn(Items);
-            // Settings from before environments had ids hold the name, and are saved with the id from now on.
-            if (saved is { EnvironmentId: null, EnvironmentName: not null } && Selected is { } chosen)
-            {
-                await ChooseAsync(chosen);
-            }
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {

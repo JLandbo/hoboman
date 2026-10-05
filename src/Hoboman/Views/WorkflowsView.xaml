@@ -8,12 +8,12 @@
         </ContextMenu>
     </UserControl.Resources>
     <Grid>
-        <ListBox x:Name="Names" ItemsSource="{Binding Workflows.Names}" Style="{StaticResource SideList}" MouseLeftButtonUp="Names_MouseLeftButtonUp" KeyDown="Names_KeyDown">
+        <ListBox x:Name="Names" ItemsSource="{Binding Workflows.Items}" Style="{StaticResource SideList}" MouseLeftButtonUp="Names_MouseLeftButtonUp" KeyDown="Names_KeyDown">
             <ListBox.ItemTemplate>
                 <DataTemplate>
                     <DockPanel ContextMenu="{StaticResource WorkflowMenu}" Background="Transparent">
                         <TextBlock DockPanel.Dock="Left" Width="24" Text="&#xE8AB;" FontFamily="{StaticResource IconFont}" FontSize="11" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                     </DockPanel>
                 </DataTemplate>
             </ListBox.ItemTemplate>
@@ -23,7 +23,7 @@
                 <Style TargetType="TextBlock">
                     <Setter Property="Visibility" Value="Collapsed" />
                     <Style.Triggers>
-                        <DataTrigger Binding="{Binding Workflows.Names.Count}" Value="0">
+                        <DataTrigger Binding="{Binding Workflows.Items.Count}" Value="0">
                             <Setter Property="Visibility" Value="Visible" />
                         </DataTrigger>
                     </Style.Triggers>

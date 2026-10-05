@@ -4,6 +4,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Shapes;
+using Hoboman.Tests.Requests;
 using Hoboman.Tests.ViewModels;
 
 namespace Hoboman.Tests.Views;
@@ -13,7 +14,91 @@ public sealed class RequestTreeViewTests
 {
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
-    static RequestNodeViewModel Node(MainViewModel main, string path) => RequestTreeViewModel.Flatten(main.Tree.Nodes).Single(node => node.Path == path);
+    static RequestNodeViewModel Node(MainViewModel main, string path) => main.Tree.NodeAt(path);
+
+    [Fact]
+    public async Task Find_WhenExecutedInHistory_ThenShowsTheCollectionsAndFocusesTheSearch()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await Ui.RunAsync(async () =>
+        {
+            var main = harness.Main();
+            await main.LoadAsync();
+            main.Section = SidebarSection.History;
+            var window = await Ui.ShowAsync(harness, main);
+
+            // Act
+            ApplicationCommands.Find.Execute(null, window);
+            await Ui.IdleAsync();
+
+            // Assert
+            Assert.Equal(SidebarSection.Collections, main.Section);
+            Assert.Same(Ui.Named<TextBox>(window, "SearchBox"), Keyboard.FocusedElement);
+        });
+    }
+
+    [Fact]
+    public async Task SearchBox_WhenEscapeIsPressed_ThenClearsTheSearch()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await Ui.RunAsync(async () =>
+        {
+            var main = harness.Main();
+            await main.LoadAsync();
+            var window = await Ui.ShowAsync(harness, main);
+            main.Tree.Search = "users";
+
+            // Act
+            Ui.Key(Ui.Named<TextBox>(window, "SearchBox"), Key.Escape);
+
+            // Assert
+            Assert.Equal("", main.Tree.Search);
+        });
+    }
+
+    [Fact]
+    public async Task Tree_WhenSearching_ThenCollapsesTheRowsThatDoNotMatch()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAtAsync("Users/Get", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Users/Delete", ApiRequest.New(), Cancellation);
+        await Ui.RunAsync(async () =>
+        {
+            var main = harness.Main();
+            await main.LoadAsync();
+            var window = await Ui.ShowAsync(harness, main);
+
+            // Act
+            main.Tree.Search = "get";
+            await Ui.IdleAsync();
+
+            // Assert
+            Assert.Equal((Visibility.Visible, Visibility.Collapsed), (Ui.Item(window, Node(main, "Users/Get")).Visibility, Ui.Item(window, Node(main, "Users/Delete")).Visibility));
+        });
+    }
+
+    [Fact]
+    public async Task Close_WhenWholeFoldersWereTurnedOff_ThenRemembersIt()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await Ui.RunAsync(async () =>
+        {
+            var main = harness.Main();
+            await main.LoadAsync();
+            var window = await Ui.ShowAsync(harness, main);
+            main.Tree.ShowWholeFolders = false;
+
+            // Act
+            window.Close();
+
+            // Assert
+            Assert.False((await harness.SettingsStore.LoadAsync(Cancellation)).SearchWholeFolders);
+        });
+    }
 
     [Theory]
     [InlineData("rename")]
@@ -24,11 +109,11 @@ public sealed class RequestTreeViewTests
     {
         var original = change == "rename" ? "People/Old" : "Users/Get";
         using var harness = new Harness(new FakeDialogs(answer: change == "folder" ? "People" : "Get"));
-        await harness.Library.SaveAsync(original, ApiRequest.New(), Cancellation);
-        await harness.Library.CreateFolderAsync("People", Cancellation);
+        await harness.Library.SaveAtAsync(original, ApiRequest.New(), Cancellation);
+        await harness.Library.FolderAtAsync("People", Cancellation);
         if (change == "folder")
         {
-            await harness.Library.DeleteFolderAsync("People", Cancellation);
+            await harness.Library.DeleteFolderAtAsync("People", Cancellation);
         }
         await Ui.RunAsync(async () =>
         {
@@ -43,7 +128,7 @@ public sealed class RequestTreeViewTests
                 case "move": await main.MoveAsync(Node(main, "Users/Get"), Node(main, "People")); break;
                 case "folder": await main.RenameFolderAsync(Node(main, "Users")); break;
                 case "external":
-                    await harness.Library.RenameAsync("Users/Get", "People/Get", Cancellation);
+                    await harness.Library.RenameAtAsync("Users/Get", "People/Get", Cancellation);
                     await main.RequestsChangedAsync();
                     break;
             }
@@ -64,7 +149,7 @@ public sealed class RequestTreeViewTests
     public async Task ActiveRow_WhenTheTabHasNoCollectionRow_ThenNothingIsMarked(string change)
     {
         using var harness = new Harness(new FakeDialogs(accept: true));
-        await harness.Library.SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Users/Get", ApiRequest.New(), Cancellation);
         await Ui.RunAsync(async () =>
         {
             var main = harness.Main();
@@ -110,7 +195,7 @@ public sealed class RequestTreeViewTests
         var response = new TaskCompletionSource<ApiResponse>();
         var token = new TaskCompletionSource<OAuthToken>();
         using var harness = new Harness(send: () => response.Task, oauth: new(cancellation => token.Task.WaitAsync(cancellation)));
-        await harness.Library.CreateFolderAsync("Users", Cancellation);
+        await harness.Library.FolderAtAsync("Users", Cancellation);
         await Ui.RunAsync(async () =>
         {
             var main = harness.Main();
@@ -143,7 +228,7 @@ public sealed class RequestTreeViewTests
             Assert.Equal(Visibility.Visible, Ui.Named<Ellipse>(row, "Unsaved").Visibility);
             var tabs = Ui.Descendants<ListBox>(window).Single(list => ReferenceEquals(list.ItemsSource, main.Tabs));
             Assert.Equal(Visibility.Visible, Ui.Descendants<Ellipse>((ListBoxItem)tabs.ItemContainerGenerator.ContainerFromItem(draft)).Single().Visibility);
-            Assert.Empty(await harness.Library.NamesAsync(Cancellation));
+            Assert.Empty(await harness.Library.PathsAsync(Cancellation));
         });
     }
 
@@ -151,7 +236,7 @@ public sealed class RequestTreeViewTests
     public async Task ActiveRow_WhenTheClickedFileIsMissing_ThenKeepsThePreviousHighlight()
     {
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Users/Get", ApiRequest.New(), Cancellation);
         await Ui.RunAsync(async () =>
         {
             var main = harness.Main();
@@ -159,10 +244,10 @@ public sealed class RequestTreeViewTests
             await main.NewDraftAsync(Node(main, "Users"));
             var draft = main.SelectedTab;
             var window = await Ui.ShowAsync(harness, main);
-            await harness.Library.DeleteAsync("Users/Get", Cancellation);
+            await harness.Library.DeleteAtAsync("Users/Get", Cancellation);
 
             Ui.Press(Ui.Named<TextBlock>(Ui.Row(Ui.Item(window, Node(main, "Users/Get"))), "Label"));
-            await Ui.UntilAsync(() => !RequestTreeViewModel.Flatten(main.Tree.Nodes).Any(node => node.Path == "Users/Get"));
+            await Ui.UntilAsync(() => !RequestTreeViewModel.Flatten(main.Tree.Nodes).Any(node => main.Tree.PathOf(node) == "Users/Get"));
 
             var row = Ui.Row(Ui.Item(window, Assert.Single(RequestTreeViewModel.Flatten(main.Tree.Nodes), node => node.IsDraft)));
             Assert.Same(draft, main.SelectedTab);
@@ -174,7 +259,7 @@ public sealed class RequestTreeViewTests
     public async Task HoverStyles_WhenTheRowIsActive_ThenKeepItsHighlightAndTheDotColour()
     {
         using var harness = new Harness();
-        await harness.Library.CreateFolderAsync("Users", Cancellation);
+        await harness.Library.FolderAtAsync("Users", Cancellation);
         await Ui.RunAsync(async () =>
         {
             var main = harness.Main();
@@ -201,7 +286,7 @@ public sealed class RequestTreeViewTests
     public async Task FolderRows_WhenNestedAndRelabelled_ThenKeepTheirIconsVisibleAndAligned()
     {
         using var harness = new Harness();
-        await harness.Library.SaveAsync($"Users/Admin/{new string('W', 80)}/Get", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync($"Users/Admin/{new string('W', 80)}/Get", ApiRequest.New(), Cancellation);
         await Ui.RunAsync(async () =>
         {
             var main = harness.Main();
@@ -257,8 +342,8 @@ public sealed class RequestTreeViewTests
     public async Task FolderButtons_WhenClickedAndDoubleClicked_ThenDoNotToggleTheFolder(bool expanded, bool subfolder, bool accept)
     {
         using var harness = new Harness(new FakeDialogs(answer: accept ? "Child" : null));
-        await harness.Library.CreateFolderAsync("Users", Cancellation);
-        await harness.Library.CreateFolderAsync("Other", Cancellation);
+        await harness.Library.FolderAtAsync("Users", Cancellation);
+        await harness.Library.FolderAtAsync("Other", Cancellation);
         await Ui.RunAsync(async () =>
         {
             var main = harness.Main();
@@ -271,7 +356,7 @@ public sealed class RequestTreeViewTests
                 Ui.Click(button, click);
                 if (subfolder && accept)
                 {
-                    await Ui.UntilAsync(() => RequestTreeViewModel.Flatten(main.Tree.Nodes).Any(node => node.Path == "Users/Child"));
+                    await Ui.UntilAsync(() => RequestTreeViewModel.Flatten(main.Tree.Nodes).Any(node => main.Tree.PathOf(node) == "Users/Child"));
                 }
                 else
                 {
@@ -297,8 +382,8 @@ public sealed class RequestTreeViewTests
     public async Task Rows_WhenTabsChange_ThenShowLiveMethodsTitlesAndUnsavedDots()
     {
         using var harness = new Harness(new FakeDialogs(accept: true));
-        await harness.Library.SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
-        await harness.Library.SaveAsync($"Users/{new string('W', 70)}", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Users/Get", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync($"Users/{new string('W', 70)}", ApiRequest.New(), Cancellation);
         await Ui.RunAsync(async () =>
         {
             var main = harness.Main();
@@ -349,7 +434,7 @@ public sealed class RequestTreeViewTests
     public async Task ActiveRow_WhenFocusAndTabsChange_ThenFollowsOnlyTheOpenRequest()
     {
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Users/New request (2)", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Users/New request (2)", ApiRequest.New(), Cancellation);
         await Ui.RunAsync(async () =>
         {
             var main = harness.Main();
@@ -363,7 +448,7 @@ public sealed class RequestTreeViewTests
             var draftItem = Ui.Item(tree, draftNode);
             Assert.Same(window.FindResource("Edge"), Ui.Row(draftItem).Background);
             Ui.Press(Ui.Named<TextBlock>(Ui.Row(Ui.Item(tree, file)), "Label"));
-            await Ui.UntilAsync(() => main.SelectedTab?.Name == file.Path);
+            await Ui.UntilAsync(() => main.SelectedTab?.Name == file.Name);
             Assert.Same(window.FindResource("Edge"), Ui.Row(Ui.Item(tree, file)).Background);
             Assert.NotSame(window.FindResource("Edge"), Ui.Row(draftItem).Background);
             Ui.Press(Ui.Named<TextBlock>(Ui.Row(draftItem), "Label"));
@@ -402,7 +487,7 @@ public sealed class RequestTreeViewTests
     public async Task Rows_WhenUsingContextMenuOrDragging_ThenAllowsFoldersAndDraftsWithoutDraftDeletion()
     {
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Users/Get", ApiRequest.New(), Cancellation);
         await Ui.RunAsync(async () =>
         {
             var main = harness.Main();
@@ -444,9 +529,9 @@ public sealed class RequestTreeViewTests
         using var harness = new Harness(new FakeDialogs(answer: "Saved"));
         for (var number = 0; number < 65; number++)
         {
-            await harness.Library.SaveAsync($"A/Request {number:00}", ApiRequest.New(), Cancellation);
+            await harness.Library.SaveAtAsync($"A/Request {number:00}", ApiRequest.New(), Cancellation);
         }
-        await harness.Library.CreateFolderAsync("Z/Deep", Cancellation);
+        await harness.Library.FolderAtAsync("Z/Deep", Cancellation);
         await Ui.RunAsync(async () =>
         {
             var main = harness.Main();
@@ -488,7 +573,7 @@ public sealed class RequestTreeViewTests
             await Ui.IdleAsync();
             offset = scroller.VerticalOffset;
             Ui.Select((RadioButton)window.FindName("HistorySection"));
-            main.SelectedTab = main.Tabs.First(tab => tab.Name == "A/Request 64");
+            main.SelectedTab = main.Tabs.First(tab => tab.Name == "Request 64");
             await Ui.IdleAsync();
             Ui.Select((RadioButton)window.FindName("CollectionsSection"));
             await Ui.IdleAsync();

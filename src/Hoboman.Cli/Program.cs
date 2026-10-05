@@ -26,7 +26,7 @@ try
     var folder = new AppFolder(AppContext.BaseDirectory);
     var settings = new SettingsStore(folder, NullLogger<SettingsStore>.Instance);
     var secrets = new SecretStore(folder, NullLogger<SecretStore>.Instance);
-    var environments = new EnvironmentStore(folder, secrets, NullLogger<EnvironmentStore>.Instance);
+    var environments = new EnvironmentStore(folder, NullLogger<EnvironmentStore>.Instance);
     var library = new RequestLibrary(folder, NullLogger<RequestLibrary>.Instance);
     var history = new HistoryStore(folder, NullLogger<HistoryStore>.Instance);
     using var clients = new HttpClients(settings);

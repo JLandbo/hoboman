@@ -60,29 +60,8 @@
                     </StackPanel.Style>
                     <ToggleButton Content="{DynamicResource Base64.WholeBody}" IsChecked="{Binding Result.Base64.DecodesWholeResponse}" Style="{StaticResource Switch}" Margin="0,0,14,0"
                                   VerticalAlignment="Center" Visibility="{Binding IsChecked, ElementName=BodySection, Converter={StaticResource VisibleWhenTrue}}" />
-                    <Border CornerRadius="6" Padding="8,2" Margin="0,0,10,0">
-                        <Border.Style>
-                            <Style TargetType="Border">
-                                <Setter Property="Background" Value="{DynamicResource SuccessSoft}" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding Result.Response.IsSuccess}" Value="False">
-                                        <Setter Property="Background" Value="{DynamicResource ErrorSoft}" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Border.Style>
-                        <TextBlock Text="{Binding Result.Response.Status}" FontSize="12" FontWeight="SemiBold">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Foreground" Value="{DynamicResource Success}" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding Result.Response.IsSuccess}" Value="False">
-                                            <Setter Property="Foreground" Value="{DynamicResource Error}" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
+                    <Border Style="{StaticResource StatusPill}" Tag="{Binding Result.Response.IsSuccess}" Margin="0,0,10,0">
+                        <TextBlock Text="{Binding Result.Response.Status}" />
                     </Border>
                     <TextBlock Text="{Binding Result.Response.Elapsed}" Foreground="{DynamicResource Muted}" FontSize="12" VerticalAlignment="Center" Margin="0,0,10,0" />
                     <TextBlock Text="{Binding Result.Response.Size}" Foreground="{DynamicResource Muted}" FontSize="12" VerticalAlignment="Center" />

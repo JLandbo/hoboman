@@ -24,8 +24,8 @@
                 <DataTemplate DataType="{x:Type viewModels:HistoryItemViewModel}">
                     <DockPanel>
                         <Button DockPanel.Dock="Right" Content="&#xE711;" ToolTip="{DynamicResource History.Delete}" Click="Delete_Click" Style="{StaticResource CloseButton}" Margin="4,0,0,0" VerticalAlignment="Center" />
-                        <Border x:Name="Status" DockPanel.Dock="Right" CornerRadius="6" Padding="7,1" Background="{DynamicResource SuccessSoft}" Margin="6,0,0,0" VerticalAlignment="Center">
-                            <TextBlock x:Name="StatusText" Text="{Binding Status}" Foreground="{DynamicResource Success}" FontSize="11" FontWeight="SemiBold" />
+                        <Border x:Name="Status" DockPanel.Dock="Right" Style="{StaticResource SmallStatusPill}" Tag="{Binding IsSuccess}" Margin="6,0,0,0" VerticalAlignment="Center">
+                            <TextBlock x:Name="StatusText" Text="{Binding Status}" />
                         </Border>
                         <TextBlock DockPanel.Dock="Right" Text="{Binding Time}" Foreground="{DynamicResource Muted}" FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center" />
                         <Border x:Name="Cli" DockPanel.Dock="Right" CornerRadius="4" Padding="5,1" Background="{DynamicResource Button}" Margin="6,0,0,0" VerticalAlignment="Center" Visibility="Collapsed">
@@ -36,10 +36,6 @@
                         <TextBlock Text="{Binding Address}" FontFamily="{StaticResource CodeFont}" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                     </DockPanel>
                     <DataTemplate.Triggers>
-                        <DataTrigger Binding="{Binding IsSuccess}" Value="False">
-                            <Setter TargetName="Status" Property="Background" Value="{DynamicResource ErrorSoft}" />
-                            <Setter TargetName="StatusText" Property="Foreground" Value="{DynamicResource Error}" />
-                        </DataTrigger>
                         <DataTrigger Binding="{Binding Status}" Value="{x:Null}">
                             <Setter TargetName="StatusText" Property="Text" Value="{DynamicResource History.Failed}" />
                         </DataTrigger>

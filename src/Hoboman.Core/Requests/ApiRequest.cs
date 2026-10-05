@@ -3,9 +3,14 @@ using Hoboman.Core.Base64;
 
 namespace Hoboman.Core.Requests;
 
+// A saved request's file is named by its id, so its name can be anything, and moving it only changes FolderId.
 public sealed record ApiRequest
 {
     public Guid Id { get; init; }
+
+    public string Name { get; init; } = "";
+
+    public Guid? FolderId { get; init; }
 
     public string Method { get; init; } = "GET";
 

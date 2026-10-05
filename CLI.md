@@ -38,8 +38,8 @@ De første kommandoer:
 
 ```powershell
 & $cli --help                                   # hjælp; også fx send --help
-& $cli list                                     # gemte requests, fx Dummyjson/Hent mig
-& $cli list workflows                           # workflows, fx Eksempel
+& $cli list                                     # gemte requests, fx <id><tab>Dummyjson/Hent mig
+& $cli list workflows                           # workflows, fx <id><tab>Eksempel
 & $cli send "Dummyjson/Hent mig" --env Demo     # en gemt request i miljøet Demo
 & $cli send GET https://dummyjson.com/products/1
 & $cli run Stresstest                          # et workflow med standardværdier
@@ -121,7 +121,7 @@ $finished = $lines[-1] | ConvertFrom-Json
 
 ### Følg en kørsel fra appen
 
-En kørsel startet i appen skrives også i `runs\<workflowId>\`. Følg den nyeste fil, og stop ved `run.finished`. Id'et står i `workflow.json`:
+En kørsel startet i appen skrives også i `runs\<workflowId>\`. Følg den nyeste fil, og stop ved `run.finished`. Id'et er navnet på workflowets mappe:
 
 ```powershell
 $runs = "C:\sti\til\Hoboman\publish\runs\5d3c8f0e-2b7a-4c61-9a1e-7f4b2d9c6e10"
@@ -146,11 +146,12 @@ hoboman-cli --help
 hoboman-cli --version
 ```
 
-- `list` skriver de gemte requests som stier relativt til `requests\`, med `/` og uden `.json`, én pr. linje og sorteret, fx `Brugere/Hent bruger`. Det er netop den sti, `send` skal have.
-- `list workflows` skriver workflowenes navne, én pr. linje og sorteret. Det er mappernes navne i `workflows\`, som `run` skal have.
+- `list` skriver én linje pr. gemt request, sorteret efter stien: id'et, en tabulator og stien gennem mapperne med `/`, fx `3f2c…<tab>Brugere/Hent bruger`. Del linjen ved den første tabulator, for et navn kan selv indeholde `/`.
+- `list workflows` skriver på samme måde id'et og navnet på hvert workflow, sorteret efter navnet.
+- En request eller et workflow, hvis fil ikke kan læses, står med id'et og intet navn. `send` eller `run` med id'et fortæller, hvad der er galt med filen.
+- `<gemt request>` og `<workflow>` er et id eller en sti/et navn fra `list`, uden forskel på store og små bogstaver. Navne behøver ikke være unikke; har flere samme sti eller navn, giver det en fejl, og så skal id'et bruges.
 - Ét argument efter `send` er en gemt request. To er en metode og en URL.
 - `--out <fil>` gemmer svarets body byte for byte i filen og overskriver den, hvis den findes. Relative stier læses fra den mappe, du står i, og mappen skal findes.
-- `<workflow>` er mappens navn i `workflows\`.
 - `--help`, `-h` og `-?` virker både alene og efter en kommando. `--version` virker kun alene og skriver versionen og committen, fx `1.0.0+<commit>`. Uden kommando er det en fejl.
 - Options kan stå før eller efter argumenterne, og `--env=Demo` virker også. `--env`, `--json`, `--text`, `--vars` og `--params` må kun gives én gang; `-H`, `--var` og `--param` gentages for hver værdi.
 - `-H`, `--json` og `--text` virker kun ved direkte kald, og `--json` og `--text` kan ikke bruges sammen.
@@ -188,7 +189,7 @@ Et svar skrives som én linje JSON på stdout, også ved 4xx og 5xx:
 
 Med `--out` står `file` med filens fulde sti i stedet for `body`.
 
-Fejl, før der kommer et svar, skrives som `{"error":"..."}` på stderr, og stdout er tom. En gemt request, der ikke er gyldig JSON, angives med fil, JSON-sti og linje, fx `{"error":"Saved request file is not valid.","file":"...","path":"$.headers","line":4}`.
+Fejl, før der kommer et svar, skrives som `{"error":"..."}` på stderr, og stdout er tom. En gemt request, der ikke er gyldig JSON, angives med fil, JSON-sti og linje, når den sendes med sit id, fx `{"error":"Saved request file is not valid.","file":"...","path":"$.headers","line":4}`.
 
 | Exitkode | Betydning |
 |---|---|
@@ -202,7 +203,9 @@ Fejl, før der kommer et svar, skrives som `{"error":"..."}` på stderr, og stdo
 | `Invalid variable input.` / `Invalid parameter input.` | `--var`/`--param` mangler `=`, eller `--vars`/`--params` er ikke et JSON-objekt |
 | `Input could not be read.` | En fil i `@fil`, `--vars` eller `--params` kunne ikke læses |
 | `Saved request could not be loaded.` / `Saved request file is not valid.` | Requesten findes ikke, eller filen er ugyldig |
+| `Saved request name is ambiguous. Use its id.` | Flere requests har stien. Brug id'et fra `list` |
 | `Workflow could not be loaded.` / `Workflow file is not valid.` | Workflowet findes ikke, eller `workflow.json` er ugyldig |
+| `Workflow name is ambiguous. Use its id.` | Flere workflows har navnet. Brug id'et fra `list workflows` |
 | `Selected environment was not found.` | Miljøet findes ikke |
 | `Environment settings could not be read.` | `settings.json` eller `environments.json` kan ikke læses |
 | `Workflow cannot run.` | Tjekket fejlede, se [Workflows](#workflows) |
@@ -219,11 +222,11 @@ Fejl, før der kommer et svar, skrives som `{"error":"..."}` på stderr, og stdo
 
 ## Workflows
 
-`run` kører et workflow, der er gemt i `workflows\<navn>\workflow.json`. `<workflow>` er mappens navn, fx `Ordre-sync`. Et workflow oprettes i appen eller ved at skrive filen selv:
+`run` kører et workflow, der er gemt i `workflows\<id>\workflow.json`. `<workflow>` er dets id eller navn, fx `Ordre-sync`. Et workflow oprettes i appen eller ved at skrive filen selv i en ny mappe, der hedder et nyt id:
 
 ```json
 {
-  "id": "9bf2fef5-9047-4075-969c-db7c7377a62d",
+  "name": "Ordre-sync",
   "parameters": [ { "name": "orderId" }, { "name": "pageSize", "default": 50 } ],
   "variables": [ { "name": "token" }, { "name": "importId" } ],
   "steps": [
@@ -239,14 +242,14 @@ Fejl, før der kommer et svar, skrives som `{"error":"..."}` på stderr, og stdo
 ```
 
 - `run` bruger filerne, som de er gemt. Ugemte ændringer i appens workflow-editor ses ikke.
-- `id` er workflowets eget id. Kørslerne gemmes under det i `runs\`, så de følger med, når mappen omdøbes.
+- Mappens navn er workflowets id. Kørslerne gemmes under det i `runs\`, så de følger med, når workflowet omdøbes. `name` er navnet, der vises i appen og bruges af `run`.
 - Et trin har præcis én af `request`, `script` og `delaySeconds`, og kan desuden have `retry` og `saves`.
-- `request` har de samme felter som en gemt request: `method` (standard `GET`), `url`, `query`, `headers`, `bodyKind` (`None`, `Json`, `Xml` eller `Text`, standard `None`), `body`, `useEnvironmentVariablesInBody` (standard `true`), `base64` og `auth`. Workflowet bruger ikke gemte requests fra samlingerne, og i appen redigeres trinnet med samme editor som en fane, også Auth.
+- `request` har de samme felter som en gemt request undtagen `name` og `folderId`: `method` (standard `GET`), `url`, `query`, `headers`, `bodyKind` (`None`, `Json`, `Xml` eller `Text`, standard `None`), `body`, `useEnvironmentVariablesInBody` (standard `true`), `base64` og `auth`. Workflowet bruger ikke gemte requests fra samlingerne, og i appen redigeres trinnet med samme editor som en fane, også Auth.
 - `auth` er et objekt med `kind`: `None` (standard), `Inherit`, `Basic`, `Bearer` eller `OAuth2`, fx `"auth": { "kind": "Inherit" }` på et trin og `"auth": { "kind": "OAuth2", "oAuth": { "grant": "ClientCredentials", "tokenUrl": "https://auth.{{env}}.{{site}}.com/oauth2/token", "clientId": "…", "scope": "…", "clientAuthentication": "BasicHeader" } }` på workflowet. Basic har også `userName`. `Inherit` bruger workflowets egen `auth`, som står øverst i `workflow.json` ved siden af `steps`, ligesom en request arver fra sin mappe. Et trin kan altid have sin egen auth i stedet, fx til et andet API. Har workflowet ingen `auth`, sender et trin med `Inherit` ingen.
-- Passwords, tokens og client secrets står aldrig i `workflow.json`. De gemmes krypteret i `secrets.json` under `id` i trinnets `request` og, ved `Inherit`, under workflowets `id`. Auth kan også gives som header, fx `Authorization: Bearer {{token}}` med et token fra et tidligere trin.
+- Passwords, tokens og client secrets står aldrig i `workflow.json`. De gemmes krypteret i `secrets.json` under `id` i trinnets `request` og, ved `Inherit`, under workflowets id (mappens navn). Auth kan også gives som header, fx `Authorization: Bearer {{token}}` med et token fra et tidligere trin.
 - `id` i trinnets `request` sættes af appen, første gang workflowet gemmes med trinnet. Auth med hemmeligheder virker derfor først i `run`, når hemmeligheden er skrevet under Auth i appen, og workflowet er gemt. Skriv ikke `id` direkte på trinnet; det gør filen ugyldig. Kopiér aldrig et `id` fra en gemt request eller et andet trin, for så deler de hemmeligheder, og sletter man den ene, kan den andens forsvinde.
 - Ved client credentials henter `run` selv et nyt token til trinnet eller workflowet, når det mangler, er udløbet, eller serveren svarer 401, ligesom `send`. Mangler client secret, fejler trinnet med `Fetch a new OAuth token in Hoboman before sending this request.` Authorization code kræver, at brugeren henter et token under Auth på trinnet eller workflowet i Hoboman.
-- `name` er valgfrit og vises i appen og i events. Uden navn bruges scriptets filnavn, `Wait 30 seconds` for en ventetid eller metoden og requestens adresse uden skema og query, fx `POST dummyjson.com/auth/login`.
+- Et trins `name` er valgfrit og vises i appen og i events. Uden navn bruges scriptets filnavn, `Wait 30 seconds` for en ventetid eller metoden og requestens adresse uden skema og query, fx `POST dummyjson.com/auth/login`.
 - Parametre gives ved start og kan ikke gemmes i. En parameters `default` kan være enhver JSON-værdi, og uden `default` er parameteren påkrævet. Variabler er de navne, trinnene gemmer i med `saves`, og får deres værdi derfra. En variabel kan også have en `default`, som den har, indtil et trin gemmer i den. Appen skriver listen over variabler ud fra trinnene, når workflowet gemmes, og beholder deres `default`, så en fast værdi, som intet trin gemmer i, gives som en parameter med `default`. Et trin kan også gemme en fast værdi i en variabel, se `from` nedenfor.
 - Et trin kan i stedet for `request` have `"script": "map.js"`, en JavaScript-fil i workflowets mappe. Scriptet får alle parametre, variabler og miljøets variabler i `vars`, som ikke kan ændres. Et navn, workflowet selv har, vinder over miljøet, som i en request, og det, det returnerer, er trinnets output. Outputtet gemmes med `saves` som et svar, fx `"from": "$"` eller `"$.id"`. I events har trinnet `JS` som `method`, en tom `address` og outputtet som `body`. Returnerer scriptet intet, fejler trinnet kun, hvis det har noget i `saves`, med `map.js returned nothing to save.` Et script kører som strict JavaScript uden adgang til filer, netværk eller .NET og stoppes efter 5 sekunder, eller når det holder mere end 512 MB hukommelse. Tal over 2^53 kan ændre sig, når de går gennem et script.
 - Et request-trin kan gentages, indtil svaret er klar, fx mens et API laver noget færdigt i baggrunden: `"retry": { "until": "$.result.status", "equals": "succeeded", "times": 60, "waitSeconds": 5 }`.
@@ -278,7 +281,7 @@ Kørslen skriver én JSON-linje pr. event på stdout og de samme linjer i `runs\
 
 | Event | Indhold |
 |---|---|
-| `run.started` | Altid første linje: `runId`, `workflowId`, `workflow` (mappens navn), `environment` (tom uden miljø), `runFile` (fuld sti til logfilen) og `parameters`, også dem med standardværdi |
+| `run.started` | Altid første linje: `runId`, `workflowId`, `workflow` (workflowets navn), `environment` (tom uden miljø), `runFile` (fuld sti til logfilen) og `parameters`, også dem med standardværdi |
 | `step.started` | `index` (første trin er 0), `name` (trinnets navn), `method` og `address` (vært, port og sti uden skema og query; tom for script og ventetid) |
 | `step.finished` | `outcome` (`Succeeded` eller `Failed`), svaret med samme navne som ved `send`, `attempts` ved et trin med `retry`, `error` ved en fejl og `saved` med de gemte værdier. En ventetid har kun `index`, `outcome` og `elapsedMs` |
 | `step.retrying` | Et forsøg, der ikke var klar, før trinnet prøves igen: `index`, `attempt` (forsøgets nummer), `status` og `value` (det, `until` gav, højst 200 tegn) eller `error` ved en netværksfejl. Uden body |
@@ -307,7 +310,6 @@ Ved exitkode 2 står fejlen som JSON på stderr. Fejler tjekket, følger problem
 
 | `kind` | Betydning |
 |---|---|
-| `MissingId` | Workflowet har intet `id` |
 | `InvalidName` | Et navn er tomt eller indeholder `{` eller `}` |
 | `DuplicateName` | Samme navn findes flere gange blandt parametre og variabler |
 | `UnknownParameter` | En given parameter findes ikke i workflowet |
@@ -326,7 +328,7 @@ Ved exitkode 2 står fejlen som JSON på stderr. Fejler tjekket, følger problem
 En ugyldig `workflow.json`, fx med en ukendt eller stavet forkert egenskab, angives med fil, JSON-sti og linje:
 
 ```json
-{"error":"Workflow file is not valid.","file":"C:\\Hoboman\\workflows\\Ordre-sync\\workflow.json","path":"$.steps[0].request","line":7}
+{"error":"Workflow file is not valid.","file":"C:\\Hoboman\\workflows\\9bf2fef5-9047-4075-969c-db7c7377a62d\\workflow.json","path":"$.steps[0].request","line":7}
 ```
 
 `run` tjekker i denne rækkefølge: argumenter, parametre, `workflow.json`, miljøet, tjekket og så kørslen.
@@ -365,7 +367,6 @@ En færdig instruktion til AI-agenter står i [AI-PROMPT.md](AI-PROMPT.md).
 - Ved authorization code åbner CLI'et aldrig en browser. Et token hentet i appen bruges, til det udløber, og så fejler kaldet med `Fetch a new OAuth token in Hoboman before sending this request.`
 - OAuth-felterne udfyldes kun fra miljøet, aldrig fra `--var` eller et workflows værdier.
 - CLI'et læser ikke `credentials.json`. En credential, der er valgt i appen, er kopieret ind i auth'en på requesten, mappen, workflowet eller trinnet og virker, når den er gemt dér.
-- Tokens gemt før miljøerne fik id, skal hentes igen én gang: client credentials hentes automatisk, og authorization code kræver ét nyt login i Hoboman pr. miljø.
 
 ## Historik og hvad CLI'et skriver
 
@@ -373,7 +374,7 @@ En færdig instruktion til AI-agenter står i [AI-PROMPT.md](AI-PROMPT.md).
 - Fejl, før kaldet bygges, gemmes ikke: forkerte argumenter eller variabler, et direkte kalds `-H` eller `@fil`, en request, der ikke kan indlæses, og problemer med miljøet. Kald, du selv afbryder, gemmes heller ikke.
 - Requesten gemmes, som den er skrevet, med variablerne uudfyldte. De midlertidige værdier gemmes ikke for sig, men står i den gemte adresse, hvis de bruges i vært, port eller sti.
 - Hver kørsel med `run` skrives i `runs\<workflowId>\<runId>.jsonl`. Er **Slet historik efter** udfyldt i appens Indstillinger, sletter appen kald og kørsler, der er ældre end det antal dage, når den starter; ellers ryddes de ikke op.
-- CLI'et skriver kun i `history\`, `runs\`, filen i `--out` og, når det henter et token, i `secrets.json`. Læser det miljøer uden id, giver det dem id i `environments.json` og sletter tokens gemt under miljønavne i `secrets.json`. `list`, `--help` og `--version` skriver ingenting, og CLI'et skriver ingen logfiler.
+- CLI'et skriver kun i `history\`, `runs\`, filen i `--out` og, når det henter et token, i `secrets.json`. Læser det miljøer uden id, giver det dem id i `environments.json`. `list`, `--help` og `--version` skriver ingenting, og CLI'et skriver ingen logfiler.
 - Kan historikken ikke skrives, fx ved fuld disk eller manglende rettigheder, skrives svaret alligevel, og kaldet sendes ikke igen.
 - Historikken og `runs\` er ikke krypteret. Headers, du selv skriver, fx `Authorization`, samt bodies, svar, den udfyldte adresse og gemte værdier som tokens kan indeholde hemmeligheder.
 

@@ -35,23 +35,10 @@ public sealed class RequestRunnerTests : IDisposable
         var runner = Runner(() => Task.FromResult(new ApiResponse(200, "OK", 0, 2, [], "{}")));
 
         // Act
-        await runner.RunAsync(Request(), "Brugere/Hent", null, HistorySource.App, NoToken, Cancellation);
+        await runner.RunAsync(Request(), null, HistorySource.App, NoToken, Cancellation);
 
         // Assert
         Assert.Equal("{}", Assert.Single(await CallsAsync()).Entry.Response?.Body);
-    }
-
-    [Fact]
-    public async Task RunAsync_WhenTheCallSucceeds_ThenRemembersTheName()
-    {
-        // Arrange
-        var runner = Runner(() => Task.FromResult(new ApiResponse(200, "OK", 0, 2, [], "{}")));
-
-        // Act
-        await runner.RunAsync(Request(), "Brugere/Hent", null, HistorySource.App, NoToken, Cancellation);
-
-        // Assert
-        Assert.Equal("Brugere/Hent", Assert.Single(await CallsAsync()).Entry.Name);
     }
 
     [Fact]
@@ -61,7 +48,7 @@ public sealed class RequestRunnerTests : IDisposable
         var runner = Runner(() => Task.FromResult(new ApiResponse(200, "OK", 0, 2, [], "{}")));
 
         // Act
-        await runner.RunAsync(Request(), "Brugere/Hent", null, HistorySource.App, NoToken, Cancellation);
+        await runner.RunAsync(Request(), null, HistorySource.App, NoToken, Cancellation);
 
         // Assert
         Assert.Equal("dev.local:5001/users", Assert.Single(await CallsAsync()).Entry.Address);
@@ -74,7 +61,7 @@ public sealed class RequestRunnerTests : IDisposable
         var runner = Runner(() => throw new HttpRequestException("Ingen forbindelse"));
 
         // Act
-        var failure = await Record.ExceptionAsync(() => runner.RunAsync(Request(), null, null, HistorySource.Cli, NoToken, Cancellation));
+        var failure = await Record.ExceptionAsync(() => runner.RunAsync(Request(), null, HistorySource.Cli, NoToken, Cancellation));
 
         // Assert
         Assert.IsType<HttpRequestException>(failure);
@@ -87,7 +74,7 @@ public sealed class RequestRunnerTests : IDisposable
         var runner = Runner(() => throw new HttpRequestException("Ingen forbindelse"));
 
         // Act
-        await Record.ExceptionAsync(() => runner.RunAsync(Request(), null, null, HistorySource.Cli, NoToken, Cancellation));
+        await Record.ExceptionAsync(() => runner.RunAsync(Request(), null, HistorySource.Cli, NoToken, Cancellation));
 
         // Assert
         var entry = Assert.Single(await CallsAsync()).Entry;
@@ -103,7 +90,7 @@ public sealed class RequestRunnerTests : IDisposable
         var runner = Runner(() => Task.FromCanceled<ApiResponse>(cancellation.Token));
 
         // Act
-        await Record.ExceptionAsync(() => runner.RunAsync(Request(), null, null, HistorySource.App, NoToken, cancellation.Token));
+        await Record.ExceptionAsync(() => runner.RunAsync(Request(), null, HistorySource.App, NoToken, cancellation.Token));
 
         // Assert
         Assert.Empty(await CallsAsync());
@@ -113,12 +100,12 @@ public sealed class RequestRunnerTests : IDisposable
     public async Task RunAsync_WhenTheRequestInherits_ThenSendsWithTheFoldersAuth()
     {
         // Arrange
-        var folder = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
-        await Library().SaveFolderAsync("Brugere", folder, Cancellation);
+        var folder = new RequestFolder { Id = Guid.NewGuid(), Name = "Brugere", Auth = new(AuthKind.Bearer) };
+        await Library().SaveFolderAsync(folder, Cancellation);
         var sender = new FakeSender(() => Task.FromResult(new ApiResponse(200, "OK", 0, 2, [], "{}")));
 
         // Act
-        await Runner(sender).RunAsync(Request(), "Brugere/Hent", null, HistorySource.App, NoToken, Cancellation);
+        await Runner(sender).RunAsync(Request() with { FolderId = folder.Id }, null, HistorySource.App, NoToken, Cancellation);
 
         // Assert
         Assert.Equal(folder.Id, sender.Auth?.SecretsId);
@@ -128,11 +115,12 @@ public sealed class RequestRunnerTests : IDisposable
     public async Task RunAsync_WhenTheFolderSettingsAreInvalid_ThenRemembersTheError()
     {
         // Arrange
-        Directory.CreateDirectory(Path.Combine(_temporary.Path, "requests", "Brugere"));
-        File.WriteAllText(Path.Combine(_temporary.Path, "requests", "Brugere", ".folder.json"), "{");
+        var folder = Guid.NewGuid();
+        Directory.CreateDirectory(Path.Combine(_temporary.Path, "folders"));
+        File.WriteAllText(Path.Combine(_temporary.Path, "folders", $"{folder}.json"), "{");
 
         // Act
-        await Record.ExceptionAsync(() => Runner(() => Task.FromResult(new ApiResponse(200, "OK", 0, 2, [], "{}"))).RunAsync(Request(), "Brugere/Hent", null, HistorySource.App, NoToken, Cancellation));
+        await Record.ExceptionAsync(() => Runner(() => Task.FromResult(new ApiResponse(200, "OK", 0, 2, [], "{}"))).RunAsync(Request() with { FolderId = folder }, null, HistorySource.App, NoToken, Cancellation));
 
         // Assert
         Assert.NotNull(Assert.Single(await CallsAsync()).Entry.Error);
@@ -147,7 +135,7 @@ public sealed class RequestRunnerTests : IDisposable
         var runner = Runner(() => Task.FromResult(new ApiResponse(200, "OK", 0, 2, [], "{}")));
 
         // Act
-        var response = await runner.RunAsync(Request(), null, null, HistorySource.App, NoToken, Cancellation);
+        var response = await runner.RunAsync(Request(), null, HistorySource.App, NoToken, Cancellation);
 
         // Assert
         Assert.Equal(200, response.StatusCode);
@@ -165,7 +153,7 @@ public sealed class RequestRunnerTests : IDisposable
             : Task.FromResult(new ApiResponse(200, "OK", 0, 2, [], "{}")));
 
         // Act
-        var response = await runner.RunAsync(OAuthRequest(), null, null, HistorySource.App, NewToken, Cancellation);
+        var response = await runner.RunAsync(OAuthRequest(), null, HistorySource.App, NewToken, Cancellation);
 
         // Assert
         Assert.Equal(200, response.StatusCode);
@@ -180,7 +168,7 @@ public sealed class RequestRunnerTests : IDisposable
         var runner = Runner(() => Task.FromResult(++calls == 1 ? new ApiResponse(401, "Unauthorized", 0, 0, [], "") : new ApiResponse(200, "OK", 0, 2, [], "{}")));
 
         // Act
-        var response = await runner.RunAsync(OAuthRequest(), null, null, HistorySource.App, NewToken, Cancellation);
+        var response = await runner.RunAsync(OAuthRequest(), null, HistorySource.App, NewToken, Cancellation);
 
         // Assert
         Assert.Equal(200, response.StatusCode);
@@ -194,7 +182,7 @@ public sealed class RequestRunnerTests : IDisposable
         var runner = Runner(() => Task.FromResult(new ApiResponse(401, "Unauthorized", 0, 0, [], "")));
 
         // Act
-        var response = await runner.RunAsync(OAuthRequest(), null, null, HistorySource.App, _ => Task.FromResult(++fetches > 0), Cancellation);
+        var response = await runner.RunAsync(OAuthRequest(), null, HistorySource.App, _ => Task.FromResult(++fetches > 0), Cancellation);
 
         // Assert
         Assert.Equal((401, 1), (response.StatusCode, fetches));
@@ -207,7 +195,7 @@ public sealed class RequestRunnerTests : IDisposable
         var runner = Runner(() => throw new MissingSecretException(SecretKind.OAuthToken));
 
         // Act
-        var failure = await Record.ExceptionAsync(() => runner.RunAsync(OAuthRequest(), null, null, HistorySource.App, NoToken, Cancellation));
+        var failure = await Record.ExceptionAsync(() => runner.RunAsync(OAuthRequest(), null, HistorySource.App, NoToken, Cancellation));
 
         // Assert
         Assert.IsType<MissingSecretException>(failure);
@@ -222,7 +210,7 @@ public sealed class RequestRunnerTests : IDisposable
         var request = Request() with { Auth = new(AuthKind.OAuth2, OAuth: new() { Grant = OAuthGrant.AuthorizationCode }) };
 
         // Act
-        await Record.ExceptionAsync(() => runner.RunAsync(request, null, null, HistorySource.App, _ => Task.FromResult(fetched = true), Cancellation));
+        await Record.ExceptionAsync(() => runner.RunAsync(request, null, HistorySource.App, _ => Task.FromResult(fetched = true), Cancellation));
 
         // Assert
         Assert.False(fetched);
@@ -232,13 +220,13 @@ public sealed class RequestRunnerTests : IDisposable
     public async Task RunAsync_WhenTheRequestInherits_ThenFetchesTheFoldersToken()
     {
         // Arrange
-        var folder = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.OAuth2) };
-        await Library().SaveFolderAsync("Brugere", folder, Cancellation);
+        var folder = new RequestFolder { Id = Guid.NewGuid(), Name = "Brugere", Auth = new(AuthKind.OAuth2) };
+        await Library().SaveFolderAsync(folder, Cancellation);
         AuthSource? fetchedFor = null;
         var runner = Runner(() => Task.FromResult(new ApiResponse(401, "Unauthorized", 0, 0, [], "")));
 
         // Act
-        await runner.RunAsync(Request(), "Brugere/Hent", null, HistorySource.App, auth => Task.FromResult((fetchedFor = auth) is not null), Cancellation);
+        await runner.RunAsync(Request() with { FolderId = folder.Id }, null, HistorySource.App, auth => Task.FromResult((fetchedFor = auth) is not null), Cancellation);
 
         // Assert
         Assert.Equal(folder.Id, fetchedFor?.SecretsId);

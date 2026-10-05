@@ -17,7 +17,7 @@ public sealed class WorkflowCheckTests
     static Dictionary<string, JsonElement> Parameters(params string[] names) => names.ToDictionary(name => name, name => JsonSerializer.SerializeToElement("o-17"));
 
     static CheckedWorkflow Check(Workflow workflow, Dictionary<string, JsonElement>? parameters = null, ApiEnvironment? environment = null, Dictionary<string, string?>? scripts = null) =>
-        WorkflowCheck.Check("Ordre-sync", workflow, environment ?? ApiEnvironment.None, parameters ?? Parameters("orderId"), scripts);
+        WorkflowCheck.Check(workflow, environment ?? ApiEnvironment.None, parameters ?? Parameters("orderId"), scripts);
 
     [Theory]
     [InlineData(AuthKind.Basic, SecretKind.Password)]
@@ -34,7 +34,7 @@ public sealed class WorkflowCheckTests
         var order = new WorkflowStep { Request = Login with { Id = id, Auth = new(kind) } };
 
         // Act
-        var checkedWorkflow = await check.CheckAsync("Ordre-sync", OrderSync(order, LoginStep), ApiEnvironment.None, Parameters("orderId"), TestContext.Current.CancellationToken);
+        var checkedWorkflow = await check.CheckAsync(OrderSync(order, LoginStep), ApiEnvironment.None, Parameters("orderId"), TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal([new(WorkflowProblemKind.UsedBeforeSaved, 0, "token")], checkedWorkflow.Problems);
@@ -52,7 +52,7 @@ public sealed class WorkflowCheckTests
         var check = new WorkflowCheck(new WorkflowLibrary(folder, NullLogger<WorkflowLibrary>.Instance), secrets, NullLogger<WorkflowCheck>.Instance);
 
         // Act
-        var checkedWorkflow = await check.CheckAsync("Ordre-sync", workflow, ApiEnvironment.None, Parameters("orderId"), TestContext.Current.CancellationToken);
+        var checkedWorkflow = await check.CheckAsync(workflow, ApiEnvironment.None, Parameters("orderId"), TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal([new(WorkflowProblemKind.UsedBeforeSaved, 0, "token")], checkedWorkflow.Problems);
@@ -263,16 +263,6 @@ public sealed class WorkflowCheckTests
 
         // Assert
         Assert.Equal([new(WorkflowProblemKind.MissingUrl, 0, "")], checkedWorkflow.Problems);
-    }
-
-    [Fact]
-    public void Check_WhenTheWorkflowHasNoId_ThenReportsIt()
-    {
-        // Act
-        var checkedWorkflow = Check(OrderSync(LoginStep) with { Id = Guid.Empty });
-
-        // Assert
-        Assert.Equal([new(WorkflowProblemKind.MissingId, null, "Ordre-sync")], checkedWorkflow.Problems);
     }
 
     [Theory]

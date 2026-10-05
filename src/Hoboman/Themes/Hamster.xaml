@@ -69,6 +69,27 @@
         <Setter Property="Padding" Value="12,7" />
     </Style>
 
+    <!-- Tells in green or red whether something went well. Tag holds whether it did, as each place has a property of its own for it. -->
+    <Style x:Key="StatusPill" TargetType="Border">
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="8,2" />
+        <Setter Property="Background" Value="{DynamicResource SuccessSoft}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource Success}" />
+        <Setter Property="TextElement.FontSize" Value="12" />
+        <Setter Property="TextElement.FontWeight" Value="SemiBold" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="False">
+                <Setter Property="Background" Value="{DynamicResource ErrorSoft}" />
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource Error}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="SmallStatusPill" TargetType="Border" BasedOn="{StaticResource StatusPill}">
+        <Setter Property="Padding" Value="7,1" />
+        <Setter Property="TextElement.FontSize" Value="11" />
+    </Style>
+
     <!-- Fetches a new token for the auth beside it and spins while it does, from the view model's HasOAuth, CanRefreshAuth, IsAuthRefreshing and RefreshAuthTip. -->
     <Style x:Key="RefreshAuthButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
         <Setter Property="Padding" Value="7,3" />

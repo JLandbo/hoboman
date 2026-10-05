@@ -5,9 +5,9 @@ namespace Hoboman.Cli;
 sealed class CommandLine
 {
     readonly RootCommand _rootCommand = new("Send Hoboman requests and run workflows without opening the GUI.");
-    readonly Command _listCommand = new("list", "List saved request paths, or workflow names with 'workflows'.");
+    readonly Command _listCommand = new("list", "List saved requests as id, a tab and path, or workflows as id, a tab and name with 'workflows'.");
     readonly Command _sendCommand = new("send", "Send a saved request or a method and URL.");
-    readonly Command _runCommand = new("run", "Run a workflow by its folder name.");
+    readonly Command _runCommand = new("run", "Run a workflow by its id or name.");
     readonly Argument<string[]> _targetArgument = new("request-or-method-url") { Arity = new(1, 2) };
     readonly Argument<string> _workflowArgument = new("workflow");
     readonly Argument<string> _listArgument = new("workflows") { Arity = ArgumentArity.ZeroOrOne };

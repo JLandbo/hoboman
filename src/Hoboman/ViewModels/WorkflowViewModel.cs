@@ -14,7 +14,7 @@ namespace Hoboman.ViewModels;
 public sealed class WorkflowViewModel : ObservableObject
 {
     readonly WorkflowServices _services;
-    Guid _id;
+    readonly Guid _id;
     string _savedJson = "";
     int _version;
     bool _closed;
@@ -33,10 +33,11 @@ public sealed class WorkflowViewModel : ObservableObject
     // Steps whose secrets were saved before the steps themselves were, as a run does, so the secrets go if the steps never are saved.
     readonly HashSet<Guid> _unsavedOwners = [];
 
-    public WorkflowViewModel(WorkflowServices services, string name)
+    // The name is read from the file, and the id says which file.
+    public WorkflowViewModel(WorkflowServices services, Guid id)
     {
         _services = services;
-        Name = name;
+        _id = id;
         Parameters.Changed += Edited;
         Auth = new(services.Secrets, services.AuthRefresh, services.Environments, services.Credentials, services.Translator, services.Clock, services.Logger);
         Auth.Changed += Edited;
@@ -52,7 +53,9 @@ public sealed class WorkflowViewModel : ObservableObject
         Save = new AsyncCommand(SaveAsync);
     }
 
-    public string Name { get; private set => Set(ref field, value); }
+    public Guid Id => _id;
+
+    public string Name { get; private set => Set(ref field, value); } = "";
 
     public KeyValueListViewModel Parameters { get; } = new();
 
@@ -144,7 +147,7 @@ public sealed class WorkflowViewModel : ObservableObject
     {
         try
         {
-            if (await _services.Library.LoadAsync(Name, CancellationToken.None) is not { } workflow)
+            if (await _services.Library.LoadAsync(_id, CancellationToken.None) is not { } workflow)
             {
                 return false;
             }
@@ -169,9 +172,14 @@ public sealed class WorkflowViewModel : ObservableObject
     {
         try
         {
-            if (await _services.Library.LoadAsync(Name, CancellationToken.None) is not { } workflow)
+            if (await _services.Library.LoadAsync(_id, CancellationToken.None) is not { } workflow)
             {
                 return false;
+            }
+            // The name is saved by itself, so it is taken in even while the workflow is edited, as a tab takes its request's name.
+            if (workflow.Name != Name)
+            {
+                Rename(workflow.Name);
             }
             if (IsRunning || _fetchesByHand > 0)
             {
@@ -256,7 +264,7 @@ public sealed class WorkflowViewModel : ObservableObject
         var script = ScriptNameOf(name);
         try
         {
-            await _services.Library.CreateScriptAsync(Name, script, translator.Of("Workflow.ScriptTemplate"), CancellationToken.None);
+            await _services.Library.CreateScriptAsync(_id, script, translator.Of("Workflow.ScriptTemplate"), CancellationToken.None);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
@@ -271,7 +279,7 @@ public sealed class WorkflowViewModel : ObservableObject
         Add(new() { Script = script });
     }
 
-    public string? ScriptPathOf(WorkflowStepViewModel step) => step.Script is { } script && WorkflowLibrary.IsValidScriptName(script) ? _services.Library.ScriptPathOf(Name, script) : null;
+    public string? ScriptPathOf(WorkflowStepViewModel step) => step.Script is { } script && WorkflowLibrary.IsValidScriptName(script) ? _services.Library.ScriptPathOf(_id, script) : null;
 
     IEnumerable<string> Scripts => Steps.Select(step => step.Script).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
@@ -281,7 +289,7 @@ public sealed class WorkflowViewModel : ObservableObject
         // An edit made while the files are read is kept.
         foreach (var (script, before) in scripts.Select(script => (script, _code.GetValueOrDefault(script))).ToList())
         {
-            var code = await _services.Library.LoadScriptAsync(Name, script, CancellationToken.None);
+            var code = await _services.Library.LoadScriptAsync(_id, script, CancellationToken.None);
             if (_code.GetValueOrDefault(script) != before)
             {
                 continue;
@@ -302,7 +310,7 @@ public sealed class WorkflowViewModel : ObservableObject
         Refresh();
     }
 
-    static string ScriptNameOf(string name) => name.Trim().EndsWith(".js", StringComparison.OrdinalIgnoreCase) ? name.Trim() : $"{name.Trim()}.js";
+    static string ScriptNameOf(string name) => name.EndsWith(".js", StringComparison.OrdinalIgnoreCase) ? name : $"{name}.js";
 
     void Add(WorkflowStep added)
     {
@@ -368,11 +376,11 @@ public sealed class WorkflowViewModel : ObservableObject
             await SaveSecretsAsync(CancellationToken.None);
             foreach (var (script, code) in _code.Where(pair => _savedCode.GetValueOrDefault(pair.Key) != pair.Value).ToList())
             {
-                await _services.Library.SaveScriptAsync(Name, script, code, CancellationToken.None);
+                await _services.Library.SaveScriptAsync(_id, script, code, CancellationToken.None);
                 _savedCode[script] = code;
             }
-            // A workflow that was renamed or deleted on disk is not brought back under its old name.
-            await _services.Library.SaveAsync(Name, workflow, CancellationToken.None, createDirectory: false);
+            // A workflow that was deleted on disk is not brought back.
+            await _services.Library.SaveAsync(workflow, CancellationToken.None, createDirectory: false);
             _savedJson = JsonOf(workflow);
             // Edits made while the file was written are still unsaved.
             IsDirty = _version != version;
@@ -445,7 +453,7 @@ public sealed class WorkflowViewModel : ObservableObject
             {
                 IsDirty = false;
             }
-            var checkedWorkflow = await _services.Check.CheckAsync(Name, workflow, environment, parameters, running.Token, new Dictionary<string, string>(_code, StringComparer.OrdinalIgnoreCase));
+            var checkedWorkflow = await _services.Check.CheckAsync(workflow, environment, parameters, running.Token, new Dictionary<string, string>(_code, StringComparer.OrdinalIgnoreCase));
             if (checkedWorkflow.Problems.Count > 0)
             {
                 Problems = [.. checkedWorkflow.Problems.Select(TextOf)];
@@ -533,7 +541,7 @@ public sealed class WorkflowViewModel : ObservableObject
     {
         _unsavedOwners.UnionWith(SecretOwners.Except(_savedOwners));
         // Secrets typed for a kind of auth the workflow no longer has would belong to nothing.
-        if (_id != Guid.Empty && Auth.Kind is not (AuthKind.None or AuthKind.Inherit) && Auth.HasUnsavedSecrets)
+        if (Auth.Kind is not (AuthKind.None or AuthKind.Inherit) && Auth.HasUnsavedSecrets)
         {
             await Auth.SaveSecretsAsync(_id, cancellationToken);
         }
@@ -567,7 +575,6 @@ public sealed class WorkflowViewModel : ObservableObject
         var translator = _services.Translator;
         var text = problem.Kind switch
         {
-            WorkflowProblemKind.MissingId => translator.Of("WorkflowProblem.MissingId"),
             WorkflowProblemKind.InvalidName => translator.Format("WorkflowProblem.InvalidName", problem.Detail),
             WorkflowProblemKind.DuplicateName => translator.Format("WorkflowProblem.DuplicateName", problem.Detail),
             WorkflowProblemKind.UnknownParameter => translator.Format("WorkflowProblem.UnknownParameter", problem.Detail),
@@ -614,7 +621,7 @@ public sealed class WorkflowViewModel : ObservableObject
 
     void Load(Workflow workflow)
     {
-        _id = workflow.Id;
+        Rename(workflow.Name);
         _savedOwners = WorkflowLibrary.SecretOwnersOf(workflow).ToHashSet();
         _variableDefaults = workflow.Variables.Where(variable => variable.HasDefault).DistinctBy(variable => variable.Name).ToDictionary(variable => variable.Name, variable => variable.Default);
         _savedJson = JsonOf(workflow);
@@ -732,6 +739,7 @@ public sealed class WorkflowViewModel : ObservableObject
     Workflow ToWorkflow() => new()
     {
         Id = _id,
+        Name = Name,
         Parameters = ValuesOf(Parameters),
         Variables = [.. _variables.Select(name => new WorkflowValue(name) { Default = _variableDefaults.GetValueOrDefault(name) })],
         Steps = [.. Steps.Select(step => step.ToStep())],
@@ -766,5 +774,6 @@ public sealed class WorkflowViewModel : ObservableObject
 
     static KeyValue EntryOf(WorkflowValue value) => new(value.Name, value.HasDefault ? JsonSerializer.Serialize(value.Default, CompactJson.Options) : "");
 
-    static string JsonOf(Workflow workflow) => JsonSerializer.Serialize(workflow, CompactJson.Options);
+    // A rename is saved at once, so the name is no change to save or to reload.
+    static string JsonOf(Workflow workflow) => JsonSerializer.Serialize(workflow with { Name = "" }, CompactJson.Options);
 }

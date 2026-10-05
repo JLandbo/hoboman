@@ -1,17 +1,19 @@
 using System.Collections.ObjectModel;
-using Hoboman.Core.Requests;
 using Hoboman.Mvvm;
 
 namespace Hoboman.ViewModels;
 
-public sealed class RequestNodeViewModel(string path, string? method, bool isFolder, Guid id = default) : ObservableObject
+// A draft is its tab's, so it has the tab's id until it is saved.
+public sealed class RequestNodeViewModel(Guid id, string name, string? method, bool isFolder) : ObservableObject
 {
-    public string Path => path;
+    public Guid Id => id;
 
-    public string Name => RequestLibrary.LastPartOf(path);
+    public string Name => name;
 
-    // A saved request is known by its id, so it keeps its place when it is renamed or moved outside the app. Without an id of its own (Guid.Empty) it is known by its path.
-    public string OrderKey => IsDraft ? $"\0{Tab!.Id}" : IsFolder ? $"{Path}/" : id == Guid.Empty ? Path : $"{id}";
+    // The folder the row is shown in.
+    public Guid? ParentId { get; init; }
+
+    public string OrderKey => IsDraft ? $"\0{id}" : $"{id}";
 
     public string? Method => method;
 
@@ -24,6 +26,9 @@ public sealed class RequestNodeViewModel(string path, string? method, bool isFol
     public bool IsActive { get; set => Set(ref field, value); }
 
     public bool IsExpanded { get; set => Set(ref field, value); }
+
+    // A search hides the rows that do not match, while they stay in the tree.
+    public bool IsShown { get; set => Set(ref field, value); } = true;
 
     public ObservableCollection<RequestNodeViewModel> Children { get; } = [];
 }

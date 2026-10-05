@@ -4,7 +4,6 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
-using Hoboman.Core.Requests;
 using Hoboman.Controls;
 using Hoboman.ViewModels;
 
@@ -59,15 +58,10 @@ public partial class RequestTreeView : UserControl
             {
                 return;
             }
-            var parents = new Stack<string>();
-            for (var parent = RequestLibrary.ParentOf(row.Path); parent is not null; parent = RequestLibrary.ParentOf(parent))
-            {
-                parents.Push(parent);
-            }
             ItemsControl container = Tree;
-            foreach (var path in parents)
+            foreach (var above in ViewModel.Tree.Collection.FoldersDownTo(row.ParentId))
             {
-                var folder = container.Items.OfType<RequestNodeViewModel>().FirstOrDefault(node => node.IsFolder && string.Equals(node.Path, path, StringComparison.OrdinalIgnoreCase));
+                var folder = container.Items.OfType<RequestNodeViewModel>().FirstOrDefault(node => node.IsFolder && node.Id == above.Id);
                 if (container.ItemContainerGenerator.ContainerFromItem(folder) is not TreeViewItem item)
                 {
                     return;
@@ -78,21 +72,34 @@ public partial class RequestTreeView : UserControl
         }, DispatcherPriority.Loaded);
     }
 
-    async void NewRequest_Click(object sender, RoutedEventArgs e)
+    // Esc clears the search before it does anything else, as in a browser.
+    void SearchBox_KeyDown(object sender, KeyEventArgs e)
     {
-        if (NodeOf(sender) is { } node)
+        if (e.Key == Key.Escape && ViewModel.Tree.Search.Length > 0)
         {
-            await ViewModel.NewDraftAsync(node);
+            ViewModel.Tree.Search = "";
+            e.Handled = true;
         }
     }
 
-    async void NewFolder_Click(object sender, RoutedEventArgs e)
+    public void FocusSearch()
+    {
+        SearchBox.Focus();
+        SearchBox.SelectAll();
+    }
+
+    // A menu item acts on the row its menu was opened on.
+    async Task OnRowAsync(object sender, Func<RequestNodeViewModel, Task> act)
     {
         if (NodeOf(sender) is { } node)
         {
-            await ViewModel.NewSubfolderAsync(node);
+            await act(node);
         }
     }
+
+    async void NewRequest_Click(object sender, RoutedEventArgs e) => await OnRowAsync(sender, ViewModel.NewDraftAsync);
+
+    async void NewFolder_Click(object sender, RoutedEventArgs e) => await OnRowAsync(sender, ViewModel.NewSubfolderAsync);
 
     async void Item_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
@@ -123,58 +130,17 @@ public partial class RequestTreeView : UserControl
         return ViewModel.OpenAsync(node);
     }
 
-    async void Rename_Click(object sender, RoutedEventArgs e)
-    {
-        if (NodeOf(sender) is { } node)
-        {
-            if (node.IsDraft)
-            {
-                await ViewModel.RenameTabAsync(node.Tab!);
-                return;
-            }
-            await ViewModel.RenameAsync(node);
-        }
-    }
+    async void Rename_Click(object sender, RoutedEventArgs e) => await OnRowAsync(sender, node => node.IsDraft ? ViewModel.RenameTabAsync(node.Tab!) : ViewModel.RenameAsync(node));
 
-    async void Clone_Click(object sender, RoutedEventArgs e)
-    {
-        if (NodeOf(sender) is { } node)
-        {
-            await ViewModel.CloneAsync(node);
-        }
-    }
+    async void Clone_Click(object sender, RoutedEventArgs e) => await OnRowAsync(sender, ViewModel.CloneAsync);
 
-    async void Delete_Click(object sender, RoutedEventArgs e)
-    {
-        if (NodeOf(sender) is { } node)
-        {
-            await ViewModel.DeleteAsync(node);
-        }
-    }
+    async void Delete_Click(object sender, RoutedEventArgs e) => await OnRowAsync(sender, ViewModel.DeleteAsync);
 
-    async void RenameFolder_Click(object sender, RoutedEventArgs e)
-    {
-        if (NodeOf(sender) is { } node)
-        {
-            await ViewModel.RenameFolderAsync(node);
-        }
-    }
+    async void RenameFolder_Click(object sender, RoutedEventArgs e) => await OnRowAsync(sender, ViewModel.RenameFolderAsync);
 
-    async void DeleteFolder_Click(object sender, RoutedEventArgs e)
-    {
-        if (NodeOf(sender) is { } node)
-        {
-            await ViewModel.DeleteFolderAsync(node);
-        }
-    }
+    async void DeleteFolder_Click(object sender, RoutedEventArgs e) => await OnRowAsync(sender, ViewModel.DeleteFolderAsync);
 
-    async void FolderAuth_Click(object sender, RoutedEventArgs e)
-    {
-        if (NodeOf(sender) is { } node)
-        {
-            await ViewModel.EditFolderAuthAsync(node);
-        }
-    }
+    async void FolderAuth_Click(object sender, RoutedEventArgs e) => await OnRowAsync(sender, ViewModel.EditFolderAuthAsync);
 
     // The request is taken from where the button went down, as a quick drag is already over the next one when it starts.
     void Tree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e) =>
@@ -186,7 +152,7 @@ public partial class RequestTreeView : UserControl
     // A request is only dragged once the mouse has moved a bit with the button held, so a click still opens it.
     void Tree_MouseMove(object sender, MouseEventArgs e)
     {
-        if (e.LeftButton != MouseButtonState.Pressed || _pressed is not { } pressed)
+        if (e.LeftButton != MouseButtonState.Pressed || _pressed is not { } pressed || ViewModel.Tree.IsSearching)
         {
             return;
         }

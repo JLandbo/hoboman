@@ -3,7 +3,9 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Shapes;
+using Hoboman.Tests.Requests;
 using Hoboman.Tests.ViewModels;
+using Hoboman.Tests.Workflows;
 
 namespace Hoboman.Tests.Views;
 
@@ -124,7 +126,7 @@ public sealed class MainWindowTests
             await Ui.IdleAsync();
             Assert.Equal(2, main.Tabs.Count);
             Assert.False(main.SelectedTab!.IsDraft);
-            Assert.Null(main.SelectedTab.Destination);
+            Assert.Null(main.SelectedTab.FolderId);
             var tree = Ui.Descendants<RequestTreeView>(window).Single();
             Assert.True(Ui.Descendants<TextBlock>(tree).Single(text => text.Text == harness.Translator.Of("Tree.Empty")).IsVisible);
             Ui.Click(folder);
@@ -137,12 +139,12 @@ public sealed class MainWindowTests
     public async Task Draft_WhenSentSavedOrMovedToRoot_ThenShowsTheRightTabDotBreadcrumbAndEmptyState()
     {
         using var harness = new Harness(new FakeDialogs(answer: "Saved"));
-        await harness.Library.CreateFolderAsync("Users/Admin", Cancellation);
+        await harness.Library.FolderAtAsync("Users/Admin", Cancellation);
         await Ui.RunAsync(async () =>
         {
             var main = harness.Main();
             await main.LoadAsync();
-            var folder = RequestTreeViewModel.Flatten(main.Tree.Nodes).Single(node => node.Path == "Users/Admin");
+            var folder = RequestTreeViewModel.Flatten(main.Tree.Nodes).Single(node => main.Tree.PathOf(node) == "Users/Admin");
             await main.NewDraftAsync(folder);
             var draft = main.SelectedTab!;
             var window = await Ui.ShowAsync(harness, main);
@@ -160,7 +162,8 @@ public sealed class MainWindowTests
             await draft.SendAsync();
             await Ui.IdleAsync();
             Assert.Equal(Visibility.Visible, dot.Visibility);
-            await harness.Library.DeleteFolderAsync("Users", Cancellation);
+            await harness.Library.DeleteFolderAtAsync("Users/Admin", Cancellation);
+            await harness.Library.DeleteFolderAtAsync("Users", Cancellation);
             await main.RequestsChangedAsync();
             await Ui.IdleAsync();
             Assert.Equal("", breadcrumb.Text);
@@ -436,6 +439,31 @@ public sealed class MainWindowTests
         });
     }
 
+    [Theory]
+    [InlineData(200, "SuccessSoft", "Success")]
+    [InlineData(500, "ErrorSoft", "Error")]
+    public async Task HistoryView_WhenACallIsShown_ThenItsStatusTellsInColourWhetherItSucceeded(int code, string background, string foreground)
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.History().AddAsync(new(DateTimeOffset.Now, HistorySource.App, "dev.local/users", ApiRequest.New(), Response: new(code, "", 5, 2, [], "{}")), Cancellation);
+        await Ui.RunAsync(async () =>
+        {
+            var main = harness.Main();
+            await main.LoadAsync();
+
+            // Act
+            main.Section = SidebarSection.History;
+            var window = await Ui.ShowAsync(harness, main);
+            await Ui.UntilAsync(() => Ui.Descendants<Border>(window).Any(border => border.Name == "Status" && border.IsVisible));
+
+            // Assert
+            var status = Ui.Descendants<Border>(window).Single(border => border.Name == "Status");
+            Assert.Same(window.FindResource(background), status.Background);
+            Assert.Same(window.FindResource(foreground), Ui.Descendants<TextBlock>(status).Single().Foreground);
+        });
+    }
+
     [Fact]
     public async Task HistoryView_WhenACallIsShown_ThenItsStatusSitsInTheMiddleOfTheRow()
     {
@@ -465,9 +493,8 @@ public sealed class MainWindowTests
     {
         // Arrange
         using var harness = new Harness();
-        Directory.CreateDirectory(System.IO.Path.Combine(harness.Folder.Workflows, "Flow"));
-        await File.WriteAllTextAsync(System.IO.Path.Combine(harness.Folder.Workflows, "Flow", "map.js"), string.Join("\n", Enumerable.Range(0, 200).Select(line => $"// {line}")), Cancellation);
         await harness.WorkflowLibrary.SaveAsync("Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Script = "map.js" }] }, Cancellation);
+        await File.WriteAllTextAsync(System.IO.Path.Combine(await harness.WorkflowLibrary.FolderAsync("Flow", Cancellation), "map.js"), string.Join("\n", Enumerable.Range(0, 200).Select(line => $"// {line}")), Cancellation);
         await Ui.RunAsync(async () =>
         {
             var main = harness.Main();

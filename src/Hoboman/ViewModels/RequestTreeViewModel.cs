@@ -3,19 +3,16 @@ using System.ComponentModel;
 using Hoboman.Core.Languages;
 using Hoboman.Core.Requests;
 using Hoboman.Core.Storage;
+using Hoboman.Mvvm;
 using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
 
-public sealed class RequestTreeViewModel(RequestLibrary library, IDialogs dialogs, Translator translator, ILogger<RequestTreeViewModel> logger)
+public sealed class RequestTreeViewModel(RequestLibrary library, RequestSnapshot snapshot, IDialogs dialogs, Translator translator, ILogger<RequestTreeViewModel> logger) : ObservableObject
 {
-    IReadOnlyDictionary<Guid, string> _nameById = new Dictionary<Guid, string>();
-    Dictionary<string, Guid> _idByName = new(StringComparer.OrdinalIgnoreCase);
-    IReadOnlySet<string> _names = new HashSet<string>();
-    IReadOnlySet<string> _earlierNames = new HashSet<string>();
-    IReadOnlyList<string> _folders = [];
-    IReadOnlyList<(string Name, string? Method)> _files = [];
     IReadOnlyList<string> _order = [];
+    // The folders open when a search began, so clearing it opens the same ones again.
+    HashSet<Guid>? _expandedBeforeSearch;
     ObservableCollection<RequestTabViewModel> _tabs = [];
     readonly HashSet<RequestTabViewModel> _followed = [];
     RequestTabViewModel? _selected;
@@ -23,6 +20,37 @@ public sealed class RequestTreeViewModel(RequestLibrary library, IDialogs dialog
     bool _orderSaveFailed;
 
     public ObservableCollection<RequestNodeViewModel> Nodes { get; } = [];
+
+    public RequestCollection Collection => snapshot.Current;
+
+    public string Search
+    {
+        get;
+        set
+        {
+            if (Set(ref field, value))
+            {
+                Filter();
+            }
+        }
+    } = "";
+
+    // A folder whose name matches shows all it holds, so searching for "docs" shows the docs folder.
+    public bool ShowWholeFolders
+    {
+        get;
+        set
+        {
+            if (Set(ref field, value))
+            {
+                Filter();
+            }
+        }
+    } = true;
+
+    public bool IsSearching => Search.Trim().Length > 0;
+
+    public bool NothingFound => IsSearching && Nodes.Count > 0 && !Nodes.Any(node => node.IsShown);
 
     public event Action<RequestNodeViewModel>? Revealed;
 
@@ -32,13 +60,6 @@ public sealed class RequestTreeViewModel(RequestLibrary library, IDialogs dialog
     {
         _loadVersion++;
         _order = [.. Flatten(Nodes).Select(node => node.OrderKey)];
-        return PersistOrderAsync();
-    }
-
-    public Task RenamedAsync(RequestNodeViewModel node, string name)
-    {
-        _loadVersion++;
-        _order = [.. Flatten(Nodes).Select(row => row.OrderKey).Select(key => (node.IsFolder ? key.StartsWith($"{node.Path}/", StringComparison.OrdinalIgnoreCase) : key.Equals(node.Path, StringComparison.OrdinalIgnoreCase)) ? $"{name}{key[node.Path.Length..]}" : key)];
         return PersistOrderAsync();
     }
 
@@ -61,22 +82,22 @@ public sealed class RequestTreeViewModel(RequestLibrary library, IDialogs dialog
         }
     }
 
-    public async Task PlaceAsync(string key, string? parent, string? relativeTo, DropPosition position)
+    public async Task PlaceAsync(string key, Guid? parent, string? relativeTo, DropPosition position)
     {
         var siblings = FolderRowOf(parent)?.Children ?? Nodes;
-        if (siblings.FirstOrDefault(node => node.OrderKey.Equals(key, StringComparison.OrdinalIgnoreCase)) is not { } moved)
+        if (siblings.FirstOrDefault(node => node.OrderKey == key) is not { } moved)
         {
             return;
         }
         var ordered = siblings.Where(node => node != moved).ToList();
-        var target = ordered.FindIndex(node => node.OrderKey.Equals(relativeTo, StringComparison.OrdinalIgnoreCase));
+        var target = ordered.FindIndex(node => node.OrderKey == relativeTo);
         var index = target < 0 ? ordered.Count : target + (position == DropPosition.After ? 1 : 0);
         siblings.Move(siblings.IndexOf(moved), index);
         await SaveOrderAsync();
         Reveal(moved);
     }
 
-    public void RefreshDrafts() => Show();
+    public void Refresh() => Show();
 
     public ObservableCollection<RequestTabViewModel> Follow(ObservableCollection<RequestTabViewModel> tabs)
     {
@@ -113,22 +134,27 @@ public sealed class RequestTreeViewModel(RequestLibrary library, IDialogs dialog
         }
     }
 
-    public void ExpandTo(string path)
+    public void ExpandTo(Guid? folder)
     {
-        for (var parent = RequestLibrary.ParentOf(path); parent is not null; parent = RequestLibrary.ParentOf(parent))
+        foreach (var above in Collection.FoldersDownTo(folder))
         {
-            if (FolderRowOf(parent) is { } folder)
+            if (FolderRowOf(above.Id) is { } row)
             {
-                folder.IsExpanded = true;
+                row.IsExpanded = true;
             }
         }
     }
 
     void Reveal(RequestNodeViewModel row)
     {
-        ExpandTo(row.Path);
+        ExpandTo(row.ParentId);
         Revealed?.Invoke(row);
     }
+
+    // Names need not be unique, but a copy gets a number that no request or draft in its folder has, so it can be told apart.
+    public bool IsTaken(Guid? parent, string name) =>
+        Collection.Requests.Any(request => Collection.FolderIdOf(request) == parent && SameName(request.Name, name))
+        || _tabs.Any(tab => tab.IsDraft && tab.FolderId == parent && SameName(tab.Title, name));
 
     void TabChanged(object? sender, PropertyChangedEventArgs args)
     {
@@ -141,15 +167,10 @@ public sealed class RequestTreeViewModel(RequestLibrary library, IDialogs dialog
         {
             return;
         }
-        if (tab.Name is not { } name)
-        {
-            ShowTabs();
-            return;
-        }
+        // A saved draft keeps its place in the tree.
         _loadVersion++;
-        _order = [.. Flatten(Nodes).Select(node => node.IsDraft && node.Tab == tab ? name : node.OrderKey)];
-        _idByName[name] = tab.Id;
-        _files = [.. _files.Where(file => !string.Equals(file.Name, name, StringComparison.OrdinalIgnoreCase)), (name, tab.SavedMethod)];
+        _order = [.. Flatten(Nodes).Select(node => node.IsDraft && node.Tab == tab ? $"{tab.Id}" : node.OrderKey)];
+        snapshot.Current = Collection.With(tab.ToRequest() with { Method = tab.SavedMethod });
         Show();
         if (Flatten(Nodes).FirstOrDefault(node => node.Tab == tab) is { } row)
         {
@@ -160,51 +181,27 @@ public sealed class RequestTreeViewModel(RequestLibrary library, IDialogs dialog
     Task TabCreatedAsync(RequestTabViewModel tab)
     {
         ResetOrderFailure();
-        if (tab.Name is { } name && !_files.Any(file => file.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+        if (Collection.RequestOf(tab.Id) is null)
         {
             _loadVersion++;
-            _idByName[name] = tab.Id;
-            _files = [.. _files, (name, tab.SavedMethod)];
+            snapshot.Current = Collection.With(tab.ToRequest() with { Method = tab.SavedMethod });
             Show();
         }
         return SaveOrderAsync();
     }
-
-    // Moving a file shows up as a delete and a create, so open tabs find their file again by its id, under a name that is new since the last load.
-    // A copy that is left with the id after its original is deleted was there before, so it is not taken for a move.
-    public string? NameOf(Guid id) => _nameById.GetValueOrDefault(id) is { } name && !_earlierNames.Contains(name) ? name : null;
-
-    public Guid IdOf(string name) => _idByName.GetValueOrDefault(name);
-
-    public string KeyOf(string name) => Flatten(Nodes).FirstOrDefault(node => !node.IsFolder && !node.IsDraft && node.Path.Equals(name, StringComparison.OrdinalIgnoreCase))?.OrderKey ?? name;
-
-    // Where the request with the id is now. An id that several files share points at none of them.
-    public string? PathOf(Guid id) => _nameById.GetValueOrDefault(id);
 
     public async Task LoadAsync(CancellationToken cancellationToken)
     {
         var version = ++_loadVersion;
         try
         {
-            var folders = await library.FoldersAsync(cancellationToken);
-            var names = await library.NamesAsync(cancellationToken);
-            var loaded = (await LoadOrderAsync(cancellationToken)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            var requests = new ApiRequest?[names.Count];
-            await Parallel.ForEachAsync(Enumerable.Range(0, names.Count), cancellationToken, async (index, token) => requests[index] = await RequestOfAsync(names[index], token));
+            var collection = await library.LoadAllAsync(cancellationToken);
+            var order = (await LoadOrderAsync(cancellationToken)).Distinct().ToList();
             if (version != _loadVersion)
             {
                 return;
             }
-            var namesById = names.Zip(requests).Where(pair => pair.Second is { Id: var id } && id != Guid.Empty).ToLookup(pair => pair.Second!.Id, pair => pair.First);
-            _nameById = UniqueIds(namesById);
-            (_earlierNames, _names) = (_names, names.ToHashSet(StringComparer.OrdinalIgnoreCase));
-            _idByName = names.Zip(requests).Where(pair => pair.Second is not null).ToDictionary(pair => pair.First, pair => pair.Second!.Id, StringComparer.OrdinalIgnoreCase);
-            // An id that an Explorer copy now shares is replaced by the paths of its files, so the original keeps its place.
-            var order = loaded.SelectMany(key => Guid.TryParse(key, out var id) && namesById[id].Skip(1).Any() ? namesById[id] : [IdKeyOf(key) is var known && known != Guid.Empty ? $"{known}" : key])
-                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            var mapped = !order.SequenceEqual(loaded, StringComparer.OrdinalIgnoreCase);
-            _folders = folders;
-            _files = [.. names.Zip(requests).Select(pair => (pair.First, pair.Second?.Method))];
+            snapshot.Current = collection;
             // Draft positions belong to this session, not the order file.
             foreach (var key in _order.Where(key => key.StartsWith('\0')))
             {
@@ -213,10 +210,6 @@ public sealed class RequestTreeViewModel(RequestLibrary library, IDialogs dialog
             }
             _order = order;
             Show();
-            if (mapped)
-            {
-                await PersistOrderAsync();
-            }
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
@@ -237,18 +230,26 @@ public sealed class RequestTreeViewModel(RequestLibrary library, IDialogs dialog
         }
     }
 
+    // Without a place in the order, folders come before requests, each by name.
     void Show()
     {
-        var expanded = Flatten(Nodes).Where(node => node.IsExpanded).Select(node => node.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var byPath = new Dictionary<string, RequestNodeViewModel>(StringComparer.OrdinalIgnoreCase);
+        var expanded = Flatten(Nodes).Where(node => node.IsFolder && node.IsExpanded).Select(node => node.Id).ToHashSet();
+        var folders = Collection.Folders.OrderBy(folder => folder.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToDictionary(folder => folder.Id, folder => new RequestNodeViewModel(folder.Id, folder.Name, null, isFolder: true) { ParentId = Collection.ParentOf(folder), IsExpanded = expanded.Contains(folder.Id) });
         Nodes.Clear();
-        foreach (var folder in _folders.Order(StringComparer.CurrentCultureIgnoreCase))
+        foreach (var folder in folders.Values)
         {
-            FolderOf(folder);
+            ChildrenOf(folder.ParentId).Add(folder);
         }
-        foreach (var (name, method) in _files.OrderBy(file => file.Name, StringComparer.CurrentCultureIgnoreCase))
+        foreach (var request in Collection.Requests.OrderBy(request => request.Name, StringComparer.CurrentCultureIgnoreCase))
         {
-            ChildrenOf(name).Add(new(name, method, isFolder: false, IdKeyOf(name)));
+            var parent = Collection.FolderIdOf(request);
+            ChildrenOf(parent).Add(new(request.Id, request.Name, request.Method, isFolder: false) { ParentId = parent });
+        }
+        // A file that cannot be read has no name or place, so it is shown at the top level by its id, and opening it tells what is wrong.
+        foreach (var id in Collection.Unreadable)
+        {
+            Nodes.Add(new(id, translator.Format("Tree.Unreadable", $"{id}"[..8]), null, isFolder: false));
         }
         foreach (var tab in _tabs.Where(tab => tab.IsDraft))
         {
@@ -256,25 +257,17 @@ public sealed class RequestTreeViewModel(RequestLibrary library, IDialogs dialog
         }
         Sort(Nodes);
         Link();
-
-        ObservableCollection<RequestNodeViewModel> ChildrenOf(string path) => RequestLibrary.ParentOf(path) is { } parent ? FolderOf(parent).Children : Nodes;
-
-        // A folder can appear between listing the folders and the files, so missing parents are made on the way.
-        RequestNodeViewModel FolderOf(string path)
+        if (IsSearching)
         {
-            if (!byPath.TryGetValue(path, out var node))
-            {
-                node = new(path, null, isFolder: true) { IsExpanded = expanded.Contains(path) };
-                ChildrenOf(path).Add(node);
-                byPath[path] = node;
-            }
-            return node;
+            Filter();
         }
+
+        ObservableCollection<RequestNodeViewModel> ChildrenOf(Guid? parent) => parent is { } id && folders.TryGetValue(id, out var folder) ? folder.Children : Nodes;
     }
 
     void Sort(ObservableCollection<RequestNodeViewModel> nodes)
     {
-        var positions = _order.Select((key, index) => (key, index)).ToDictionary(pair => pair.key, pair => pair.index, StringComparer.OrdinalIgnoreCase);
+        var positions = _order.Select((key, index) => (key, index)).ToDictionary(pair => pair.key, pair => pair.index);
         SortChildren(nodes);
 
         void SortChildren(ObservableCollection<RequestNodeViewModel> children)
@@ -292,27 +285,23 @@ public sealed class RequestTreeViewModel(RequestLibrary library, IDialogs dialog
         }
     }
 
-    RequestNodeViewModel? FolderRowOf(string? path) => Flatten(Nodes).FirstOrDefault(node => node.IsFolder && string.Equals(node.Path, path, StringComparison.OrdinalIgnoreCase));
+    RequestNodeViewModel? FolderRowOf(Guid? id) => id is null ? null : Flatten(Nodes).FirstOrDefault(node => node.IsFolder && node.Id == id);
 
+    // A draft whose folder is gone goes to the top.
     void ShowDraft(RequestTabViewModel tab)
     {
-        var destination = tab.Destination;
-        while (destination is not null && FolderRowOf(destination) is null)
+        if (tab.FolderId is not null && FolderRowOf(tab.FolderId) is null)
         {
-            destination = RequestLibrary.ParentOf(destination);
+            tab.MoveTo(null);
         }
-        if (destination != tab.Destination)
-        {
-            tab.MoveTo(destination);
-        }
-        (FolderRowOf(destination)?.Children ?? Nodes).Add(new(tab.DraftName!, null, isFolder: false) { Tab = tab, IsDraft = true });
+        (FolderRowOf(tab.FolderId)?.Children ?? Nodes).Add(new(tab.Id, tab.Title, null, isFolder: false) { Tab = tab, IsDraft = true, ParentId = tab.FolderId });
     }
 
     void ShowTabs()
     {
-        foreach (var row in Flatten(Nodes).Where(node => node.IsDraft && (node.Tab is not { IsDraft: true } || !_tabs.Contains(node.Tab) || node.Path != node.Tab.DraftName)).ToList())
+        foreach (var row in Flatten(Nodes).Where(node => node.IsDraft && (node.Tab is not { IsDraft: true } tab || !_tabs.Contains(tab) || node.Id != tab.Id || node.ParentId != tab.FolderId)).ToList())
         {
-            (FolderRowOf(RequestLibrary.ParentOf(row.Path))?.Children ?? Nodes).Remove(row);
+            (FolderRowOf(row.ParentId)?.Children ?? Nodes).Remove(row);
         }
         foreach (var tab in _tabs.Where(tab => tab.IsDraft && !Flatten(Nodes).Any(node => node.IsDraft && node.Tab == tab)))
         {
@@ -320,6 +309,55 @@ public sealed class RequestTreeViewModel(RequestLibrary library, IDialogs dialog
         }
         Sort(Nodes);
         Link();
+        if (IsSearching)
+        {
+            Filter();
+        }
+    }
+
+    // The rows are only hidden, so the order and everything else that walks the tree still see them all.
+    void Filter()
+    {
+        if (IsSearching)
+        {
+            _expandedBeforeSearch ??= [.. Flatten(Nodes).Where(node => node.IsFolder && node.IsExpanded).Select(node => node.Id)];
+            foreach (var node in Nodes)
+            {
+                Mark(node, Search.Trim(), inShownFolder: false);
+            }
+        }
+        else
+        {
+            foreach (var node in Flatten(Nodes))
+            {
+                node.IsShown = true;
+                if (node.IsFolder && _expandedBeforeSearch is { } expanded)
+                {
+                    node.IsExpanded = expanded.Contains(node.Id);
+                }
+            }
+            _expandedBeforeSearch = null;
+        }
+        OnPropertyChanged(nameof(IsSearching));
+        OnPropertyChanged(nameof(NothingFound));
+    }
+
+    // A row is shown when its name matches, when it lies in a folder that is shown whole, or when a row in it is shown. A shown folder is opened, so its rows can be seen.
+    bool Mark(RequestNodeViewModel node, string text, bool inShownFolder)
+    {
+        var matches = (node.IsDraft ? node.Tab!.Title : node.Name).Contains(text, StringComparison.CurrentCultureIgnoreCase);
+        var whole = inShownFolder || node.IsFolder && ShowWholeFolders && matches;
+        var holdsShown = false;
+        foreach (var child in node.Children)
+        {
+            holdsShown |= Mark(child, text, whole);
+        }
+        node.IsShown = whole || holdsShown || !node.IsFolder && matches;
+        if (node.IsFolder)
+        {
+            node.IsExpanded = node.IsShown;
+        }
+        return node.IsShown;
     }
 
     void Link()
@@ -328,47 +366,13 @@ public sealed class RequestTreeViewModel(RequestLibrary library, IDialogs dialog
         {
             if (!row.IsDraft)
             {
-                row.Tab = _tabs.FirstOrDefault(tab => !tab.IsDraft && string.Equals(tab.Name, row.Path, StringComparison.OrdinalIgnoreCase));
+                row.Tab = _tabs.FirstOrDefault(tab => tab.IsSaved && !tab.IsDraft && tab.Id == row.Id);
             }
             row.IsActive = row.Tab is not null && row.Tab == _selected;
         }
     }
 
-    IReadOnlyDictionary<Guid, string> UniqueIds(ILookup<Guid, string> namesById)
-    {
-        var nameById = new Dictionary<Guid, string>();
-        foreach (var group in namesById)
-        {
-            if (group.Count() == 1)
-            {
-                nameById[group.Key] = group.First();
-                continue;
-            }
-            logger.LogWarning("{Names} share the id {Id}, so they share their secrets", string.Join(", ", group), group.Key);
-        }
-        return nameById;
-    }
-
-    // A tab saved under a new name keeps its id until the next load, while the file that had it may still be there, so the id must point at this file.
-    Guid IdKeyOf(string name) => _idByName.GetValueOrDefault(name) is var id && _nameById.GetValueOrDefault(id) is { } path && path.Equals(name, StringComparison.OrdinalIgnoreCase) ? id : Guid.Empty;
-
-    async Task<ApiRequest?> RequestOfAsync(string name, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var request = await library.LoadAsync(name, cancellationToken);
-            if (request?.Id == Guid.Empty)
-            {
-                logger.LogInformation("{Name} has no id", name);
-            }
-            return request;
-        }
-        catch (Exception exception) when (FileProblem.Is(exception))
-        {
-            logger.LogWarning(exception, "Could not read {Name}", name);
-            return null;
-        }
-    }
-
     public static IEnumerable<RequestNodeViewModel> Flatten(IEnumerable<RequestNodeViewModel> nodes) => nodes.SelectMany(node => Flatten(node.Children).Prepend(node));
+
+    static bool SameName(string name, string other) => string.Equals(name, other, StringComparison.OrdinalIgnoreCase);
 }

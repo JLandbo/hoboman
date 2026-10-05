@@ -1,4 +1,3 @@
-using System.Net.Http;
 using System.Text.Json;
 using Hoboman.Core.Auth;
 using Hoboman.Core.Base64;
@@ -8,7 +7,6 @@ using Hoboman.Core.Requests;
 using Hoboman.Core.Sending;
 using Hoboman.Core.Storage;
 using Hoboman.Mvvm;
-using Hoboman.Services;
 using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
@@ -26,14 +24,15 @@ public sealed class RequestTabViewModel : ObservableObject
     bool _closed;
     int _authResolution;
 
-    public RequestTabViewModel(RequestTabServices services, ApiRequest request, string? name = null, string? suggestedName = null, string? historyName = null, string? destination = null)
+    // A saved request is opened with its name, while a call from the history only suggests it, as the request may since have changed.
+    public RequestTabViewModel(RequestTabServices services, ApiRequest request, bool saved = false, string? historyName = null, bool draft = false)
     {
         _services = services;
-        Name = name;
-        SuggestedName = suggestedName;
+        Name = saved ? request.Name : null;
+        SuggestedName = !saved && request.Name.Length > 0 ? request.Name : null;
         HistoryName = historyName;
-        IsDraft = destination is not null;
-        Destination = destination;
+        IsDraft = draft;
+        FolderId = request.FolderId;
         OwnsId = historyName is null;
         Auth = new(services.Secrets, services.AuthRefresh, services.Environments, services.Credentials, services.Translator, services.Clock, services.Logger);
         Auth.Changed += MarkDirty;
@@ -73,6 +72,7 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public event Func<RequestTabViewModel, Task>? Created;
 
+    // The name it is saved under, or null while it is not saved.
     public string? Name
     {
         get;
@@ -81,10 +81,12 @@ public sealed class RequestTabViewModel : ObservableObject
             if (Set(ref field, value))
             {
                 OnPropertyChanged(nameof(Title));
-                OnPropertyChanged(nameof(Folder));
+                OnPropertyChanged(nameof(IsSaved));
             }
         }
     }
+
+    public bool IsSaved => Name is not null;
 
     public string? SuggestedName
     {
@@ -126,9 +128,12 @@ public sealed class RequestTabViewModel : ObservableObject
     // Tabs without a name are numbered, so they can be told apart.
     public int Number { get; init; }
 
-    public string Title => (Name ?? SuggestedName) is { } name ? RequestLibrary.LastPartOf(name) : _services.Translator.Format("Tab.New", Number);
+    public string Title => Name ?? SuggestedName ?? _services.Translator.Format("Tab.New", Number);
 
-    public string? Folder => RequestLibrary.ParentOf(Name ?? DraftName) is { } parent ? $"{parent.Replace("/", " / ")} /" : null;
+    public string? Folder => _services.Requests.Current.FoldersDownTo(FolderId) is { Count: > 0 } path ? $"{string.Join(" / ", path.Select(above => above.Name))} /" : null;
+
+    // A folder renamed or moved shows its new path.
+    public void RefreshFolder() => OnPropertyChanged(nameof(Folder));
 
     public bool IsDraft
     {
@@ -143,7 +148,8 @@ public sealed class RequestTabViewModel : ObservableObject
         }
     }
 
-    public string? Destination
+    // The folder it is saved in, or goes into when a draft or a call from the history is saved.
+    public Guid? FolderId
     {
         get;
         private set
@@ -155,13 +161,11 @@ public sealed class RequestTabViewModel : ObservableObject
         }
     }
 
-    public string? DraftName => !IsDraft ? null : Destination is { } folder ? $"{folder}/{Title}" : Title;
-
     public bool IsUnsaved => IsDraft || IsDirty;
 
-    public void MoveTo(string? destination)
+    public void MoveTo(Guid? folder)
     {
-        Destination = destination;
+        FolderId = folder;
         _ = UpdateAuthSourceAsync();
     }
 
@@ -179,13 +183,13 @@ public sealed class RequestTabViewModel : ObservableObject
 
     public string AuthHeader => AuthViewModel.HeaderOf(EffectiveAuthKind, _services.Translator);
 
-    public string? AuthSourceTip => InheritedAuthFolder is { } folder ? _services.Translator.Format("Auth.InheritedFrom", folder.Replace("/", " / ")) : null;
+    public string? AuthSourceTip => InheritedAuthFolder is { } folder ? _services.Translator.Format("Auth.InheritedFrom", folder) : null;
 
     public string RefreshAuthTip => _services.Translator.Format("OAuth.Reauthenticate", InheritedAuthFolder ?? Title, _services.Environments.Selected?.Name ?? _services.Translator.Of("Environment.None"));
 
     public bool HasOAuth => EffectiveAuthKind == AuthKind.OAuth2;
 
-    string AuthOwner => AuthRefreshService.OwnerOf(Auth.Kind == AuthKind.Inherit && _inheritedAuth is { } inherited ? inherited : new(Id, Auth.ToSettings()));
+    Guid AuthOwner => Auth.Kind == AuthKind.Inherit && _inheritedAuth is { } inherited ? inherited.SecretsId : Id;
 
     public bool IsAuthRefreshing => _refreshingAuth is not null || Auth.IsFetching || _services.AuthRefresh.IsRefreshing(AuthOwner, EnvironmentOrNone().Id);
 
@@ -194,11 +198,11 @@ public sealed class RequestTabViewModel : ObservableObject
     public async Task UpdateAuthSourceAsync()
     {
         var resolution = ++_authResolution;
-        var name = Name ?? SuggestedName ?? DraftName;
+        var name = Title;
         var request = ToRequest();
         try
         {
-            var source = await _services.Library.AuthOfAsync(name, request, CancellationToken.None);
+            var source = await _services.Library.AuthOfAsync(request, CancellationToken.None);
             if (resolution == _authResolution)
             {
                 _inheritedAuth = source;
@@ -238,8 +242,7 @@ public sealed class RequestTabViewModel : ObservableObject
             {
                 return await _services.AuthRefresh.RefreshFolderAsync(_inheritedAuth!, environment, refreshing.Token);
             }
-            await EnsureOwnIdAsync(refreshing.Token);
-            refreshing.Token.ThrowIfCancellationRequested();
+            EnsureOwnId();
             var succeeded = await Auth.FetchTokenAsync(environment, saveSecrets: true, refreshing.Token);
             IsDirty = HasUnsavedChanges();
             return succeeded;
@@ -321,7 +324,7 @@ public sealed class RequestTabViewModel : ObservableObject
     public async Task ShowAsync(HistoryEntry entry)
     {
         await Result.ShowAsync(entry.Response);
-        Problem = entry.Error is { } error ? new(_services.Translator.Of("Response.Failed"), entry.Problem is { } kind ? HistoryProblemOf(kind) : error) : null;
+        Problem = entry.Problem is { } kind ? new(_services.Translator.Of("Response.Failed"), HistoryProblemOf(kind)) : null;
     }
 
     // A tab tells of a missing token as when it was sent, not as a workflow step does.
@@ -359,16 +362,14 @@ public sealed class RequestTabViewModel : ObservableObject
             return;
         }
         var translator = _services.Translator;
-        var parent = RequestLibrary.ParentOf(SuggestedName) ?? Destination;
-        string FullName(string value) => parent is null ? value : $"{parent}/{value}";
-        var name = _services.Dialogs.AskName(translator.Of("Save.Title"), RequestLibrary.LastPartOf(SuggestedName ?? DraftName ?? ""), translator.Of("Common.Save"), _services.OnePart(value => _services.ProblemOfName(FullName(value))));
+        var name = _services.Dialogs.AskName(translator.Of("Save.Title"), SuggestedName ?? (IsDraft ? Title : ""), translator.Of("Common.Save"), _services.ProblemOfName);
         if (name is not null)
         {
-            await SaveCoreAsync(FullName(name));
+            await SaveCoreAsync(name);
         }
     });
 
-    // The caller holds CollectionChanges, so the path cannot move between choosing it and saving.
+    // The name comes from the name dialog, which only gives a valid one.
     internal async Task SaveCoreAsync(string name)
     {
         if (_closed)
@@ -376,23 +377,18 @@ public sealed class RequestTabViewModel : ObservableObject
             return;
         }
         var creating = Name is null;
-        if (creating && _services.ProblemOfName(name) is { } problem)
-        {
-            Problem = new(_services.Translator.Of("Save.Failed"), problem);
-            return;
-        }
         EnsureOwnId();
+        // What is saved is what the tab holds now, so edits made while it is written stay unsaved.
+        var request = ToRequest() with { Name = name };
         try
         {
             // The secrets go first, so a failure leaves no request file behind that points at secrets that were never saved.
             await SaveSecretsAsync(CancellationToken.None);
-            var request = ToRequest();
-            await (creating ? _services.Library.CreateAsync(name, request, CancellationToken.None) : _services.Library.SaveAsync(name, request, CancellationToken.None));
+            await (creating ? _services.Library.CreateAsync(request, CancellationToken.None) : _services.Library.SaveAsync(request, CancellationToken.None));
             _savedJson = SavedJsonOf(request);
             SavedMethod = request.Method;
             Name = name;
             var wasDraft = IsDraft;
-            Destination = null;
             IsDraft = false;
             // Edits made while the file was being written are still unsaved.
             IsDirty = HasUnsavedChanges();
@@ -432,11 +428,7 @@ public sealed class RequestTabViewModel : ObservableObject
         OnPropertyChanged(nameof(IsPreview));
     }
 
-    public void Rename(string name)
-    {
-        Name = name;
-        _ = UpdateAuthSourceAsync();
-    }
+    public void Rename(string name) => Name = name;
 
     ApiEnvironment EnvironmentOrNone() => _services.Environments.SelectedOrNone;
 
@@ -459,12 +451,13 @@ public sealed class RequestTabViewModel : ObservableObject
     {
         SuggestedName = Name;
         Name = null;
-        Destination = null;
         IsDraft = false;
         IsDirty = true;
     }
 
-    public ApiRequest ToRequest() => Editor.ToRequest() with { Id = Id, Auth = Auth.ToSettings() };
+    public ApiRequest ToRequest() => Editor.ToRequest() with { Id = Id, Name = Name ?? SuggestedName ?? "", FolderId = FolderId, Auth = Auth.ToSettings() };
+
+    // The history shows where the call came from, as the CLI does.
 
     public async Task SendAsync()
     {
@@ -485,7 +478,7 @@ public sealed class RequestTabViewModel : ObservableObject
             await SaveSecretsAsync(sending.Token);
             // Secrets were all that was unsaved if the request itself is unchanged, such as after fetching a token.
             IsDirty = HasUnsavedChanges();
-            var response = await _services.Runner.RunAsync(ToRequest(), Name ?? SuggestedName ?? DraftName, environment, HistorySource.App, _ => RefreshAuthAsync(), sending.Token);
+            var response = await _services.Runner.RunAsync(ToRequest(), environment, HistorySource.App, _ => RefreshAuthAsync(), sending.Token);
             await Result.ShowAsync(response);
         }
         catch (OperationCanceledException) when (sending.IsCancellationRequested)
@@ -528,18 +521,8 @@ public sealed class RequestTabViewModel : ObservableObject
         {
             return;
         }
-        await EnsureOwnIdAsync(cancellationToken);
-        await Auth.SaveSecretsAsync(Id, cancellationToken);
-    }
-
-    async Task EnsureOwnIdAsync(CancellationToken cancellationToken)
-    {
-        if (Name is { } name && OwnsId && await _services.Library.SharesRequestIdAsync(name, Id, cancellationToken))
-        {
-            _services.Logger.LogWarning("{Name} shares its id with another request, so it gets its own", name);
-            TakeNewId();
-        }
         EnsureOwnId();
+        await Auth.SaveSecretsAsync(Id, cancellationToken);
     }
 
     void EnsureOwnId()
@@ -563,8 +546,11 @@ public sealed class RequestTabViewModel : ObservableObject
     bool HasUnsavedChanges() => SavedJsonOf(ToRequest()) != _savedJson || Auth.HasUnsavedSecrets;
 
     // The lists leave blank rows out, and a tab without Base64 choices leaves them out, so a file with either is compared the same way.
+    // The name and the place are saved as soon as they change, so they do not make a tab unsaved.
     static string SavedJsonOf(ApiRequest request) => JsonSerializer.Serialize(request with
     {
+        Name = "",
+        FolderId = null,
         Query = KeyValueListViewModel.WithoutBlanks(request.Query),
         Headers = KeyValueListViewModel.WithoutBlanks(request.Headers),
         Base64 = request.Base64 is { Encode: [], Decode: [] } ? null : request.Base64,

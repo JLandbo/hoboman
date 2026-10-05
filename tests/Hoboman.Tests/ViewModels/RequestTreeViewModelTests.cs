@@ -1,3 +1,4 @@
+using Hoboman.Tests.Requests;
 using Microsoft.Extensions.Logging;
 
 namespace Hoboman.Tests.ViewModels;
@@ -6,27 +7,34 @@ public sealed class RequestTreeViewModelTests
 {
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
-    static RequestTreeViewModel Tree(Harness harness) => new(harness.Library, harness.Dialogs, harness.Translator, NullLogger<RequestTreeViewModel>.Instance);
+    static RequestTabViewModel Draft(Harness harness, Guid? folder, int number = 0) => new(harness.Services, ApiRequest.New() with { FolderId = folder }, draft: true) { Number = number };
+
+    // Read once before the file that cannot be read is there, so the next read waits, and a newer load can finish before it.
+    static async Task<RequestTreeViewModel> BlockedTreeAsync(Harness harness, BlockedReadLogger logger)
+    {
+        var tree = new RequestTreeViewModel(new RequestLibrary(harness.Folder, logger), new(), harness.Dialogs, harness.Translator, NullLogger<RequestTreeViewModel>.Instance);
+        await tree.LoadAsync(CancellationToken.None);
+        Directory.CreateDirectory(harness.Folder.Requests);
+        File.WriteAllText(Path.Combine(harness.Folder.Requests, $"{Guid.NewGuid()}.json"), "{");
+        return tree;
+    }
 
     [Fact]
-    public async Task LoadAsync_WhenAnOlderReadFinishesAfterAFolderMove_ThenKeepsTheNewDestination()
+    public async Task LoadAsync_WhenAnOlderReadFinishesAfterAFolderIsRenamed_ThenKeepsTheNewName()
     {
         using var harness = new Harness();
         using var logger = new BlockedReadLogger(Cancellation);
-        await harness.Library.CreateFolderAsync("Users", Cancellation);
-        var tree = new RequestTreeViewModel(harness.Library, harness.Dialogs, harness.Translator, logger);
-        await tree.LoadAsync(Cancellation);
-        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "Users");
-        tree.Follow([tab]);
-        File.WriteAllText(Path.Combine(harness.Folder.Requests, "Broken.json"), "{");
-        var earlierLoad = tree.LoadAsync(Cancellation);
+        var users = await harness.Library.FolderAtAsync("Users", Cancellation);
+        var blocked = await BlockedTreeAsync(harness, logger);
+        var tab = Draft(harness, users);
+        blocked.Follow([tab]);
+        var earlierLoad = blocked.LoadAsync(Cancellation);
         try
         {
             await logger.Reading.Task.WaitAsync(Cancellation);
-            await harness.Library.RenameFolderAsync("Users", "People", Cancellation);
-            tab.MoveTo("People");
+            await harness.Library.RenameFolderAtAsync("Users", "People", Cancellation);
 
-            await tree.LoadAsync(Cancellation);
+            await blocked.LoadAsync(Cancellation);
         }
         finally
         {
@@ -34,12 +42,10 @@ public sealed class RequestTreeViewModelTests
             await earlierLoad;
         }
 
-        Assert.Equal("People", tab.Destination);
-        var folder = Assert.Single(tree.Nodes, node => node.IsFolder);
-        Assert.Equal("People", folder.Path);
+        Assert.Equal(users, tab.FolderId);
+        var folder = Assert.Single(blocked.Nodes, node => node.IsFolder);
+        Assert.Equal("People", folder.Name);
         Assert.Same(tab, Assert.Single(folder.Children).Tab);
-        await tree.LoadAsync(Cancellation);
-        Assert.Equal("People", tab.Destination);
     }
 
     [Fact]
@@ -47,12 +53,10 @@ public sealed class RequestTreeViewModelTests
     {
         using var harness = new Harness(new FakeDialogs(answer: "Saved"));
         using var logger = new BlockedReadLogger(Cancellation);
-        await harness.Library.CreateFolderAsync("Users", Cancellation);
-        var tree = new RequestTreeViewModel(harness.Library, harness.Dialogs, harness.Translator, logger);
-        await tree.LoadAsync(Cancellation);
-        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "Users");
+        var users = await harness.Library.FolderAtAsync("Users", Cancellation);
+        var tree = await BlockedTreeAsync(harness, logger);
+        var tab = Draft(harness, users);
         tree.Follow([tab]);
-        File.WriteAllText(Path.Combine(harness.Folder.Requests, "Broken.json"), "{");
         var earlierLoad = tree.LoadAsync(Cancellation);
         try
         {
@@ -66,13 +70,13 @@ public sealed class RequestTreeViewModelTests
             await earlierLoad;
         }
 
-        Assert.Equal(tab.Id, tree.IdOf("users/saved"));
+        Assert.Equal(tab.Id, Assert.Single(tree.Collection.Find("users/saved")).Id);
         var row = Assert.Single(RequestTreeViewModel.Flatten(tree.Nodes), node => node.Tab == tab);
-        Assert.Equal("Users/Saved", row.Path);
+        Assert.Equal("Users/Saved", tree.PathOf(row));
         Assert.False(row.IsDraft);
     }
 
-    sealed class BlockedReadLogger(CancellationToken cancellationToken) : ILogger<RequestTreeViewModel>, IDisposable
+    sealed class BlockedReadLogger(CancellationToken cancellationToken) : ILogger<RequestLibrary>, IDisposable
     {
         readonly ManualResetEventSlim _continue = new();
         int _warnings;
@@ -105,18 +109,19 @@ public sealed class RequestTreeViewModelTests
     public async Task Follow_WhenTabsAreAddedAndRemoved_ThenShowsOnlyDraftsAndKeepsTheirIdentity(string destination)
     {
         using var harness = new Harness();
-        await harness.Library.SaveAsync($"{destination}/New request (1)", ApiRequest.New(), Cancellation);
-        var tree = Tree(harness);
+        await harness.Library.SaveAtAsync($"{destination}/New request (1)", ApiRequest.New(), Cancellation);
+        var folderId = await harness.Library.FolderAtAsync(destination, Cancellation);
+        var tree = harness.Tree;
         await tree.LoadAsync(Cancellation);
         var tabs = tree.Follow([]);
-        var first = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: destination) { Number = 1 };
-        var second = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: destination) { Number = 1 };
+        var first = Draft(harness, folderId, 1);
+        var second = Draft(harness, folderId, 1);
         tabs.Add(harness.Tab());
-        tabs.Add(new(harness.Services, ApiRequest.New(), suggestedName: first.DraftName, historyName: "call.json"));
+        tabs.Add(new(harness.Services, ApiRequest.New() with { Name = first.Title, FolderId = folderId }, historyName: "call.json"));
         tabs.Add(first);
         tabs.Add(second);
 
-        var folder = RequestTreeViewModel.Flatten(tree.Nodes).Single(node => node.Path == destination);
+        var folder = tree.NodeAt(destination);
         Assert.Equal([null, first, second], folder.Children.Select(node => node.Tab));
         tree.Activate(second);
         Assert.Same(second, Assert.Single(RequestTreeViewModel.Flatten(tree.Nodes), node => node.IsActive).Tab);
@@ -126,7 +131,7 @@ public sealed class RequestTreeViewModelTests
         Assert.Equal("POST", folder.Children[1].Tab?.Editor.Method);
         Assert.Equal("Ny request (1)", folder.Children[1].Tab?.Title);
         tabs.Remove(first);
-        Assert.Equal([null, second], folder.Children.Select(node => node.Tab));
+        Assert.Equal([null, second], tree.NodeAt(destination).Children.Select(node => node.Tab));
         await tree.LoadAsync(Cancellation);
         Assert.Same(second, Assert.Single(RequestTreeViewModel.Flatten(tree.Nodes), node => node.IsDraft).Tab);
         tabs.Clear();
@@ -134,18 +139,16 @@ public sealed class RequestTreeViewModelTests
     }
 
     [Theory]
-    [InlineData("A/B/C")]
-    [InlineData("A/B")]
-    [InlineData("A")]
-    [InlineData(null)]
-    public async Task LoadAsync_WhenADestinationDisappears_ThenUsesTheNearestExistingAncestor(string? remaining)
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LoadAsync_WhenADraftsFolderIsGone_ThenMovesTheDraftToTheTop(bool deleted)
     {
         using var harness = new Harness();
-        await harness.Library.CreateFolderAsync("A/B/C", Cancellation);
-        var tree = Tree(harness);
+        var folderId = await harness.Library.FolderAtAsync("A/B/C", Cancellation);
+        var tree = harness.Tree;
         await tree.LoadAsync(Cancellation);
         var tabs = tree.Follow([]);
-        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "A/B/C") { Number = 3 };
+        var tab = Draft(harness, folderId);
         tab.Editor.Body = "content";
         tabs.Add(tab);
         tree.Activate(tab);
@@ -153,24 +156,22 @@ public sealed class RequestTreeViewModelTests
         {
             folder.IsExpanded = false;
         }
-        if (remaining != "A/B/C")
+        if (deleted)
         {
-            var removed = remaining is null ? "A" : remaining == "A" ? "A/B" : "A/B/C";
-            await harness.Library.DeleteFolderAsync(removed, Cancellation);
+            await harness.Library.DeleteFolderAtAsync("A/B/C", Cancellation);
         }
         var reveals = 0;
         tree.Revealed += _ => reveals++;
 
         await tree.LoadAsync(Cancellation);
 
-        Assert.Equal(remaining, tab.Destination);
-        Assert.Equal((true, true, "content", 3), (tab.IsDraft, tab.IsDirty, tab.Editor.Body, tab.Number));
+        Assert.Equal(deleted ? null : folderId, tab.FolderId);
+        Assert.Equal((true, true, "content"), (tab.IsDraft, tab.IsDirty, tab.Editor.Body));
         var row = Assert.Single(RequestTreeViewModel.Flatten(tree.Nodes), node => node.IsDraft);
-        Assert.Equal(remaining, RequestLibrary.ParentOf(row.Path));
+        Assert.Equal(deleted ? tab.Title : $"A/B/C/{tab.Title}", tree.PathOf(row));
         Assert.True(row.IsActive);
         Assert.DoesNotContain(RequestTreeViewModel.Flatten(tree.Nodes), node => node.IsExpanded);
         Assert.Equal(0, reveals);
-        Assert.Equal(remaining?.Split('/').Length ?? 0, RequestTreeViewModel.Flatten(tree.Nodes).Count(node => node.IsFolder));
     }
 
     [Theory]
@@ -181,15 +182,11 @@ public sealed class RequestTreeViewModelTests
     {
         using var harness = new Harness(new FakeDialogs(answer: "Saved"));
         var name = destination is null ? "Saved" : $"{destination}/Saved";
-        if (destination is not null)
-        {
-            await harness.Library.CreateFolderAsync(destination, Cancellation);
-        }
-        var tree = Tree(harness);
+        var folderId = destination is null ? null : await harness.Library.FolderAtAsync(destination, Cancellation);
+        var tree = harness.Tree;
         await tree.LoadAsync(Cancellation);
         var tabs = tree.Follow([]);
-        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: destination ?? "Users");
-        tab.MoveTo(destination);
+        var tab = Draft(harness, folderId);
         tabs.Add(tab);
         tree.Activate(tab);
         var reveals = new List<RequestNodeViewModel>();
@@ -198,12 +195,12 @@ public sealed class RequestTreeViewModelTests
         await tab.SaveAsync();
 
         var row = Assert.Single(RequestTreeViewModel.Flatten(tree.Nodes), node => !node.IsFolder);
-        Assert.Equal(name, row.Path);
+        Assert.Equal(name, tree.PathOf(row));
         Assert.False(row.IsDraft);
         Assert.True(row.IsActive);
         Assert.Same(tab, row.Tab);
         Assert.Same(row, Assert.Single(reveals));
-        Assert.All(RequestTreeViewModel.Flatten(tree.Nodes).Where(node => node.IsFolder && name.StartsWith($"{node.Path}/")), node => Assert.True(node.IsExpanded));
+        Assert.All(RequestTreeViewModel.Flatten(tree.Nodes).Where(node => node.IsFolder && name.StartsWith($"{tree.PathOf(node)}/")), node => Assert.True(node.IsExpanded));
         tab.Editor.Method = "POST";
         await tab.SaveAsync();
         await tree.LoadAsync(Cancellation);
@@ -215,13 +212,12 @@ public sealed class RequestTreeViewModelTests
     public async Task Follow_WhenASavedTabChangesOrCloses_ThenKeepsTheNodeAndReturnsToItsDiskMethod()
     {
         using var harness = new Harness();
-        var request = ApiRequest.New();
-        await harness.Library.SaveAsync("Users/Get", request, Cancellation);
-        var tree = Tree(harness);
+        var request = await harness.Library.SaveAtAsync("Users/Get", ApiRequest.New(), Cancellation);
+        var tree = harness.Tree;
         await tree.LoadAsync(Cancellation);
         var tabs = tree.Follow([]);
         var row = Assert.Single(Assert.Single(tree.Nodes).Children);
-        var tab = harness.Tab(request, "users/get");
+        var tab = harness.Tab(request, saved: true);
         tabs.Add(tab);
         tree.Activate(tab);
 
@@ -237,26 +233,26 @@ public sealed class RequestTreeViewModelTests
         Assert.False(row.IsActive);
         tabs.Add(tab);
         tab.Unlink();
-        Assert.Null(row.Tab);
+        Assert.Null(RequestTreeViewModel.Flatten(tree.Nodes).Single(node => node.Id == request.Id).Tab);
     }
 
     [Fact]
     public async Task Activate_WhenSelectingTabs_ThenRevealsOnlyRowsAndOnlyOpensTheirAncestors()
     {
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Users/Admin/Get", ApiRequest.New(), Cancellation);
-        await harness.Library.CreateFolderAsync("Other", Cancellation);
-        var tree = Tree(harness);
+        var request = await harness.Library.SaveAtAsync("Users/Admin/Get", ApiRequest.New(), Cancellation);
+        await harness.Library.FolderAtAsync("Other", Cancellation);
+        var tree = harness.Tree;
         await tree.LoadAsync(Cancellation);
         var tabs = tree.Follow([]);
-        var tab = harness.Tab(name: "Users/Admin/Get");
+        var tab = harness.Tab(request, saved: true);
         tabs.Add(tab);
         var reveals = 0;
         tree.Revealed += _ => reveals++;
 
         tree.Activate(tab);
 
-        Assert.Equal(["Users", "Users/Admin"], RequestTreeViewModel.Flatten(tree.Nodes).Where(node => node.IsExpanded).Select(node => node.Path));
+        Assert.Equal(["Users", "Users/Admin"], RequestTreeViewModel.Flatten(tree.Nodes).Where(node => node.IsExpanded).Select(tree.PathOf));
         tree.Activate(harness.Tab());
         tree.Activate(null);
         Assert.DoesNotContain(RequestTreeViewModel.Flatten(tree.Nodes), node => node.IsActive);
@@ -264,20 +260,39 @@ public sealed class RequestTreeViewModelTests
     }
 
     [Fact]
-    public async Task LoadAsync_WhenARequestCannotBeRead_ThenKeepsTheDraftAndItsDestination()
+    public async Task LoadAsync_WhenARequestCannotBeRead_ThenKeepsTheDraftAndItsFolder()
     {
         using var harness = new Harness();
-        await harness.Library.CreateFolderAsync("Users", Cancellation);
-        var tree = Tree(harness);
+        var users = await harness.Library.FolderAtAsync("Users", Cancellation);
+        var tree = harness.Tree;
         await tree.LoadAsync(Cancellation);
-        var tab = new RequestTabViewModel(harness.Services, ApiRequest.New(), destination: "Users");
+        var tab = Draft(harness, users);
         tree.Follow([tab]);
-        File.WriteAllText(Path.Combine(harness.Folder.Requests, "Users", "Broken.json"), "{");
+        Directory.CreateDirectory(harness.Folder.Requests);
+        File.WriteAllText(Path.Combine(harness.Folder.Requests, $"{Guid.NewGuid()}.json"), "{");
 
         await tree.LoadAsync(Cancellation);
 
-        Assert.Same(tab, Assert.Single(Assert.Single(tree.Nodes).Children, node => node.IsDraft).Tab);
-        Assert.Equal("Users", tab.Destination);
+        Assert.Same(tab, Assert.Single(tree.Nodes.Single(node => node.IsFolder).Children, node => node.IsDraft).Tab);
+        Assert.Equal(users, tab.FolderId);
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenARequestCannotBeRead_ThenShowsItAtTheTopLevelByItsId()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAtAsync("Users/Get", ApiRequest.New(), Cancellation);
+        var id = Guid.NewGuid();
+        File.WriteAllText(Path.Combine(harness.Folder.Requests, $"{id}.json"), "{");
+        var tree = harness.Tree;
+
+        // Act
+        await tree.LoadAsync(Cancellation);
+
+        // Assert
+        var row = Assert.Single(tree.Nodes, node => !node.IsFolder);
+        Assert.Equal((id, $"Cannot be read ({$"{id}"[..8]}…)"), (row.Id, row.Name));
     }
 
     [Fact]
@@ -285,14 +300,32 @@ public sealed class RequestTreeViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Users/Get user", ApiRequest.New(), Cancellation);
-        var tree = Tree(harness);
+        await harness.Library.SaveAtAsync("Users/Get user", ApiRequest.New(), Cancellation);
+        var tree = harness.Tree;
 
         // Act
         await tree.LoadAsync(Cancellation);
 
         // Assert
-        Assert.Equal("Users/Get user", Assert.Single(Assert.Single(tree.Nodes).Children).Path);
+        Assert.Equal("Users/Get user", tree.PathOf(Assert.Single(Assert.Single(tree.Nodes).Children)));
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenAFoldersParentIsGoneOrTheyLeadBackToEachOther_ThenShowsThemAtTheTop()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var (shop, admin) = (Guid.NewGuid(), Guid.NewGuid());
+        await harness.Library.SaveFolderAsync(new() { Id = shop, Name = "Shop", ParentId = admin }, Cancellation);
+        await harness.Library.SaveFolderAsync(new() { Id = admin, Name = "Admin", ParentId = shop }, Cancellation);
+        await harness.Library.SaveFolderAsync(new() { Id = Guid.NewGuid(), Name = "Orphan", ParentId = Guid.NewGuid() }, Cancellation);
+        var tree = harness.Tree;
+
+        // Act
+        await tree.LoadAsync(Cancellation);
+
+        // Assert
+        Assert.Equal(["Admin", "Orphan", "Shop"], tree.Nodes.Select(node => node.Name).Order(StringComparer.Ordinal));
     }
 
     [Fact]
@@ -300,15 +333,30 @@ public sealed class RequestTreeViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
-        await harness.Library.SaveAsync("Users/Get user", ApiRequest.New(), Cancellation);
-        var tree = Tree(harness);
+        await harness.Library.SaveAtAsync("Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Users/Get user", ApiRequest.New(), Cancellation);
+        var tree = harness.Tree;
 
         // Act
         await tree.LoadAsync(Cancellation);
 
         // Assert
-        Assert.Equal(["Users", "Ping"], tree.Nodes.Select(node => node.Path));
+        Assert.Equal(["Users", "Ping"], tree.Nodes.Select(tree.PathOf));
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenANameHasASlash_ThenShowsItAsOneName()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAsync(ApiRequest.New() with { Name = "GET /users/{id}: hent" }, Cancellation);
+        var tree = harness.Tree;
+
+        // Act
+        await tree.LoadAsync(Cancellation);
+
+        // Assert
+        Assert.Equal("GET /users/{id}: hent", Assert.Single(tree.Nodes).Name);
     }
 
     [Fact]
@@ -316,8 +364,8 @@ public sealed class RequestTreeViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Users/Get user", ApiRequest.New(), Cancellation);
-        var tree = Tree(harness);
+        await harness.Library.SaveAtAsync("Users/Get user", ApiRequest.New(), Cancellation);
+        var tree = harness.Tree;
         await tree.LoadAsync(Cancellation);
         tree.Nodes.Single().IsExpanded = true;
 
@@ -329,56 +377,19 @@ public sealed class RequestTreeViewModelTests
     }
 
     [Fact]
-    public async Task NameOf_WhenTheIdIsSaved_ThenGivesTheName()
+    public async Task Collection_WhenLoaded_ThenFindsARequestAndItsPathByItsId()
     {
         // Arrange
         using var harness = new Harness();
-        var request = ApiRequest.New();
-        await harness.Library.SaveAsync("Users/Get user", request, Cancellation);
-        var tree = Tree(harness);
+        var request = await harness.Library.SaveAtAsync("Users/Get user", ApiRequest.New(), Cancellation);
+        var tree = harness.Tree;
         await tree.LoadAsync(Cancellation);
 
         // Act
-        var name = tree.NameOf(request.Id);
+        var found = tree.Collection.RequestOf(request.Id);
 
         // Assert
-        Assert.Equal("Users/Get user", name);
-    }
-
-    [Fact]
-    public async Task NameOf_WhenTwoRequestsShareTheId_ThenGivesNoName()
-    {
-        // Arrange
-        using var harness = new Harness();
-        var request = ApiRequest.New();
-        await harness.Library.SaveAsync("Ping", request, Cancellation);
-        await harness.Library.SaveAsync("Copy", request, Cancellation);
-        var tree = Tree(harness);
-        await tree.LoadAsync(Cancellation);
-
-        // Act
-        var name = tree.NameOf(request.Id);
-
-        // Assert
-        Assert.Null(name);
-    }
-
-    [Fact]
-    public async Task LoadAsync_WhenTheOrderFileHoldsPaths_ThenSavesIds()
-    {
-        // Arrange
-        using var harness = new Harness();
-        var a = ApiRequest.New();
-        var b = ApiRequest.New();
-        await harness.Library.SaveAsync("A", a, Cancellation);
-        await harness.Library.SaveAsync("B", b, Cancellation);
-        await harness.Library.SaveOrderAsync(["B", "A"], Cancellation);
-
-        // Act
-        await Tree(harness).LoadAsync(Cancellation);
-
-        // Assert
-        Assert.Equal([$"{b.Id}", $"{a.Id}"], await harness.Library.LoadOrderAsync(Cancellation));
+        Assert.Equal("Users/Get user", tree.Collection.PathOf(found!));
     }
 
     [Fact]
@@ -386,13 +397,12 @@ public sealed class RequestTreeViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        var a = ApiRequest.New();
-        await harness.Library.SaveAsync("A", a, Cancellation);
+        var a = await harness.Library.SaveAtAsync("A", ApiRequest.New(), Cancellation);
         await harness.Library.SaveOrderAsync([$"{a.Id}"], Cancellation);
         var written = File.GetLastWriteTimeUtc(harness.Folder.RequestOrder);
 
         // Act
-        await Tree(harness).LoadAsync(Cancellation);
+        await harness.Tree.LoadAsync(Cancellation);
 
         // Assert
         Assert.Equal(written, File.GetLastWriteTimeUtc(harness.Folder.RequestOrder));
@@ -403,18 +413,18 @@ public sealed class RequestTreeViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveAsync("A", ApiRequest.New(), Cancellation);
-        await harness.Library.SaveAsync("B", ApiRequest.New(), Cancellation);
-        await harness.Library.SaveOrderAsync(["B", "A"], Cancellation);
-        var tree = Tree(harness);
+        await harness.Library.SaveAtAsync("A", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("B", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveOrderAtAsync(["B", "A"], Cancellation);
+        var tree = harness.Tree;
         await tree.LoadAsync(Cancellation);
-        await harness.Library.RenameAsync("B", "Z", Cancellation);
+        await harness.Library.RenameAtAsync("B", "Z", Cancellation);
 
         // Act
         await tree.LoadAsync(Cancellation);
 
         // Assert
-        Assert.Equal(["Z", "A"], tree.Nodes.Select(node => node.Path));
+        Assert.Equal(["Z", "A"], tree.Nodes.Select(tree.PathOf));
     }
 
     [Fact]
@@ -422,37 +432,36 @@ public sealed class RequestTreeViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Folder/A", ApiRequest.New(), Cancellation);
-        await harness.Library.SaveAsync("Folder/B", ApiRequest.New(), Cancellation);
-        await harness.Library.SaveOrderAsync(["Folder/", "Folder/B", "Folder/A"], Cancellation);
-        var tree = Tree(harness);
+        await harness.Library.SaveAtAsync("Folder/A", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Folder/B", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveOrderAtAsync(["Folder/", "Folder/B", "Folder/A"], Cancellation);
+        var tree = harness.Tree;
         await tree.LoadAsync(Cancellation);
-        await harness.Library.RenameFolderAsync("Folder", "Renamed", Cancellation);
+        await harness.Library.RenameFolderAtAsync("Folder", "Renamed", Cancellation);
 
         // Act
         await tree.LoadAsync(Cancellation);
 
         // Assert
-        Assert.Equal(["Renamed/B", "Renamed/A"], tree.Nodes.Single().Children.Select(node => node.Path));
+        Assert.Equal(["Renamed/B", "Renamed/A"], tree.Nodes.Single().Children.Select(tree.PathOf));
     }
 
     [Fact]
-    public async Task LoadAsync_WhenARequestIsCopiedOnDisk_ThenTheOriginalKeepsItsPlace()
+    public async Task LoadAsync_WhenARequestIsCopiedInExplorer_ThenLeavesTheCopyOut()
     {
         // Arrange
         using var harness = new Harness();
-        var original = ApiRequest.New();
-        await harness.Library.SaveAsync("A", ApiRequest.New(), Cancellation);
-        await harness.Library.SaveAsync("B", original, Cancellation);
-        await harness.Library.SaveOrderAsync(["B", "A"], Cancellation);
-        var tree = Tree(harness);
+        await harness.Library.SaveAtAsync("A", ApiRequest.New(), Cancellation);
+        var original = await harness.Library.SaveAtAsync("B", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveOrderAtAsync(["B", "A"], Cancellation);
+        var tree = harness.Tree;
         await tree.LoadAsync(Cancellation);
-        await harness.Library.SaveAsync("C", original, Cancellation);
+        File.Copy(Path.Combine(harness.Folder.Requests, $"{original.Id}.json"), Path.Combine(harness.Folder.Requests, $"{original.Id} - Copy.json"));
 
         // Act
         await tree.LoadAsync(Cancellation);
 
         // Assert
-        Assert.Equal(["B", "C", "A"], tree.Nodes.Select(node => node.Path));
+        Assert.Equal(["B", "A"], tree.Nodes.Select(tree.PathOf));
     }
 }

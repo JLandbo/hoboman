@@ -29,6 +29,24 @@ public sealed class AppFolderWatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task RequestsChanged_WhenAFolderFileIsWritten_ThenFires()
+    {
+        // Arrange
+        var folder = new AppFolder(_temporary.Path);
+        Directory.CreateDirectory(folder.Folders);
+        using var watcher = new AppFolderWatcher(folder, NullLogger<AppFolderWatcher>.Instance);
+        var changed = new TaskCompletionSource();
+        watcher.RequestsChanged += changed.SetResult;
+        watcher.Start();
+
+        // Act
+        await File.WriteAllTextAsync(Path.Combine(folder.Folders, $"{Guid.NewGuid()}.json"), """{"name": "Shop"}""", Cancellation);
+
+        // Assert
+        await changed.Task.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+    }
+
+    [Fact]
     public async Task RequestsChanged_WhenTheOrderIsSaved_ThenFiresWithoutChangingRequests()
     {
         var folder = new AppFolder(_temporary.Path);
@@ -40,7 +58,7 @@ public sealed class AppFolderWatcherTests : IDisposable
         await library.SaveOrderAsync(["B", "Folder/", "A"], Cancellation);
         await changed.Task.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
         Assert.Equal(["B", "Folder/", "A"], await library.LoadOrderAsync(Cancellation));
-        Assert.Empty(await library.NamesAsync(Cancellation));
+        Assert.Empty((await library.LoadAllAsync(Cancellation)).Requests);
     }
 
     [Fact]
@@ -156,7 +174,7 @@ public sealed class AppFolderWatcherTests : IDisposable
         watcher.Start();
 
         // Act
-        await new EnvironmentStore(folder, new(folder, NullLogger<SecretStore>.Instance), NullLogger<EnvironmentStore>.Instance).SaveAsync([new("Dev", [])], Cancellation);
+        await new EnvironmentStore(folder, NullLogger<EnvironmentStore>.Instance).SaveAsync([new("Dev", [])], Cancellation);
 
         // Assert
         await changed.Task.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);

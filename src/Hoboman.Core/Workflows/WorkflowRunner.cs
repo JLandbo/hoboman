@@ -29,7 +29,7 @@ public sealed class WorkflowRunner(IRequestSender sender, AppFolder folder, Time
         var values = RunValues.Start(workflow.Workflow, workflow.Parameters);
         var results = new List<StepResult>();
         var outcome = RunOutcome.Succeeded;
-        await TellAsync(new RunStarted(log.RunId, workflow.Workflow.Id, workflow.Name, environment.Name, log.FilePath, values.Of(workflow.Workflow.Parameters)));
+        await TellAsync(new RunStarted(log.RunId, workflow.Workflow.Id, workflow.Workflow.Name, environment.Name, log.FilePath, values.Of(workflow.Workflow.Parameters)));
         foreach (var (index, step) in workflow.Steps.Index())
         {
             if (outcome != RunOutcome.Succeeded)

@@ -119,6 +119,13 @@ public partial class MainWindow : Window
         EnvironmentToggle.Focus();
     }
 
+    // Ctrl+F searches the collections from anywhere in the window.
+    void Find_Executed(object sender, ExecutedRoutedEventArgs e)
+    {
+        _viewModel.Section = SidebarSection.Collections;
+        Dispatcher.InvokeAsync(Requests.FocusSearch, DispatcherPriority.Loaded);
+    }
+
     void Window_Closing(object? sender, CancelEventArgs e)
     {
         e.Cancel = !_viewModel.CanClose();
@@ -139,7 +146,7 @@ public partial class MainWindow : Window
         try
         {
             var session = _viewModel.Session;
-            _settings.UpdateAsync(saved => saved with { Layout = layout, Session = session }, CancellationToken.None).GetAwaiter().GetResult();
+            _settings.UpdateAsync(saved => saved with { Layout = layout, Session = session, SearchWholeFolders = _viewModel.Tree.ShowWholeFolders }, CancellationToken.None).GetAwaiter().GetResult();
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {

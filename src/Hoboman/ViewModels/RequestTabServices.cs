@@ -7,13 +7,8 @@ using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
 
-public sealed record RequestTabServices(RequestRunner Runner, SecretStore Secrets, AuthRefreshService AuthRefresh, RequestLibrary Library, CollectionChanges CollectionChanges, EnvironmentsViewModel Environments, CredentialsViewModel Credentials, IDialogs Dialogs, Translator Translator, TimeProvider Clock, ILogger<RequestTabViewModel> Logger)
+public sealed record RequestTabServices(RequestRunner Runner, SecretStore Secrets, AuthRefreshService AuthRefresh, RequestLibrary Library, RequestSnapshot Requests, CollectionChanges CollectionChanges, EnvironmentsViewModel Environments, CredentialsViewModel Credentials, IDialogs Dialogs, Translator Translator, TimeProvider Clock, ILogger<RequestTabViewModel> Logger)
 {
-    // A name typed in a dialog is one part of a path, so it cannot hold a '/'.
-    public Func<string, string?> OnePart(Func<string, string?> problemOf) => name => name.Contains('/') ? Translator.Of("Save.Invalid") : problemOf(name);
-
-    public string? ProblemOfName(string name) =>
-        !RequestLibrary.IsValidName(name) ? Translator.Of("Save.Invalid")
-        : Library.Exists(name) ? Translator.Of("Save.Exists")
-        : null;
+    // Names need not be unique, like in Postman, as requests and folders are known by their ids.
+    public string? ProblemOfName(string name) => RequestLibrary.IsValidName(name) ? null : Translator.Of("Save.Invalid");
 }

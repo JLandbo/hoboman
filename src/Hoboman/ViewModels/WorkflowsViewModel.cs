@@ -1,23 +1,25 @@
 using System.Collections.ObjectModel;
+using Hoboman.Core.Languages;
 using Hoboman.Core.Storage;
 using Hoboman.Core.Workflows;
 using Microsoft.Extensions.Logging;
 
 namespace Hoboman.ViewModels;
 
-public sealed class WorkflowsViewModel(WorkflowLibrary library, ILogger<WorkflowsViewModel> logger)
+public sealed class WorkflowsViewModel(WorkflowLibrary library, Translator translator, ILogger<WorkflowsViewModel> logger)
 {
-    public ObservableCollection<string> Names { get; } = [];
+    public ObservableCollection<WorkflowItem> Items { get; } = [];
 
+    // A workflow that cannot be read is shown by its id, and opening it tells what is wrong.
     public async Task LoadAsync(CancellationToken cancellationToken)
     {
         try
         {
-            var names = await library.NamesAsync(cancellationToken);
-            Names.Clear();
-            foreach (var name in names.Order(StringComparer.CurrentCultureIgnoreCase))
+            var workflows = await library.ListAsync(cancellationToken);
+            Items.Clear();
+            foreach (var (id, name) in workflows.OrderBy(workflow => workflow.Name, StringComparer.CurrentCultureIgnoreCase))
             {
-                Names.Add(name);
+                Items.Add(new(id, name ?? translator.Format("Tree.Unreadable", $"{id}"[..8])));
             }
         }
         catch (Exception exception) when (FileProblem.Is(exception))
@@ -25,7 +27,4 @@ public sealed class WorkflowsViewModel(WorkflowLibrary library, ILogger<Workflow
             logger.LogError(exception, "Could not list the workflows");
         }
     }
-
-    // Windows does not tell upper and lower case apart in folder names.
-    public bool Contains(string name) => Names.Contains(name, StringComparer.OrdinalIgnoreCase);
 }

@@ -106,21 +106,6 @@ public sealed class SecretStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task ForgetEnvironmentNamesAsync_WhenATokenIsSavedUnderAName_ThenDeletesOnlyThatOne()
-    {
-        // Arrange
-        var id = Guid.NewGuid();
-        Directory.CreateDirectory(_temporary.Path);
-        File.WriteAllText(Folder.Secrets, $$"""{"{{id}}/OAuthToken": "token", "{{id}}/OAuthToken/Dev": "named token", "{{id}}/OAuthToken/{{_dev}}": "dev token"}""");
-
-        // Act
-        await Store().ForgetEnvironmentNamesAsync(Cancellation);
-
-        // Assert
-        Assert.Equal([$"{id}/OAuthToken", $"{id}/OAuthToken/{_dev}"], JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(Folder.Secrets))!.Keys.Order());
-    }
-
-    [Fact]
     public async Task OfAsync_WhenNothingWasSaved_ThenGivesNull()
     {
         // Act

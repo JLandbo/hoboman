@@ -11,9 +11,8 @@ public sealed class AuthRefreshService(IOAuthClient oauth, RequestLibrary librar
 
     public event Action? Changed;
 
-    public static string OwnerOf(AuthSource source) => source.SecretsId == Guid.Empty && source.Folder is { } folder ? $"folder/{folder.ToUpperInvariant()}" : $"{source.SecretsId}";
-
-    public bool IsRefreshing(string owner, Guid environment) => _refreshes.Any(refresh => (refresh.Owner == owner || OwnerOf(refresh.Source) == owner) && refresh.Environment == environment);
+    // A token belongs to the id its secrets are kept under, so a folder and the tabs that inherit from it share a refresh.
+    public bool IsRefreshing(Guid owner, Guid environment) => _refreshes.Any(refresh => refresh.Owner == owner && refresh.Environment == environment);
 
     internal Task SaveAsync(Func<Task> save, CancellationToken cancellationToken) => SaveAsync(async () =>
     {
@@ -35,22 +34,20 @@ public sealed class AuthRefreshService(IOAuthClient oauth, RequestLibrary librar
         }
     }
 
-    public async Task<bool> FetchAsync(AuthSource source, string? clientSecret, ApiEnvironment environment, Func<OAuthToken, Guid, AuthSource, Task<bool>> accept, CancellationToken cancellationToken)
+    public async Task<bool> FetchAsync(AuthSource source, string? clientSecret, ApiEnvironment environment, Func<OAuthToken, Guid, Task<bool>> accept, CancellationToken cancellationToken)
     {
-        var owner = OwnerOf(source);
-        source = _refreshes.FirstOrDefault(refresh => refresh.Owner == owner && refresh.Source.Folder == source.Folder && refresh.Source.Settings == source.Settings)?.Source ?? source;
-        if (IsRefreshing(owner, environment.Id))
+        if (IsRefreshing(source.SecretsId, environment.Id))
         {
             return false;
         }
-        var refresh = new Refresh(owner, source, environment.Id);
+        var refresh = new Refresh(source.SecretsId, environment.Id);
         _refreshes.Add(refresh);
         Changed?.Invoke();
         try
         {
             clientSecret ??= await secrets.OfAsync(source.SecretsId, SecretKind.ClientSecret, cancellationToken) ?? "";
             var token = await oauth.GetTokenAsync(source.Settings.OAuth ?? new(), clientSecret, environment, cancellationToken);
-            return await SaveAsync(() => accept(token, refresh.Environment, refresh.Source), cancellationToken);
+            return await SaveAsync(() => accept(token, refresh.Environment), cancellationToken);
         }
         finally
         {
@@ -60,39 +57,22 @@ public sealed class AuthRefreshService(IOAuthClient oauth, RequestLibrary librar
     }
 
     public Task<bool> RefreshFolderAsync(AuthSource source, ApiEnvironment environment, CancellationToken cancellationToken) =>
-        FetchAsync(source, null, environment, (token, environmentId, currentSource) => SaveFolderTokenAsync(currentSource, token, environmentId, cancellationToken), cancellationToken);
+        FetchAsync(source, null, environment, (token, environmentId) => SaveFolderTokenAsync(source, token, environmentId, cancellationToken), cancellationToken);
 
     async Task<bool> SaveFolderTokenAsync(AuthSource source, OAuthToken token, Guid environment, CancellationToken cancellationToken)
     {
-        var folder = source.Folder!;
-        var expected = new FolderSettings { Id = source.SecretsId, Auth = source.Settings };
-        if (!library.FolderExists(folder) || await library.LoadFolderAsync(folder, cancellationToken) != expected)
+        // The folder's id is its secrets' id. A folder that is gone or got other auth while the token was fetched does not get it.
+        if ((await library.LoadFolderAsync(source.SecretsId, cancellationToken))?.Auth != source.Settings)
         {
             return false;
         }
-        var shared = expected.Id != Guid.Empty && await library.SharesFolderIdAsync(folder, expected.Id, cancellationToken);
-        var settings = expected.Id == Guid.Empty || shared ? expected with { Id = Guid.NewGuid() } : expected;
-        if (settings.Id != expected.Id)
-        {
-            await secrets.CopyAsync(expected.Id, settings.Id, cancellationToken);
-        }
-        await secrets.SaveAsync(settings.Id, SecretKind.OAuthToken, environment, token.ToJson(), cancellationToken);
-        if (settings != expected)
-        {
-            await library.SaveFolderAsync(folder, settings, cancellationToken, createDirectory: false);
-            foreach (var refresh in _refreshes.Where(refresh => refresh.Source == source))
-            {
-                refresh.Source = source with { SecretsId = settings.Id };
-            }
-        }
+        await secrets.SaveAsync(source.SecretsId, SecretKind.OAuthToken, environment, token.ToJson(), cancellationToken);
         return true;
     }
 
-    sealed class Refresh(string owner, AuthSource source, Guid environment)
+    sealed class Refresh(Guid owner, Guid environment)
     {
-        public string Owner { get; } = owner;
-
-        public AuthSource Source { get; set; } = source;
+        public Guid Owner { get; } = owner;
 
         public Guid Environment { get; } = environment;
     }

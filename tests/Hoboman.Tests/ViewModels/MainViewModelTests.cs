@@ -1,4 +1,5 @@
 using Hoboman.Tests.Auth;
+using Hoboman.Tests.Requests;
 
 namespace Hoboman.Tests.ViewModels;
 
@@ -12,7 +13,7 @@ public sealed class MainViewModelTests
     public async Task DeleteAsync_WhenADraftWasJustSaved_ThenDeletesItsSecretsWithoutWaitingForTheWatcher(bool deleteFolder)
     {
         using var harness = new Harness(new FakeDialogs(answer: "Saved", accept: true));
-        await harness.Library.CreateFolderAsync("Users", Cancellation);
+        await harness.Library.FolderAtAsync("Users", Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.NewDraftAsync(NodeOf(main, "Users"));
@@ -31,7 +32,7 @@ public sealed class MainViewModelTests
             await main.DeleteAsync(NodeOf(main, "Users/Saved"));
         }
 
-        Assert.False(harness.Library.Exists("Users/Saved"));
+        Assert.False(harness.Library.ExistsAt("Users/Saved"));
         Assert.Null(await harness.Secrets.OfAsync(tab.Id, SecretKind.Password, Cancellation));
     }
 
@@ -39,13 +40,14 @@ public sealed class MainViewModelTests
     public async Task Close_WhenTheMethodChangedDuringADraftsFirstSave_ThenShowsTheMethodWrittenToDisk()
     {
         using var harness = new Harness(new FakeDialogs(answer: "Saved", accept: true));
-        await harness.Library.CreateFolderAsync("Users", Cancellation);
+        await harness.Library.FolderAtAsync("Users", Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.NewDraftAsync(NodeOf(main, "Users"));
         var tab = main.SelectedTab!;
         Task saving;
-        using (new FileStream(Path.Combine(harness.Folder.Requests, "Users", "Saved.json.tmp"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+        Directory.CreateDirectory(harness.Folder.Requests);
+        using (new FileStream(Path.Combine(harness.Folder.Requests, $"{tab.Id}.json.tmp"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
         {
             saving = tab.SaveAsync();
             tab.Editor.Method = "POST";
@@ -56,7 +58,7 @@ public sealed class MainViewModelTests
 
         main.Close(tab);
 
-        Assert.Equal("GET", (await harness.Library.LoadAsync("Users/Saved", Cancellation))?.Method);
+        Assert.Equal("GET", (await harness.Library.LoadAtAsync("Users/Saved", Cancellation))?.Method);
         Assert.Null(NodeOf(main, "Users/Saved").Tab);
         Assert.Equal("GET", NodeOf(main, "Users/Saved").Method);
     }
@@ -68,7 +70,7 @@ public sealed class MainViewModelTests
     public async Task NewDraftAsync_WhenCreatedInAFolder_ThenAddsAndSelectsAnUnsavedInheritingTab(string destination)
     {
         using var harness = new Harness();
-        await harness.Library.CreateFolderAsync(destination, Cancellation);
+        await harness.Library.FolderAtAsync(destination, Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         main.NewTab();
@@ -80,13 +82,13 @@ public sealed class MainViewModelTests
         var second = main.SelectedTab!;
 
         Assert.Equal((3, 4), (first.Number, second.Number));
-        Assert.Equal(destination, second.Destination);
+        Assert.Equal(destination, main.Tree.PathOfFolder(second.FolderId));
         Assert.Equal((true, false, true, AuthKind.Inherit), (second.IsDraft, second.IsDirty, second.IsUnsaved, second.Auth.Kind));
         Assert.Equal([first, second], NodeOf(main, destination).Children.Select(node => node.Tab));
         Assert.True(NodeOf(main, destination).IsExpanded);
         Assert.False(global!.IsDraft);
         Assert.Equal(0, harness.Dialogs.Asked);
-        Assert.Empty(await harness.Library.NamesAsync(Cancellation));
+        Assert.Empty(await harness.Library.PathsAsync(Cancellation));
         main.Close(second);
         Assert.Same(first, main.SelectedTab);
         Assert.Same(first, Assert.Single(NodeOf(main, destination).Children).Tab);
@@ -97,15 +99,12 @@ public sealed class MainViewModelTests
     [InlineData(" Admin ", null)]
     [InlineData("", "Save.Invalid")]
     [InlineData("   ", "Save.Invalid")]
-    [InlineData("../Other", "Save.Invalid")]
-    [InlineData("One/Two", "Save.Invalid")]
-    [InlineData("Bad?", "Save.Invalid")]
-    [InlineData("taken", "Folder.Exists")]
+    [InlineData("One/Two: v2?", null)]
     [InlineData(null, null)]
     public async Task NewSubfolderAsync_WhenGivenAName_ThenValidatesAndCreatesOnlyOneChild(string? name, string? problem)
     {
         using var harness = new Harness(new FakeDialogs(answer: name));
-        await harness.Library.CreateFolderAsync("Users/Private/Taken", Cancellation);
+        await harness.Library.FolderAtAsync("Users/Private/Taken", Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
 
@@ -118,20 +117,20 @@ public sealed class MainViewModelTests
         {
             Assert.Equal(harness.Translator.Of(problem), question.ProblemOf(name!));
         }
-        Assert.Equal(created, harness.Library.FolderExists("Users/Private/Admin"));
+        Assert.Equal(created, harness.Library.FolderExistsAt($"Users/Private/{name?.Trim()}"));
         Assert.Equal(created, NodeOf(main, "Users/Private").IsExpanded);
-        Assert.Equal(created ? 4 : 3, (await harness.Library.FoldersAsync(Cancellation)).Count);
+        Assert.Equal(created ? 4 : 3, (await harness.Library.LoadAllAsync(Cancellation)).Folders.Count);
     }
 
     [Theory]
     [InlineData("Archive")]
     [InlineData("People")]
     [InlineData("users")]
-    public async Task RenameFolderAsync_WhenItContainsDrafts_ThenMovesOnlyTheirDestinations(string name)
+    public async Task RenameFolderAsync_WhenItContainsDrafts_ThenTheirPathsFollowAndTheirContentStays(string name)
     {
         using var harness = new Harness(new FakeDialogs(answer: name));
-        await harness.Library.CreateFolderAsync("Users/Admin", Cancellation);
-        await harness.Library.CreateFolderAsync("Users2", Cancellation);
+        await harness.Library.FolderAtAsync("Users/Admin", Cancellation);
+        await harness.Library.FolderAtAsync("Users2", Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.NewDraftAsync(NodeOf(main, "Users"));
@@ -147,7 +146,7 @@ public sealed class MainViewModelTests
         await main.RenameFolderAsync(NodeOf(main, "Users"));
         await main.RequestsChangedAsync();
 
-        Assert.Equal((name, $"{name}/Admin", "Users2"), (first.Destination, second.Destination, other.Destination));
+        Assert.Equal((name, $"{name}/Admin", "Users2"), (main.Tree.PathOfFolder(first.FolderId), main.Tree.PathOfFolder(second.FolderId), main.Tree.PathOfFolder(other.FolderId)));
         Assert.Equal(titles, main.Tabs.Select(tab => tab.Title));
         Assert.Equal("content", second.Editor.Body);
         Assert.True(second.IsDirty);
@@ -161,8 +160,8 @@ public sealed class MainViewModelTests
     public async Task DeleteFolderAsync_WhenItContainsDrafts_ThenClosesThemOnlyAfterConfirmation(bool accept)
     {
         using var harness = new Harness(new FakeDialogs(accept: accept));
-        await harness.Library.SaveAsync("Users/Admin/Get", ApiRequest.New(), Cancellation);
-        await harness.Library.SaveAsync("Users/Clean", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Users/Admin/Get", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Users/Clean", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.NewDraftAsync(NodeOf(main, "Users"));
@@ -189,7 +188,7 @@ public sealed class MainViewModelTests
         {
             Assert.Equal("draft content", draft.Editor.Body);
             Assert.Equal("saved edit", saved.Editor.Body);
-            Assert.Equal("Users/Admin", draft.Destination);
+            Assert.Equal("Users/Admin", main.Tree.PathOfFolder(draft.FolderId));
         }
     }
 
@@ -201,7 +200,7 @@ public sealed class MainViewModelTests
     public async Task Close_WhenATabIsADraft_ThenOnlyPromptsForEdits(bool edited, bool accept)
     {
         using var harness = new Harness(new FakeDialogs(accept: accept));
-        await harness.Library.CreateFolderAsync("Users", Cancellation);
+        await harness.Library.FolderAtAsync("Users", Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.NewDraftAsync(NodeOf(main, "Users"));
@@ -221,14 +220,14 @@ public sealed class MainViewModelTests
         Assert.Equal(edited && !accept, main.Tabs.Contains(draft));
         Assert.Equal(edited && !accept ? 1 : 0, RequestTreeViewModel.Flatten(main.Tree.Nodes).Count(node => node.IsDraft));
         Assert.Equal(edited ? 2 : 0, harness.Dialogs.Asked);
-        Assert.Empty(await harness.Library.NamesAsync(Cancellation));
+        Assert.Empty(await harness.Library.PathsAsync(Cancellation));
     }
 
     [Fact]
     public async Task OpenAsync_WhenDraftsAndFilesShareAName_ThenOpensTheCorrectTabWithoutDuplicates()
     {
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Users/New request (2)", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Users/New request (2)", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.NewDraftAsync(NodeOf(main, "Users"));
@@ -249,7 +248,7 @@ public sealed class MainViewModelTests
         await main.HistoryChangedAsync();
         await main.OpenAsync(Assert.Single(main.History.Items));
         Assert.False(main.SelectedTab!.IsDraft);
-        Assert.Null(main.SelectedTab.Destination);
+        Assert.Equal("Users", main.Tree.PathOfFolder(main.SelectedTab.FolderId));
         Assert.DoesNotContain(RequestTreeViewModel.Flatten(main.Tree.Nodes), node => node.IsActive);
         Assert.Single(RequestTreeViewModel.Flatten(main.Tree.Nodes), node => node.IsDraft);
     }
@@ -260,22 +259,22 @@ public sealed class MainViewModelTests
     public async Task MoveAsync_WhenDroppingOnADraft_ThenMovesTheFileToItsDestination(bool root)
     {
         using var harness = new Harness();
-        await harness.Library.CreateFolderAsync("Users", Cancellation);
-        await harness.Library.SaveAsync("Other/Get", ApiRequest.New(), Cancellation);
+        await harness.Library.FolderAtAsync("Users", Cancellation);
+        await harness.Library.SaveAtAsync("Other/Get", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.NewDraftAsync(NodeOf(main, "Users"));
         var draft = main.SelectedTab!;
         if (root)
         {
-            await harness.Library.DeleteFolderAsync("Users", Cancellation);
+            await harness.Library.DeleteFolderAtAsync("Users", Cancellation);
             await main.RequestsChangedAsync();
         }
         var row = Assert.Single(RequestTreeViewModel.Flatten(main.Tree.Nodes), node => node.IsDraft);
 
         await main.MoveAsync(NodeOf(main, "Other/Get"), row);
 
-        Assert.Equal([root ? "Get" : "Users/Get"], await harness.Library.NamesAsync(Cancellation));
+        Assert.Equal([root ? "Get" : "Users/Get"], await harness.Library.PathsAsync(Cancellation));
         Assert.Same(draft, Assert.Single(RequestTreeViewModel.Flatten(main.Tree.Nodes), node => node.IsDraft).Tab);
         Assert.True(draft.IsUnsaved);
         Assert.False(draft.IsDirty);
@@ -285,22 +284,22 @@ public sealed class MainViewModelTests
     public async Task DeleteFolderAsync_WhenOnlyPartCanBeDeleted_ThenOnlyClosesDraftsWhoseFoldersAreGone()
     {
         using var harness = new Harness(new FakeDialogs(accept: true));
-        await harness.Library.CreateFolderAsync("Users/Empty", Cancellation);
-        await harness.Library.SaveAsync("Users/Locked/Get", ApiRequest.New(), Cancellation);
+        await harness.Library.FolderAtAsync("Users/Empty", Cancellation);
+        var get = await harness.Library.SaveAtAsync("Users/Locked/Get", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.NewDraftAsync(NodeOf(main, "Users/Empty"));
         var empty = main.SelectedTab!;
         await main.NewDraftAsync(NodeOf(main, "Users/Locked"));
         var locked = main.SelectedTab!;
-        using var file = new FileStream(Path.Combine(harness.Folder.Requests, "Users", "Locked", "Get.json"), FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var file = new FileStream(Path.Combine(harness.Folder.Requests, $"{get.Id}.json"), FileMode.Open, FileAccess.Read, FileShare.Read);
 
         await main.DeleteFolderAsync(NodeOf(main, "Users"));
 
-        Assert.Equal(harness.Library.FolderExists("Users/Empty"), main.Tabs.Contains(empty));
-        Assert.Equal(harness.Library.FolderExists("Users/Locked"), main.Tabs.Contains(locked));
+        Assert.Equal(harness.Library.FolderExistsAt("Users/Empty"), main.Tabs.Contains(empty));
+        Assert.Equal(harness.Library.FolderExistsAt("Users/Locked"), main.Tabs.Contains(locked));
         Assert.True(locked.IsDraft);
-        Assert.Equal("Users/Locked", locked.Destination);
+        Assert.Equal("Users/Locked", main.Tree.PathOfFolder(locked.FolderId));
         Assert.Equal(2, harness.Dialogs.Asked);
         Assert.Same(locked, main.SelectedTab);
         Assert.Equal(main.Tabs.Count(tab => tab.IsDraft), RequestTreeViewModel.Flatten(main.Tree.Nodes).Count(node => node.IsDraft));
@@ -310,26 +309,27 @@ public sealed class MainViewModelTests
     public async Task NewSubfolderAsync_WhenCreationFails_ThenReportsItWithoutExpandingTheParent()
     {
         using var harness = new Harness(new FakeDialogs(answer: "Child"));
-        await harness.Library.CreateFolderAsync("Users", Cancellation);
-        File.WriteAllText(Path.Combine(harness.Folder.Requests, "Users", "Child"), "blocked");
+        await harness.Library.FolderAtAsync("Users", Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
+        Directory.Delete(harness.Folder.Folders, recursive: true);
+        File.WriteAllText(harness.Folder.Folders, "blocked");
 
         await main.NewSubfolderAsync(NodeOf(main, "Users"));
 
         Assert.False(NodeOf(main, "Users").IsExpanded);
-        Assert.False(harness.Library.FolderExists("Users/Child"));
+        Assert.False(harness.Library.FolderExistsAt("Users/Child"));
         Assert.Equal(2, harness.Dialogs.Asked);
     }
 
     [Theory]
     [InlineData(null)]
-    [InlineData("Taken")]
+    [InlineData("  ")]
     public async Task RenameFolderAsync_WhenCancelledOrRejected_ThenLeavesDraftsWhereTheyAre(string? answer)
     {
         using var harness = new Harness(new FakeDialogs(answer: answer));
-        await harness.Library.CreateFolderAsync("Users/Admin", Cancellation);
-        await harness.Library.CreateFolderAsync("Taken", Cancellation);
+        await harness.Library.FolderAtAsync("Users/Admin", Cancellation);
+        await harness.Library.FolderAtAsync("Taken", Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.NewDraftAsync(NodeOf(main, "Users/Admin"));
@@ -337,15 +337,36 @@ public sealed class MainViewModelTests
 
         await main.RenameFolderAsync(NodeOf(main, "Users"));
 
-        Assert.Equal("Users/Admin", draft.Destination);
+        Assert.Equal("Users/Admin", main.Tree.PathOfFolder(draft.FolderId));
         Assert.Same(draft, Assert.Single(RequestTreeViewModel.Flatten(main.Tree.Nodes), node => node.IsDraft).Tab);
+    }
+
+    [Fact]
+    public async Task IsAuthRefreshing_WhenTheFolderItInheritsFromFetchesAToken_ThenIsTrue()
+    {
+        // Arrange
+        var login = new TaskCompletionSource<OAuthToken>();
+        using var harness = new Harness(oauth: new(cancellationToken => login.Task.WaitAsync(cancellationToken)));
+        var folder = await harness.Library.SaveFolderAtAsync("Users", new() { Auth = new(AuthKind.OAuth2) }, Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.NewDraftAsync(NodeOf(main, "Users"));
+
+        // Act
+        var fetching = harness.Services.AuthRefresh.RefreshFolderAsync(new(folder.Id, folder.Auth), ApiEnvironment.None, Cancellation);
+        var refreshing = main.SelectedTab!.IsAuthRefreshing;
+        login.SetResult(FakeOAuthClient.Token);
+        await fetching;
+
+        // Assert
+        Assert.True(refreshing);
     }
 
     [Fact]
     public async Task RequestsChangedAsync_WhenTheFoldersAuthChanges_ThenUpdatesDraftsWithoutChangingTheirContent()
     {
         using var harness = new Harness(new FakeDialogs(answer: "People"));
-        await harness.Library.SaveFolderAsync("Users", new() { Id = Guid.NewGuid(), Auth = new(AuthKind.Basic, "user") }, Cancellation);
+        await harness.Library.SaveFolderAtAsync("Users", new() { Id = Guid.NewGuid(), Auth = new(AuthKind.Basic, "user") }, Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.NewDraftAsync(NodeOf(main, "Users"));
@@ -354,7 +375,7 @@ public sealed class MainViewModelTests
         await draft.SendAsync();
         var response = draft.Result.Response;
 
-        await harness.Library.SaveFolderAsync("Users", new() { Id = Guid.NewGuid(), Auth = new(AuthKind.OAuth2) }, Cancellation);
+        await harness.Library.SaveFolderAtAsync("Users", new() { Auth = new(AuthKind.OAuth2) }, Cancellation);
         await main.RequestsChangedAsync();
         await main.RenameFolderAsync(NodeOf(main, "Users"));
         await main.RequestsChangedAsync();
@@ -390,7 +411,7 @@ public sealed class MainViewModelTests
         // Arrange
         using var harness = new Harness();
         var request = ApiRequest.New();
-        await harness.Library.SaveAsync("Admin/Get", request, Cancellation);
+        await harness.Library.SaveAtAsync("Admin/Get", request, Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         var item = new HistoryItemViewModel(new("call.json", new(DateTimeOffset.Now, HistorySource.App, "dev.local", request, "Users/Get")), "Today");
@@ -399,7 +420,7 @@ public sealed class MainViewModelTests
         await main.OpenAsync(item);
 
         // Assert
-        Assert.Equal("Admin/Get", main.SelectedTab!.SuggestedName);
+        Assert.Equal(("Get", "Admin"), (main.SelectedTab!.SuggestedName, main.Tree.PathOfFolder(main.SelectedTab.FolderId)));
     }
 
     [Fact]
@@ -409,13 +430,13 @@ public sealed class MainViewModelTests
         using var harness = new Harness();
         var main = harness.Main();
         await main.LoadAsync();
-        var item = new HistoryItemViewModel(new("call.json", new(DateTimeOffset.Now, HistorySource.App, "dev.local", ApiRequest.New(), "Users/Get")), "Today");
+        var item = new HistoryItemViewModel(new("call.json", new(DateTimeOffset.Now, HistorySource.App, "dev.local", ApiRequest.New() with { Name = "Get", FolderId = Guid.NewGuid() }, "Users/Get")), "Today");
 
         // Act
         await main.OpenAsync(item);
 
         // Assert
-        Assert.Equal("Users/Get", main.SelectedTab!.SuggestedName);
+        Assert.Equal("Get", main.SelectedTab!.SuggestedName);
     }
 
     [Fact]
@@ -490,7 +511,7 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Ping", ApiRequest.New() with { Url = "https://dev.local" }, Cancellation);
+        await harness.Library.SaveAtAsync("Ping", ApiRequest.New() with { Url = "https://dev.local" }, Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         var node = main.Tree.Nodes.Single();
@@ -509,7 +530,7 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Ping", ApiRequest.New() with { Url = "https://dev.local" }, Cancellation);
+        await harness.Library.SaveAtAsync("Ping", ApiRequest.New() with { Url = "https://dev.local" }, Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         var node = main.Tree.Nodes.Single();
@@ -528,7 +549,7 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Ping", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         var node = main.Tree.Nodes.Single();
@@ -549,11 +570,11 @@ public sealed class MainViewModelTests
         // Arrange
         using var harness = new Harness();
         var request = ApiRequest.New() with { Url = "https://dev.local" };
-        await harness.Library.SaveAsync("Ping", request, Cancellation);
+        await harness.Library.SaveAtAsync("Ping", request, Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.OpenAsync(main.Tree.Nodes.Single());
-        await harness.Library.SaveAsync("Ping", request with { Url = "https://agent.local" }, Cancellation);
+        await harness.Library.SaveAtAsync("Ping", request with { Url = "https://agent.local" }, Cancellation);
 
         // Act
         await main.RequestsChangedAsync();
@@ -567,7 +588,7 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Ping", ApiRequest.New() with { Url = "https://dev.local" }, Cancellation);
+        await harness.Library.SaveAtAsync("Ping", ApiRequest.New() with { Url = "https://dev.local" }, Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.OpenAsync(main.Tree.Nodes.Single());
@@ -588,17 +609,17 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Ping", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.OpenAsync(main.Tree.Nodes.Single());
-        await harness.Library.RenameAsync("Ping", "Moved/Ping", Cancellation);
+        await harness.Library.RenameAtAsync("Ping", "Moved/Ping", Cancellation);
 
         // Act
         await main.RequestsChangedAsync();
 
         // Assert
-        Assert.Equal("Moved/Ping", main.SelectedTab?.Name);
+        Assert.Equal("Moved/Ping", main.Tree.PathOf(main.SelectedTab!));
     }
 
     [Fact]
@@ -606,11 +627,11 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Ping", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.OpenAsync(main.Tree.Nodes.Single());
-        await harness.Library.DeleteAsync("Ping", Cancellation);
+        await harness.Library.DeleteAtAsync("Ping", Cancellation);
 
         // Act
         await main.RequestsChangedAsync();
@@ -624,11 +645,11 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Ping", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.OpenAsync(main.Tree.Nodes.Single());
-        await harness.Library.DeleteAsync("Ping", Cancellation);
+        await harness.Library.DeleteAtAsync("Ping", Cancellation);
 
         // Act
         await main.RequestsChangedAsync();
@@ -723,9 +744,9 @@ public sealed class MainViewModelTests
 
     [Theory]
     [InlineData("Users", true)]
-    [InlineData("Other/Users", false)]
-    [InlineData("Other\\Users", false)]
-    public async Task NewFolderAsync_WhenANameIsGiven_ThenAcceptsOnlyOneFolderName(string name, bool accepted)
+    [InlineData("Other/Users: v2", true)]
+    [InlineData("  ", false)]
+    public async Task NewFolderAsync_WhenANameIsGiven_ThenMakesOneFolderWithIt(string name, bool accepted)
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(answer: name));
@@ -736,15 +757,15 @@ public sealed class MainViewModelTests
         await main.NewFolderAsync();
 
         // Assert
-        Assert.Equal(accepted ? ["Users"] : Array.Empty<string>(), main.Tree.Nodes.Select(node => node.Path));
+        Assert.Equal(accepted ? [name] : Array.Empty<string>(), main.Tree.Nodes.Select(node => node.Name));
     }
 
     [Fact]
-    public async Task NewFolderAsync_WhenTheNameIsTaken_ThenSaysSo()
+    public async Task NewFolderAsync_WhenTheNameIsTaken_ThenMakesAnotherFolderWithIt()
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(answer: "Users"));
-        await harness.Library.CreateFolderAsync("Users", Cancellation);
+        await harness.Library.FolderAtAsync("Users", Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
 
@@ -752,15 +773,16 @@ public sealed class MainViewModelTests
         await main.NewFolderAsync();
 
         // Assert
-        Assert.Equal(harness.Translator.Of("Folder.Exists"), harness.Dialogs.NameQuestion!.Value.ProblemOf("Users"));
+        Assert.Null(harness.Dialogs.NameQuestion!.Value.ProblemOf("Users"));
+        Assert.Equal(["Users", "Users"], main.Tree.Nodes.Select(node => node.Name));
     }
 
     [Fact]
-    public async Task RenameAsync_WhenOnlyTheCaseChanges_ThenRenamesTheFile()
+    public async Task RenameAsync_WhenOnlyTheCaseChanges_ThenRenamesIt()
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(answer: "PING"));
-        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Ping", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
 
@@ -768,7 +790,7 @@ public sealed class MainViewModelTests
         await main.RenameAsync(main.Tree.Nodes.Single());
 
         // Assert
-        Assert.Equal(["PING"], await harness.Library.NamesAsync(Cancellation));
+        Assert.Equal(["PING"], await harness.Library.PathsAsync(Cancellation));
     }
 
     [Fact]
@@ -776,7 +798,7 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(answer: "Renamed"));
-        await harness.Library.SaveAsync("Health/Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Health/Ping", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.OpenAsync(NodeOf(main, "Health/Ping"));
@@ -785,7 +807,7 @@ public sealed class MainViewModelTests
         await main.RenameAsync(NodeOf(main, "Health/Ping"));
 
         // Assert
-        Assert.Equal("Health/Renamed", main.SelectedTab?.Name);
+        Assert.Equal(("Renamed", "Health/Renamed"), (main.SelectedTab?.Name, main.Tree.PathOf(main.SelectedTab!)));
         Assert.Equal("Ping", harness.Dialogs.NameQuestion!.Value.Name);
     }
 
@@ -794,8 +816,8 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
-        await harness.Library.CreateFolderAsync("Health", Cancellation);
+        await harness.Library.SaveAtAsync("Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.FolderAtAsync("Health", Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
 
@@ -803,7 +825,7 @@ public sealed class MainViewModelTests
         await main.MoveAsync(NodeOf(main, "Ping"), NodeOf(main, "Health"));
 
         // Assert
-        Assert.Equal(["Health/Ping"], await harness.Library.NamesAsync(Cancellation));
+        Assert.Equal(["Health/Ping"], await harness.Library.PathsAsync(Cancellation));
     }
 
     [Fact]
@@ -811,8 +833,8 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
-        await harness.Library.CreateFolderAsync("Health", Cancellation);
+        await harness.Library.SaveAtAsync("Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.FolderAtAsync("Health", Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
 
@@ -828,8 +850,8 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
-        await harness.Library.SaveAsync("Health/Status", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Health/Status", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
 
@@ -837,7 +859,7 @@ public sealed class MainViewModelTests
         await main.MoveAsync(NodeOf(main, "Ping"), NodeOf(main, "Health/Status"));
 
         // Assert
-        Assert.Equal(["Health/Ping", "Health/Status"], (await harness.Library.NamesAsync(Cancellation)).Order());
+        Assert.Equal(["Health/Ping", "Health/Status"], (await harness.Library.PathsAsync(Cancellation)).Order());
     }
 
     [Fact]
@@ -845,7 +867,7 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Health/Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Health/Ping", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
 
@@ -853,7 +875,7 @@ public sealed class MainViewModelTests
         await main.MoveAsync(NodeOf(main, "Health/Ping"), null);
 
         // Assert
-        Assert.Equal(["Ping"], await harness.Library.NamesAsync(Cancellation));
+        Assert.Equal(["Ping"], await harness.Library.PathsAsync(Cancellation));
     }
 
     [Fact]
@@ -861,7 +883,7 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Health/Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Health/Ping", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
 
@@ -873,12 +895,12 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public async Task MoveAsync_WhenTheFolderHasARequestWithTheName_ThenKeepsBothAndSaysSo()
+    public async Task MoveAsync_WhenTheFolderHasARequestWithTheName_ThenMovesItAndKeepsBoth()
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
-        await harness.Library.SaveAsync("Health/Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Health/Ping", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
 
@@ -886,7 +908,8 @@ public sealed class MainViewModelTests
         await main.MoveAsync(NodeOf(main, "Ping"), NodeOf(main, "Health"));
 
         // Assert
-        Assert.Equal((2, 1), ((await harness.Library.NamesAsync(Cancellation)).Count, harness.Dialogs.Asked));
+        Assert.Equal(["Health/Ping", "Health/Ping"], await harness.Library.PathsAsync(Cancellation));
+        Assert.Equal(0, harness.Dialogs.Asked);
     }
 
     [Fact]
@@ -894,11 +917,11 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        var users = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
-        var admin = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
-        await harness.Library.SaveAsync("Users/Ping", ApiRequest.New(), Cancellation);
-        await harness.Library.SaveFolderAsync("Users", users, Cancellation);
-        await harness.Library.SaveFolderAsync("Admin", admin, Cancellation);
+        var users = new RequestFolder { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
+        var admin = new RequestFolder { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
+        await harness.Library.SaveFolderAtAsync("Users", users, Cancellation);
+        await harness.Library.SaveFolderAtAsync("Admin", admin, Cancellation);
+        await harness.Library.SaveAtAsync("Users/Ping", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.OpenAsync(NodeOf(main, "Users/Ping"));
@@ -916,8 +939,8 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
-        await harness.Library.CreateFolderAsync("Health", Cancellation);
+        await harness.Library.SaveAtAsync("Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.FolderAtAsync("Health", Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.OpenAsync(NodeOf(main, "Ping"));
@@ -926,7 +949,7 @@ public sealed class MainViewModelTests
         await main.MoveAsync(NodeOf(main, "Ping"), NodeOf(main, "Health"));
 
         // Assert
-        Assert.Equal("Health/Ping", main.SelectedTab?.Name);
+        Assert.Equal("Health/Ping", main.Tree.PathOf(main.SelectedTab!));
     }
 
     [Fact]
@@ -947,7 +970,7 @@ public sealed class MainViewModelTests
         Assert.Equal(1, harness.Dialogs.Asked);
     }
 
-    static RequestNodeViewModel NodeOf(MainViewModel main, string path) => RequestTreeViewModel.Flatten(main.Tree.Nodes).Single(node => node.Path == path);
+    static RequestNodeViewModel NodeOf(MainViewModel main, string path) => RequestTreeViewModel.Flatten(main.Tree.Nodes).Single(node => main.Tree.PathOf(node) == path);
 
     [Theory]
     [InlineData("Users", "People")]
@@ -956,7 +979,7 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(answer: "People"));
-        await harness.Library.SaveAsync($"{original}/Get", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync($"{original}/Get", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
 
@@ -964,7 +987,7 @@ public sealed class MainViewModelTests
         await main.RenameFolderAsync(NodeOf(main, original));
 
         // Assert
-        Assert.Equal([$"{renamed}/Get"], await harness.Library.NamesAsync(Cancellation));
+        Assert.Equal([$"{renamed}/Get"], await harness.Library.PathsAsync(Cancellation));
         Assert.Equal("Users", harness.Dialogs.NameQuestion!.Value.Name);
     }
 
@@ -973,7 +996,7 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(answer: "People"));
-        await harness.Library.SaveAsync("Users/Admin/List", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Users/Admin/List", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.OpenAsync(NodeOf(main, "Users/Admin/List"));
@@ -982,7 +1005,7 @@ public sealed class MainViewModelTests
         await main.RenameFolderAsync(NodeOf(main, "Users"));
 
         // Assert
-        Assert.Equal("People/Admin/List", main.SelectedTab?.Name);
+        Assert.Equal(("People/Admin/List", "People / Admin /"), (main.Tree.PathOf(main.SelectedTab!), main.SelectedTab!.Folder));
     }
 
     [Fact]
@@ -990,7 +1013,7 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(answer: "People"));
-        await harness.Library.SaveAsync("Users/Admin/List", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Users/Admin/List", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         NodeOf(main, "Users").IsExpanded = NodeOf(main, "Users/Admin").IsExpanded = true;
@@ -1007,8 +1030,8 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
-        await harness.Library.CreateFolderAsync("Archive", Cancellation);
+        await harness.Library.SaveAtAsync("Users/Get", ApiRequest.New(), Cancellation);
+        await harness.Library.FolderAtAsync("Archive", Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
 
@@ -1020,16 +1043,15 @@ public sealed class MainViewModelTests
     }
 
     [Theory]
-    [InlineData("Taken")]
-    [InlineData("Users/Inside")]
-    [InlineData("Other/Users")]
-    [InlineData("Other\\Users")]
-    public async Task RenameFolderAsync_WhenTheNameCannotBeUsed_ThenKeepsTheFolder(string answer)
+    [InlineData("Taken", "Taken/Get")]
+    [InlineData("  ", "Users/Get")]
+    [InlineData("Other/Users", "Other/Users/Get")]
+    public async Task RenameFolderAsync_WhenANameIsGiven_ThenRefusesOnlyAnEmptyName(string answer, string expected)
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(answer: answer));
-        await harness.Library.SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
-        await harness.Library.CreateFolderAsync("Taken", Cancellation);
+        await harness.Library.SaveAtAsync("Users/Get", ApiRequest.New(), Cancellation);
+        await harness.Library.FolderAtAsync("Taken", Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
 
@@ -1037,7 +1059,7 @@ public sealed class MainViewModelTests
         await main.RenameFolderAsync(NodeOf(main, "Users"));
 
         // Assert
-        Assert.Equal(["Users/Get"], await harness.Library.NamesAsync(Cancellation));
+        Assert.Equal([expected], await harness.Library.PathsAsync(Cancellation));
     }
 
     [Fact]
@@ -1045,8 +1067,8 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(accept: true));
-        await harness.Library.SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
-        await harness.Library.SaveAsync("Users/Admin/List", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Users/Get", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Users/Admin/List", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
 
@@ -1054,7 +1076,7 @@ public sealed class MainViewModelTests
         await main.DeleteFolderAsync(NodeOf(main, "Users"));
 
         // Assert
-        Assert.Equal((0, false), ((await harness.Library.NamesAsync(Cancellation)).Count, harness.Library.FolderExists("Users")));
+        Assert.Equal((0, false), ((await harness.Library.PathsAsync(Cancellation)).Count, harness.Library.FolderExistsAt("Users")));
     }
 
     [Fact]
@@ -1062,7 +1084,7 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(accept: false));
-        await harness.Library.SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Users/Get", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
 
@@ -1070,7 +1092,7 @@ public sealed class MainViewModelTests
         await main.DeleteFolderAsync(NodeOf(main, "Users"));
 
         // Assert
-        Assert.Equal(["Users/Get"], await harness.Library.NamesAsync(Cancellation));
+        Assert.Equal(["Users/Get"], await harness.Library.PathsAsync(Cancellation));
     }
 
     [Fact]
@@ -1079,7 +1101,7 @@ public sealed class MainViewModelTests
         // Arrange
         using var harness = new Harness(new FakeDialogs(accept: true));
         var request = ApiRequest.New() with { Auth = new(AuthKind.Bearer) };
-        await harness.Library.SaveAsync("Users/Admin/List", request, Cancellation);
+        await harness.Library.SaveAtAsync("Users/Admin/List", request, Cancellation);
         await harness.Secrets.SaveAsync(request.Id, SecretKind.Token, "token", Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
@@ -1096,9 +1118,9 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(accept: true));
-        var admin = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
-        await harness.Library.SaveAsync("Users/Admin/List", ApiRequest.New(), Cancellation);
-        await harness.Library.SaveFolderAsync("Users/Admin", admin, Cancellation);
+        var admin = new RequestFolder { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) };
+        await harness.Library.SaveFolderAtAsync("Users/Admin", admin, Cancellation);
+        await harness.Library.SaveAtAsync("Users/Admin/List", ApiRequest.New(), Cancellation);
         await harness.Secrets.SaveAsync(admin.Id, SecretKind.Token, "token", Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
@@ -1111,40 +1133,21 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public async Task DeleteFolderAsync_WhenItsSettingsCannotBeRead_ThenKeepsItAndReportsTheFailure()
-    {
-        // Arrange
-        using var harness = new Harness(new FakeDialogs(accept: true));
-        await harness.Library.SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
-        File.WriteAllText(Path.Combine(harness.Folder.Requests, "Users", ".folder.json"), "{");
-        var main = harness.Main();
-        await main.LoadAsync();
-
-        // Act
-        await main.DeleteFolderAsync(NodeOf(main, "Users"));
-
-        // Assert
-        Assert.True(harness.Library.FolderExists("Users"));
-        Assert.True(harness.Library.Exists("Users/Get"));
-        Assert.Equal(2, harness.Dialogs.Asked);
-    }
-
-    [Fact]
     public async Task DeleteFolderAsync_WhenAFileCannotBeDeleted_ThenDeletesTheRest()
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(accept: true));
-        await harness.Library.SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
-        await harness.Library.SaveAsync("Users/Admin/List", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Users/Get", ApiRequest.New(), Cancellation);
+        var list = await harness.Library.SaveAtAsync("Users/Admin/List", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
-        using var locked = new FileStream(Path.Combine(harness.Folder.Requests, "Users", "Admin", "List.json"), FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var locked = new FileStream(Path.Combine(harness.Folder.Requests, $"{list.Id}.json"), FileMode.Open, FileAccess.Read, FileShare.Read);
 
         // Act
         await main.DeleteFolderAsync(NodeOf(main, "Users"));
 
         // Assert
-        Assert.Equal(["Users/Admin/List"], await harness.Library.NamesAsync(Cancellation));
+        Assert.Equal(["Users/Admin/List"], await harness.Library.PathsAsync(Cancellation));
     }
 
     [Fact]
@@ -1154,13 +1157,13 @@ public sealed class MainViewModelTests
         using var harness = new Harness(new FakeDialogs(accept: true));
         var get = ApiRequest.New() with { Auth = new(AuthKind.Bearer) };
         var list = ApiRequest.New() with { Auth = new(AuthKind.Bearer) };
-        await harness.Library.SaveAsync("Users/Get", get, Cancellation);
-        await harness.Library.SaveAsync("Users/Admin/List", list, Cancellation);
+        await harness.Library.SaveAtAsync("Users/Get", get, Cancellation);
+        await harness.Library.SaveAtAsync("Users/Admin/List", list, Cancellation);
         await harness.Secrets.SaveAsync(get.Id, SecretKind.Token, "get", Cancellation);
         await harness.Secrets.SaveAsync(list.Id, SecretKind.Token, "list", Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
-        using var locked = new FileStream(Path.Combine(harness.Folder.Requests, "Users", "Admin", "List.json"), FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var locked = new FileStream(Path.Combine(harness.Folder.Requests, $"{list.Id}.json"), FileMode.Open, FileAccess.Read, FileShare.Read);
 
         // Act
         await main.DeleteFolderAsync(NodeOf(main, "Users"));
@@ -1174,15 +1177,15 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(accept: true));
-        await harness.Library.SaveAsync("Users/Get", ApiRequest.New(), Cancellation);
-        await harness.Library.SaveAsync("Users/Admin/List", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Users/Get", ApiRequest.New(), Cancellation);
+        var saved = await harness.Library.SaveAtAsync("Users/Admin/List", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.OpenAsync(NodeOf(main, "Users/Get"));
         var get = main.SelectedTab!;
         await main.OpenAsync(NodeOf(main, "Users/Admin/List"));
         var list = main.SelectedTab!;
-        using var locked = new FileStream(Path.Combine(harness.Folder.Requests, "Users", "Admin", "List.json"), FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var locked = new FileStream(Path.Combine(harness.Folder.Requests, $"{saved.Id}.json"), FileMode.Open, FileAccess.Read, FileShare.Read);
 
         // Act
         await main.DeleteFolderAsync(NodeOf(main, "Users"));
@@ -1190,26 +1193,7 @@ public sealed class MainViewModelTests
         // Assert
         Assert.DoesNotContain(get, main.Tabs);
         Assert.Contains(list, main.Tabs);
-        Assert.Equal("Users/Admin/List", list.Name);
-    }
-
-    [Fact]
-    public async Task DeleteFolderAsync_WhenACopyOutsideSharesTheId_ThenKeepsItsSecrets()
-    {
-        // Arrange
-        using var harness = new Harness(new FakeDialogs(accept: true));
-        var request = ApiRequest.New() with { Auth = new(AuthKind.Bearer) };
-        await harness.Library.SaveAsync("Users/Get", request, Cancellation);
-        await harness.Library.SaveAsync("Copy", request, Cancellation);
-        await harness.Secrets.SaveAsync(request.Id, SecretKind.Token, "token", Cancellation);
-        var main = harness.Main();
-        await main.LoadAsync();
-
-        // Act
-        await main.DeleteFolderAsync(NodeOf(main, "Users"));
-
-        // Assert
-        Assert.Equal("token", await harness.Secrets.OfAsync(request.Id, SecretKind.Token, Cancellation));
+        Assert.Equal("Users/Admin/List", main.Tree.PathOf(list));
     }
 
     [Fact]
@@ -1217,7 +1201,7 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(accept: true));
-        await harness.Library.SaveAsync("Users/Get", ApiRequest.New() with { Url = "https://dev.local" }, Cancellation);
+        await harness.Library.SaveAtAsync("Users/Get", ApiRequest.New() with { Url = "https://dev.local" }, Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.OpenAsync(NodeOf(main, "Users").Children.Single());
@@ -1240,7 +1224,7 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(accept: true));
-        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Ping", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
 
@@ -1248,7 +1232,7 @@ public sealed class MainViewModelTests
         await main.DeleteAsync(main.Tree.Nodes.Single());
 
         // Assert
-        Assert.Empty(await harness.Library.NamesAsync(Cancellation));
+        Assert.Empty(await harness.Library.PathsAsync(Cancellation));
     }
 
     [Fact]
@@ -1256,7 +1240,7 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(accept: false));
-        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Ping", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.OpenAsync(main.Tree.Nodes.Single());
@@ -1267,7 +1251,7 @@ public sealed class MainViewModelTests
         await main.DeleteAsync(main.Tree.Nodes.Single());
 
         // Assert
-        Assert.Equal(["Ping"], await harness.Library.NamesAsync(Cancellation));
+        Assert.Equal(["Ping"], await harness.Library.PathsAsync(Cancellation));
         Assert.Same(tab, main.SelectedTab);
         Assert.Equal("unsaved", tab.Editor.Body);
         Assert.Contains(tab, main.Tabs);
@@ -1278,7 +1262,7 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(accept: true));
-        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Ping", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.OpenAsync(main.Tree.Nodes.Single());
@@ -1326,7 +1310,7 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveFolderAsync("Users", new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) }, Cancellation);
+        await harness.Library.SaveFolderAtAsync("Users", new RequestFolder { Id = Guid.NewGuid(), Auth = new(AuthKind.Bearer) }, Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
 
@@ -1343,7 +1327,7 @@ public sealed class MainViewModelTests
         // Arrange
         using var harness = new Harness(new FakeDialogs(accept: true));
         var request = ApiRequest.New();
-        await harness.Library.SaveAsync("Ping", request, Cancellation);
+        await harness.Library.SaveAtAsync("Ping", request, Cancellation);
         await harness.Secrets.SaveAsync(request.Id, SecretKind.Token, "token", Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
@@ -1356,31 +1340,12 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public async Task DeleteAsync_WhenACopySharesTheId_ThenKeepsTheSecrets()
-    {
-        // Arrange
-        using var harness = new Harness(new FakeDialogs(accept: true));
-        var request = ApiRequest.New();
-        await harness.Library.SaveAsync("Ping", request, Cancellation);
-        await harness.Library.SaveAsync("Copy", request, Cancellation);
-        await harness.Secrets.SaveAsync(request.Id, SecretKind.Token, "token", Cancellation);
-        var main = harness.Main();
-        await main.LoadAsync();
-
-        // Act
-        await main.DeleteAsync(main.Tree.Nodes.Single(node => node.Path == "Ping"));
-
-        // Assert
-        Assert.Equal("token", await harness.Secrets.OfAsync(request.Id, SecretKind.Token, Cancellation));
-    }
-
-    [Fact]
     public async Task DeleteAsync_WhenTheTabHasAToken_ThenClosesItAndRemovesTheSecret()
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(answer: "Ping", accept: true));
         var request = ApiRequest.New() with { Auth = new(AuthKind.Bearer) };
-        await harness.Library.SaveAsync("Ping", request, Cancellation);
+        await harness.Library.SaveAtAsync("Ping", request, Cancellation);
         await harness.Secrets.SaveAsync(request.Id, SecretKind.Token, "token", Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
@@ -1391,7 +1356,7 @@ public sealed class MainViewModelTests
 
         // Assert
         Assert.DoesNotContain(tab, main.Tabs);
-        Assert.False(harness.Library.Exists("Ping"));
+        Assert.False(harness.Library.ExistsAt("Ping"));
         Assert.Null(await harness.Secrets.OfAsync(request.Id, SecretKind.Token, Cancellation));
     }
 
@@ -1418,11 +1383,11 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
+        var request = await harness.Library.SaveAtAsync("Ping", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.OpenAsync(main.Tree.Nodes.Single());
-        var file = Path.Combine(harness.Folder.Requests, "Ping.json");
+        var file = Path.Combine(harness.Folder.Requests, $"{request.Id}.json");
         var saved = File.ReadAllText(file);
         File.Delete(file);
         await main.RequestsChangedAsync();
@@ -1436,18 +1401,42 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public async Task RequestsChangedAsync_WhenTheDeletedFileComesBackWhileAnotherTabHasItOpen_ThenLeavesItToThatTab()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var request = await harness.Library.SaveAtAsync("Ping", ApiRequest.New(), Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        await main.OpenAsync(main.Tree.Nodes.Single());
+        var file = Path.Combine(harness.Folder.Requests, $"{request.Id}.json");
+        var saved = File.ReadAllText(file);
+        File.Delete(file);
+        await main.RequestsChangedAsync();
+        File.WriteAllText(file, saved);
+        await main.Tree.LoadAsync(Cancellation);
+        await main.OpenAsync(main.Tree.Nodes.Single());
+
+        // Act
+        await main.RequestsChangedAsync();
+
+        // Assert
+        Assert.Single(main.Tabs, tab => tab.IsSaved && tab.Id == request.Id);
+    }
+
+    [Fact]
     public async Task RequestsChangedAsync_WhenAFileIsMovedOntoAnOpenTab_ThenTheMovedTabIsUnlinked()
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveAsync("A", ApiRequest.New(), Cancellation);
-        await harness.Library.SaveAsync("B", ApiRequest.New(), Cancellation);
+        var a = await harness.Library.SaveAtAsync("A", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("B", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
-        await main.OpenAsync(main.Tree.Nodes.Single(node => node.Path == "A"));
-        await main.OpenAsync(main.Tree.Nodes.Single(node => node.Path == "B"));
+        await main.OpenAsync(main.Tree.Nodes.Single(node => main.Tree.PathOf(node) == "A"));
+        await main.OpenAsync(main.Tree.Nodes.Single(node => main.Tree.PathOf(node) == "B"));
         var b = main.SelectedTab!;
-        File.Move(Path.Combine(harness.Folder.Requests, "B.json"), Path.Combine(harness.Folder.Requests, "A.json"), overwrite: true);
+        File.Move(Path.Combine(harness.Folder.Requests, $"{b.Id}.json"), Path.Combine(harness.Folder.Requests, $"{a.Id}.json"), overwrite: true);
 
         // Act
         await main.RequestsChangedAsync();
@@ -1491,23 +1480,23 @@ public sealed class MainViewModelTests
     }
 
     [Theory]
-    [InlineData("Taken")]
-    [InlineData("Other/Renamed")]
-    [InlineData("Other\\Renamed")]
-    public async Task RenameAsync_WhenTheNewNameIsTakenOrContainsAPath_ThenKeepsBothFiles(string name)
+    [InlineData("Taken", "Taken")]
+    [InlineData("  ", "Ping")]
+    [InlineData("Other/Renamed: v2", "Other/Renamed: v2")]
+    public async Task RenameAsync_WhenANameIsGiven_ThenRefusesOnlyAnEmptyName(string name, string expected)
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(answer: name));
-        await harness.Library.SaveAsync("Ping", ApiRequest.New(), Cancellation);
-        await harness.Library.SaveAsync("Taken", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Ping", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("Taken", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
 
         // Act
-        await main.RenameAsync(main.Tree.Nodes.Single(node => node.Path == "Ping"));
+        await main.RenameAsync(main.Tree.Nodes.Single(node => main.Tree.PathOf(node) == "Ping"));
 
         // Assert
-        Assert.Equal(["Ping", "Taken"], (await harness.Library.NamesAsync(Cancellation)).Order());
+        Assert.Equal(new[] { expected, "Taken" }.Order(StringComparer.Ordinal), (await harness.Library.LoadAllAsync(Cancellation)).Requests.Select(request => request.Name).Order(StringComparer.Ordinal));
     }
 
     [Fact]
@@ -1565,19 +1554,19 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public async Task RequestsChangedAsync_WhenARequestWithACopyIsDeleted_ThenDoesNotReopenItsTab()
+    public async Task RequestsChangedAsync_WhenAnEditedRequestIsDeleted_ThenDoesNotReopenItsTab()
     {
         // Arrange
         using var harness = new Harness(new FakeDialogs(accept: true));
         var request = ApiRequest.New() with { Url = "https://a.local" };
-        await harness.Library.SaveAsync("A", request, Cancellation);
-        await harness.Library.SaveAsync("B", request with { Url = "https://b.local" }, Cancellation);
+        await harness.Library.SaveAtAsync("A", request, Cancellation);
+        await harness.Library.SaveAtAsync("B", ApiRequest.New() with { Url = "https://b.local" }, Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
-        await main.OpenAsync(main.Tree.Nodes.Single(node => node.Path == "A"));
+        await main.OpenAsync(main.Tree.Nodes.Single(node => main.Tree.PathOf(node) == "A"));
         var tab = main.SelectedTab!;
         tab.Editor.Url = "https://edited.local";
-        await main.DeleteAsync(main.Tree.Nodes.Single(node => node.Path == "A"));
+        await main.DeleteAsync(main.Tree.Nodes.Single(node => main.Tree.PathOf(node) == "A"));
 
         // Act
         await main.RequestsChangedAsync();
@@ -1585,22 +1574,21 @@ public sealed class MainViewModelTests
         // Assert
         Assert.DoesNotContain(tab, main.Tabs);
         Assert.DoesNotContain(main.Tabs, open => open.Id == request.Id);
-        Assert.Equal("https://b.local", (await harness.Library.LoadAsync("B", Cancellation))!.Url);
+        Assert.Equal("https://b.local", (await harness.Library.LoadAtAsync("B", Cancellation))!.Url);
     }
 
     [Fact]
-    public async Task RequestsChangedAsync_WhenTheOriginalOfACopyIsDeletedOnDisk_ThenTheTabDoesNotJumpToTheCopy()
+    public async Task RequestsChangedAsync_WhenTheFileIsDeletedOnDisk_ThenTheTabIsUnlinked()
     {
         // Arrange
         using var harness = new Harness();
-        var request = ApiRequest.New();
-        await harness.Library.SaveAsync("A", request, Cancellation);
-        await harness.Library.SaveAsync("B", request, Cancellation);
+        var request = await harness.Library.SaveAtAsync("A", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("B", ApiRequest.New(), Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
-        await main.OpenAsync(main.Tree.Nodes.Single(node => node.Path == "A"));
+        await main.OpenAsync(main.Tree.Nodes.Single(node => main.Tree.PathOf(node) == "A"));
         var tab = main.SelectedTab!;
-        File.Delete(Path.Combine(harness.Folder.Requests, "A.json"));
+        File.Delete(Path.Combine(harness.Folder.Requests, $"{request.Id}.json"));
 
         // Act
         await main.RequestsChangedAsync();
@@ -1633,7 +1621,7 @@ public sealed class MainViewModelTests
         // Arrange
         using var harness = new Harness(new FakeDialogs(accept: true));
         var request = ApiRequest.New() with { Auth = new(AuthKind.Bearer) };
-        await harness.Library.SaveAsync("Ping", request, Cancellation);
+        await harness.Library.SaveAtAsync("Ping", request, Cancellation);
         await harness.Secrets.SaveAsync(request.Id, SecretKind.Token, "secret", Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
@@ -1654,7 +1642,7 @@ public sealed class MainViewModelTests
         // Arrange
         using var harness = new Harness();
         Directory.CreateDirectory(harness.Folder.Requests);
-        File.WriteAllText(Path.Combine(harness.Folder.Requests, "Ping.json"), $$"""{"id": "{{Guid.NewGuid()}}", "url": "https://dev.local", "headers": [{"name": ""}]}""");
+        File.WriteAllText(Path.Combine(harness.Folder.Requests, $"{Guid.NewGuid()}.json"), """{"name": "Ping", "url": "https://dev.local", "headers": [{"name": ""}]}""");
         var main = harness.Main();
         await main.LoadAsync();
         await main.OpenAsync(main.Tree.Nodes.Single());
@@ -1672,7 +1660,7 @@ public sealed class MainViewModelTests
         // Arrange
         using var harness = new Harness();
         Directory.CreateDirectory(harness.Folder.Requests);
-        File.WriteAllText(Path.Combine(harness.Folder.Requests, "Ping.json"), $$"""{"id": "{{Guid.NewGuid()}}", "url": "https://dev.local", "headers": [{"name": ""}]}""");
+        File.WriteAllText(Path.Combine(harness.Folder.Requests, $"{Guid.NewGuid()}.json"), """{"name": "Ping", "url": "https://dev.local", "headers": [{"name": ""}]}""");
         var main = harness.Main();
         await main.LoadAsync();
         await main.OpenAsync(main.Tree.Nodes.Single());
@@ -1690,7 +1678,7 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveAsync("Ping", ApiRequest.New() with { Url = "https://dev.local" }, Cancellation);
+        await harness.Library.SaveAtAsync("Ping", ApiRequest.New() with { Url = "https://dev.local" }, Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
         await main.OpenAsync(main.Tree.Nodes.Single());
@@ -1823,7 +1811,7 @@ public sealed class MainViewModelTests
         // Arrange
         using var harness = new Harness(new FakeDialogs(answer: "Ping", accept: true));
         var request = ApiRequest.New() with { Auth = new(AuthKind.Basic, "hobo") };
-        await harness.Library.SaveAsync("Ping", request, Cancellation);
+        await harness.Library.SaveAtAsync("Ping", request, Cancellation);
         await harness.Secrets.SaveAsync(request.Id, SecretKind.Password, "hemmelig", Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
@@ -1834,7 +1822,7 @@ public sealed class MainViewModelTests
 
         // Assert
         Assert.DoesNotContain(tab, main.Tabs);
-        Assert.False(harness.Library.Exists("Ping"));
+        Assert.False(harness.Library.ExistsAt("Ping"));
         Assert.Null(await harness.Secrets.OfAsync(request.Id, SecretKind.Password, Cancellation));
     }
 
@@ -1886,14 +1874,36 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public async Task RenameAsync_WhenThePathIsLongerThanAnId_ThenKeepsItsPlace()
+    public async Task LanguageChangedAsync_WhenARequestAndAWorkflowCannotBeRead_ThenShowsThemInTheNewLanguage()
     {
         // Arrange
-        const string name = "A request whose name is longer than an id";
+        using var harness = new Harness();
+        var (request, workflow) = (Guid.NewGuid(), Guid.NewGuid());
+        Directory.CreateDirectory(harness.Folder.Requests);
+        File.WriteAllText(Path.Combine(harness.Folder.Requests, $"{request}.json"), "{");
+        Directory.CreateDirectory(Path.Combine(harness.Folder.Workflows, $"{workflow}"));
+        File.WriteAllText(Path.Combine(harness.Folder.Workflows, $"{workflow}", "workflow.json"), "{");
+        var main = harness.Main();
+        await main.LoadAsync();
+        harness.Translator.Use(Translation.Danish);
+
+        // Act
+        await main.LanguageChangedAsync();
+
+        // Assert
+        Assert.Equal(Translation.Danish.Format("Tree.Unreadable", $"{request}"[..8]), Assert.Single(main.Tree.Nodes).Name);
+        Assert.Equal(Translation.Danish.Format("Tree.Unreadable", $"{workflow}"[..8]), Assert.Single(main.Workflows.Items).Name);
+    }
+
+    [Fact]
+    public async Task RenameAsync_WhenRenamed_ThenKeepsItsPlace()
+    {
+        // Arrange
+        const string name = "B";
         using var harness = new Harness(new FakeDialogs(answer: "Renamed"));
-        await harness.Library.SaveAsync("A", ApiRequest.New(), Cancellation);
-        await harness.Library.SaveAsync(name, ApiRequest.New(), Cancellation);
-        await harness.Library.SaveOrderAsync([name, "A"], Cancellation);
+        await harness.Library.SaveAtAsync("A", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync(name, ApiRequest.New(), Cancellation);
+        await harness.Library.SaveOrderAtAsync([name, "A"], Cancellation);
         var main = harness.Main();
         await main.LoadAsync();
 
@@ -1901,7 +1911,42 @@ public sealed class MainViewModelTests
         await main.RenameAsync(NodeOf(main, name));
 
         // Assert
-        Assert.Equal(["Renamed", "A"], main.Tree.Nodes.Select(node => node.Path));
+        Assert.Equal(["Renamed", "A"], main.Tree.Nodes.Select(main.Tree.PathOf));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CanMove_WhenSearchingOrNot_ThenAllowsAMoveOnlyWhenNot(bool searching)
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.Library.SaveAtAsync("Users/Get", ApiRequest.New(), Cancellation);
+        await harness.Library.FolderAtAsync("Admin", Cancellation);
+        var main = harness.Main();
+        await main.LoadAsync();
+        main.Tree.Search = searching ? "Get" : "";
+
+        // Act
+        var canMove = main.CanMove(NodeOf(main, "Users/Get"), NodeOf(main, "Admin"), DropPosition.Inside);
+
+        // Assert
+        Assert.Equal(!searching, canMove);
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenWholeFoldersWereTurnedOff_ThenTheSearchStartsWithThemOff()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.SettingsStore.UpdateAsync(settings => settings with { SearchWholeFolders = false }, Cancellation);
+        var main = harness.Main();
+
+        // Act
+        await main.LoadAsync();
+
+        // Assert
+        Assert.False(main.Tree.ShowWholeFolders);
     }
 
     [Fact]
@@ -1909,12 +1954,12 @@ public sealed class MainViewModelTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.Library.SaveAsync("A", ApiRequest.New(), Cancellation);
+        await harness.Library.SaveAtAsync("A", ApiRequest.New(), Cancellation);
         var closed = harness.Main();
         await closed.LoadAsync();
         await closed.OpenAsync(NodeOf(closed, "A"));
         await harness.SettingsStore.UpdateAsync(settings => settings with { Session = closed.Session }, Cancellation);
-        await harness.Library.RenameAsync("A", "B", Cancellation);
+        await harness.Library.RenameAtAsync("A", "B", Cancellation);
         var main = harness.Main();
 
         // Act
@@ -1922,23 +1967,6 @@ public sealed class MainViewModelTests
 
         // Assert
         Assert.Equal("B", Assert.Single(main.Tabs).Name);
-        Assert.Same(main.Tabs[0], main.SelectedTab);
-    }
-
-    [Fact]
-    public async Task LoadAsync_WhenASessionRequestHasNoId_ThenReopensItByPath()
-    {
-        // Arrange
-        using var harness = new Harness();
-        await harness.Library.SaveAsync("A", ApiRequest.New() with { Id = Guid.Empty }, Cancellation);
-        await harness.SettingsStore.UpdateAsync(settings => settings with { Session = new(["A"], "A") }, Cancellation);
-        var main = harness.Main();
-
-        // Act
-        await main.LoadAsync();
-
-        // Assert
-        Assert.Equal("A", Assert.Single(main.Tabs).Name);
         Assert.Same(main.Tabs[0], main.SelectedTab);
     }
 

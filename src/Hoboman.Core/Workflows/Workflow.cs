@@ -2,10 +2,12 @@ using Hoboman.Core.Auth;
 
 namespace Hoboman.Core.Workflows;
 
-// The id keeps the runs with the workflow when its folder is renamed, so a new workflow with an old name gets none of them.
+// Its folder is named by its id, so its name can be anything, and its runs stay with it when it is renamed.
 public sealed record Workflow
 {
     public Guid Id { get; init; }
+
+    public string Name { get; init; } = "";
 
     public IReadOnlyList<WorkflowValue> Parameters { get; init; } = [];
 

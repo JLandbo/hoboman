@@ -19,7 +19,7 @@ Hoboman er et skrivebordsværktøj til at bygge, sende og undersøge API-kald. R
 - **Miljøer og variabler** – brug `{{variabel}}` i URL, parametre, headers og auth-felter. Appen husker det senest valgte miljø.
 - **Auth med nedarvning** – ingen auth, Basic, Bearer og OAuth 2.0. En undermappe kan overtage eller tilsidesætte auth fra sin overmappe.
 - **Gemte credentials** – gem hele auths, Basic, Bearer token eller OAuth 2.0, pr. miljø under **Credentials** ved siden af miljøvælgeren, og vælg dem i Auth i stedet for at skrive dem igen.
-- **OAuth uden omveje** – client credentials eller authorization code med PKCE og browser-login. Hent et nyt token med refresh-knappen ved Auth; ved client credentials hentes det automatisk, når det mangler eller er udløbet. Tokens holdes adskilt pr. miljø og følger miljøet, også når det omdøbes. Tokens gemt før miljøerne fik id, skal hentes igen én gang.
+- **OAuth uden omveje** – client credentials eller authorization code med PKCE og browser-login. Hent et nyt token med refresh-knappen ved Auth; ved client credentials hentes det automatisk, når det mangler eller er udløbet. Tokens holdes adskilt pr. miljø og følger miljøet, også når det omdøbes.
 - **Base64 efter dit valg** – markér bestemte JSON-felter til encoding ved afsendelse eller decoding i svaret. Hele bodyen kan også vælges.
 - **Workflows** – kæd requests, scripts og ventetider sammen, giv værdier fra ét svar videre til de næste trin, og kør det hele under **Workflows** i appen eller med `hoboman-cli run`. Hver kørsel skrives som JSON-linjer, som et script eller en AI kan følge.
 - **Kommandolinje og AI** – send gemte og direkte requests og kør workflows fra scripts og AI-agenter med `hoboman-cli.exe`. Se [CLI.md](CLI.md) og [AI-PROMPT.md](AI-PROMPT.md).
@@ -71,7 +71,9 @@ Scriptet publicerer appen og `hoboman-cli.exe` til `publish\`, kopierer temafile
 
 ### Mapper, navne og faner
 
-- Navnefeltet er kun et navn. Placeringen bestemmes af mappen, ikke af `/` eller `\` i navnet.
+- Navnefeltet er kun et navn. Placeringen bestemmes af mappen, ikke af `/` eller `\` i navnet. Et navn må ikke være tomt eller kun mellemrum og må ikke indeholde linjeskift. Flere requests, mapper og workflows må have samme navn.
+- En request, der ikke kan læses, står på øverste niveau i samlingerne som **Kan ikke læses (xxxxxxxx…)** med starten af dens id. Det samme gælder et workflow under **Workflows**. En mappe, hvis fil ikke kan læses, vises ikke, og det, den indeholder, står øverst, til filen er rettet.
+- **Søg i requests** øverst i Samlinger viser de requests, hvis navn indeholder teksten, med mapperne over dem. Er mappe-ikonet i feltet slået til, vises også alt i en mappe, hvis navn matcher, så `docs` viser hele mappen docs. Valget huskes. Træk og slip er slået fra, mens der søges.
 - Flyt requests og mapper ved at trække dem. En ramme markerer en destinationsmappe; en linje viser placeringen mellem elementer, og **Samlinger — rodniveau** øverst flytter til øverste niveau.
 - Højreklik på en request for **Omdøb…**, **Klon** og **Slet**, og på en mappe for **Auth…**, **Omdøb…** og **Slet**. **Klon** laver en kopi i samme mappe med et nummer efter navnet.
 - Dobbeltklik på en fane for at omdøbe den. Omdøbning af et draft gemmer requesten.
@@ -203,7 +205,7 @@ flowchart LR
 
 `RequestRunner` finder den gældende auth, sender kaldet gennem `HttpRequestSender` og gemmer resultatet i historikken. Mangler et token, som kan hentes uden login, henter den et nyt og sender én gang til. `AuthRefreshService` samordner tokenhentning, og `CollectionChanges` sørger for, at appens gemning, flytning og sletning ikke udføres oven i hinanden.
 
-En filovervåger opdaterer appen, når `requests\`, `request-order.json`, `history\`, `environments.json` eller `workflows\` ændres udefra, fx af CLI'et eller en AI. En ændret request-fil vinder over ugemte ændringer i dens fane. Et workflow genindlæses kun, når det ikke har ugemte ændringer, og under en kørsel først, når den er færdig.
+En filovervåger opdaterer appen, når `requests\`, `folders\`, `request-order.json`, `history\`, `environments.json` eller `workflows\` ændres udefra, fx af CLI'et eller en AI. En ændret request-fil vinder over ugemte ændringer i dens fane. Et workflow genindlæses kun, når det ikke har ugemte ændringer, og under en kørsel først, når den er færdig.
 
 `WorkflowLibrary` læser og gemmer workflows og deres scripts i `workflows\`. `WorkflowCheck` tjekker et workflow, før det køres, og `WorkflowRunner` kører trinene gennem den samme `HttpRequestSender` og skriver hver kørsel i `runs\`.
 
@@ -239,10 +241,11 @@ Testprojektet bruger xUnit og Microsoft.Testing.Platform. Det dækker blandt and
 |---|---|
 | `Ctrl+Enter` | Send den aktuelle request, eller kør det viste workflow |
 | `Ctrl+S` | Gem den aktuelle request eller det viste workflow |
+| `Ctrl+F` | Søg i samlingerne |
 | `Shift+Alt+F` | Formatér JSON/XML, når fokus er i bodyen |
 | `Ctrl+Z` / `Ctrl+Y` | Fortryd/gentag i bodyen, også formatering |
 | `Enter` | Åbn det valgte element i samlinger, historik eller workflows |
-| `Esc` | Luk et vindue eller en menu |
+| `Esc` | Luk et vindue eller en menu, eller ryd **Søg i requests**, når du står i feltet |
 
 ## Lokale data og hemmeligheder
 
@@ -250,19 +253,21 @@ Data gemmes ved siden af den kørende app. Efter `install.ps1` er det i `publish
 
 | Sti | Brug |
 |---|---|
-| `requests\` | Én JSON-fil pr. request, organiseret i de samme mapper som i appen |
-| `requests\<mappe>\.folder.json` | Mappens id og auth-indstillinger |
-| `request-order.json` | Rækkefølgen af requests og mapper |
+| `requests\<id>.json` | Én fil pr. request med navn, mappens id (`folderId`) og resten af requesten |
+| `folders\<id>.json` | Én fil pr. mappe med navn, overmappens id (`parentId`) og auth-indstillinger |
+| `request-order.json` | Rækkefølgen af requests og mapper som id'er |
 | `environments.json` | Miljøer og deres variabler |
-| `settings.json` | Valgt miljø, sprog, tema, **Ignorér certifikatfejl**, **Slet historik efter**, vindueslayout og gemte faner. CLI'et bruger også det valgte miljø og **Ignorér certifikatfejl** |
+| `settings.json` | Valgt miljø, sprog, tema, **Ignorér certifikatfejl**, **Slet historik efter**, vindueslayout, gemte faner og mappe-valget i **Søg i requests**. CLI'et bruger også det valgte miljø og **Ignorér certifikatfejl** |
 | `credentials.json` | Gemte credentials: miljø, navn og auth uden hemmeligheder |
 | `secrets.json` | Krypterede passwords, tokens og client secrets fra auth-felterne og credentials samt OAuth-tokens pr. miljø |
 | `pending-secret-cleanup.json` | Ejere, hvis hemmeligheder skal kontrolleres og ryddes op efter sletning |
 | `history\` | Ét JSON-dokument pr. kald fra appen eller CLI'et med request, svar eller fejl. Appen viser de 100 seneste og sletter gamle efter **Slet historik efter** |
-| `workflows\<navn>\workflow.json` | Ét workflow pr. mappe med id, parametre, variabler, auth og trin. Script-trinenes `.js`-filer ligger i samme mappe |
+| `workflows\<id>\workflow.json` | Ét workflow pr. mappe med navn, parametre, variabler, auth og trin. Script-trinenes `.js`-filer ligger i samme mappe |
 | `runs\<workflow-id>\` | Én JSON-linjefil pr. kørsel fra appen eller CLI'et med events, svar og gemte værdier. Slettes som `history\` |
 | `logs\` | Appens daglige logfiler, `hoboman-ÅÅÅÅMMDD.log`. CLI'et logger ikke |
 | `themes\<navn>.json` | Ét tema pr. fil, se [Indstillinger og temaer](#indstillinger-og-temaer) |
+
+Requests, mapper og workflows hedder deres id på disken, så omdøbning og flytning kun ændrer indholdet i én fil. Et id har 36 tegn med bindestreger, fx `3f2c9a1e-7b4d-4c8a-9e2f-5d6b7a8c9d0e`, og er ikke kun nuller. Fil- eller mappenavnet vinder over et `id` i filen, og en fil eller mappe, hvis navn ikke er et id, fx en kopi lavet i Stifinder, springes over.
 
 Auth-hemmeligheder beskyttes med Windows DPAPI for den aktuelle Windows-bruger. De ligger separat fra request-, mappe- og workflowfilerne. En kopi af `secrets.json` er derfor ikke en almindelig, flytbar eksport af loginoplysninger. Ved sletning ryddes tilhørende hemmeligheder op, når ingen tilbageværende request eller mappe bruger dem; afbrudt oprydning kan genoptages ved næste start. Workflowets egen auth gemmes under workflowets id og glemmes, når workflowet slettes i appen. Et workflow-trins hemmeligheder gemmes under id'et i trinnets `request` og glemmes, når trinnet fjernes, og workflowet gemmes, eller når workflowet slettes i appen, medmindre et andet workflow har et trin med samme id. Har en kørsel gemt hemmeligheder for trin, der aldrig er gemt, glemmes de, når workflowet gemmes uden dem, når du åbner et andet workflow, eller når appen lukkes. En credentials hemmeligheder gemmes under dens id og slettes med den eller med dens miljø.
 

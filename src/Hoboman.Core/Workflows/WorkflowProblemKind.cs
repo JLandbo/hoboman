@@ -2,7 +2,6 @@ namespace Hoboman.Core.Workflows;
 
 public enum WorkflowProblemKind
 {
-    MissingId,
     InvalidName,
     DuplicateName,
     UnknownParameter,

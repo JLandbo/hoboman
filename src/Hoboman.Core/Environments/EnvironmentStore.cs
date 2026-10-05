@@ -1,10 +1,9 @@
-using Hoboman.Core.Auth;
 using Hoboman.Core.Storage;
 using Microsoft.Extensions.Logging;
 
 namespace Hoboman.Core.Environments;
 
-public sealed class EnvironmentStore(AppFolder folder, SecretStore secrets, ILogger<EnvironmentStore> logger)
+public sealed class EnvironmentStore(AppFolder folder, ILogger<EnvironmentStore> logger)
 {
     readonly JsonFile<IReadOnlyList<ApiEnvironment>> _file = new(folder.Environments, [], logger);
 
@@ -17,8 +16,6 @@ public sealed class EnvironmentStore(AppFolder folder, SecretStore secrets, ILog
             return environments;
         }
         environments = await _file.UpdateAsync(WithIds, cancellationToken).ConfigureAwait(false);
-        // Tokens were saved under the environments' names before they had ids, and are fetched again.
-        await secrets.ForgetEnvironmentNamesAsync(cancellationToken).ConfigureAwait(false);
         logger.LogInformation("Gave the environments ids");
         return environments;
     }

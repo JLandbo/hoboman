@@ -12,6 +12,9 @@
         <KeyBinding Key="S" Modifiers="Control" Command="{Binding Content.Save}" />
         <KeyBinding Key="Enter" Modifiers="Control" Command="{Binding Content.Send}" />
     </Window.InputBindings>
+    <Window.CommandBindings>
+        <CommandBinding Command="Find" Executed="Find_Executed" />
+    </Window.CommandBindings>
     <Window.Resources>
         <Style x:Key="MenuCheck" TargetType="TextBlock">
             <Setter Property="DockPanel.Dock" Value="Left" />
@@ -124,7 +127,7 @@
                         </Border>
                     </DockPanel>
                     <Grid>
-                        <local:RequestTreeView Visibility="{Binding IsChecked, ElementName=CollectionsSection, Converter={StaticResource VisibleWhenTrue}}" />
+                        <local:RequestTreeView x:Name="Requests" Visibility="{Binding IsChecked, ElementName=CollectionsSection, Converter={StaticResource VisibleWhenTrue}}" />
                         <DockPanel Visibility="{Binding IsChecked, ElementName=HistorySection, Converter={StaticResource VisibleWhenTrue}}">
                             <TextBlock DockPanel.Dock="Bottom" Foreground="{DynamicResource Muted}" FontSize="12" Margin="8,10,0,0"
                                        Visibility="{Binding History.IsFull, Converter={StaticResource VisibleWhenTrue}}">

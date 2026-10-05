@@ -12,7 +12,6 @@ namespace Hoboman.ViewModels;
 public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refreshes, EnvironmentsViewModel environments, CredentialsViewModel? credentials, Translator translator, TimeProvider clock, ILogger logger) : ObservableObject
 {
     Guid _secretsId;
-    string? _folder;
     OAuthSettings? _oauth;
     string _savedPassword = "";
     string _savedToken = "";
@@ -166,7 +165,7 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
     // Secrets that cannot be read are shown as empty, and the caller tells why.
     public async Task LoadSecretsAsync(Guid id, CancellationToken cancellationToken)
     {
-        UseOwner(id, _folder);
+        UseOwner(id);
         string? password = null;
         string? token = null;
         string? clientSecret = null;
@@ -274,12 +273,12 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
         using var fetching = _fetching = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var settings = ToSettings();
         var clientSecret = ClientSecret;
-        var source = new AuthSource(_secretsId, settings with { OAuth = EditedOAuth() }, _folder);
+        var source = new AuthSource(_secretsId, settings with { OAuth = EditedOAuth() });
         try
         {
-            return await refreshes.FetchAsync(source, clientSecret, environment, async (token, environmentId, _) =>
+            return await refreshes.FetchAsync(source, clientSecret, environment, async (token, environmentId) =>
             {
-                if (_secretsId != source.SecretsId || _folder != source.Folder || ToSettings() != settings || ClientSecret != clientSecret || fetching.IsCancellationRequested)
+                if (_secretsId != source.SecretsId || ToSettings() != settings || ClientSecret != clientSecret || fetching.IsCancellationRequested)
                 {
                     return false;
                 }
@@ -314,14 +313,13 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
 
     internal void SetTokenProblem(Exception? exception) => TokenProblem = exception is null || Kind is not (AuthKind.Inherit or AuthKind.OAuth2) ? null : translator.Format("OAuth.Failed", ReasonOf(exception));
 
-    internal void UseOwner(Guid id, string? folder = null)
+    internal void UseOwner(Guid id)
     {
-        if (_secretsId != id || _folder != folder)
+        if (_secretsId != id)
         {
             CancelFetch();
         }
         _secretsId = id;
-        _folder = folder;
     }
 
     // The texts follow the language, and the token follows the chosen environment.

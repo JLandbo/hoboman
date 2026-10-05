@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace Hoboman.Tests.Environments;
 
 public sealed class EnvironmentStoreTests : IDisposable
@@ -10,7 +8,7 @@ public sealed class EnvironmentStoreTests : IDisposable
 
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
-    EnvironmentStore Store() => new(Folder, new(Folder, NullLogger<SecretStore>.Instance), NullLogger<EnvironmentStore>.Instance);
+    EnvironmentStore Store() => new(Folder, NullLogger<EnvironmentStore>.Instance);
 
     public void Dispose() => _temporary.Dispose();
 
@@ -82,7 +80,6 @@ public sealed class EnvironmentStoreTests : IDisposable
 
         // Assert
         Assert.Equal(written, File.GetLastWriteTimeUtc(Folder.Environments));
-        Assert.False(File.Exists(Folder.Secrets));
     }
 
     [Fact]
@@ -98,21 +95,5 @@ public sealed class EnvironmentStoreTests : IDisposable
         // Assert
         Assert.Equal(id, environments[0].Id);
         Assert.DoesNotContain(environments[1].Id, new[] { id, Guid.Empty });
-    }
-
-    [Fact]
-    public async Task AllAsync_WhenIdsAreAssigned_ThenRemovesTokensSavedUnderNames()
-    {
-        // Arrange
-        var owner = Guid.NewGuid();
-        var environment = Guid.NewGuid();
-        await Store().SaveAsync([new("Dev", [])], Cancellation);
-        File.WriteAllText(Folder.Secrets, $$"""{"{{owner}}/OAuthToken/Dev": "named token", "{{owner}}/OAuthToken/{{environment}}": "token"}""");
-
-        // Act
-        await Store().AllAsync(Cancellation);
-
-        // Assert
-        Assert.Equal([$"{owner}/OAuthToken/{environment}"], JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(Folder.Secrets))!.Keys);
     }
 }

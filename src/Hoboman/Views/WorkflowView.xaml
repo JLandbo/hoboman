@@ -29,26 +29,10 @@
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
-        <Style x:Key="Badge" TargetType="Border">
-            <Setter Property="CornerRadius" Value="6" />
-            <Setter Property="Padding" Value="7,1" />
-            <Setter Property="Background" Value="{DynamicResource SuccessSoft}" />
+        <Style x:Key="Badge" TargetType="Border" BasedOn="{StaticResource SmallStatusPill}">
             <Style.Triggers>
-                <DataTrigger Binding="{Binding IsSuccess}" Value="False">
-                    <Setter Property="Background" Value="{DynamicResource ErrorSoft}" />
-                </DataTrigger>
                 <DataTrigger Binding="{Binding Status}" Value="{x:Null}">
                     <Setter Property="Visibility" Value="Collapsed" />
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
-        <Style x:Key="BadgeText" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="11" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Foreground" Value="{DynamicResource Success}" />
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding IsSuccess}" Value="False">
-                    <Setter Property="Foreground" Value="{DynamicResource Error}" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -101,23 +85,17 @@
                             Visibility="{Binding IsRunning, Converter={StaticResource VisibleWhenTrue}}" />
                 </Grid>
                 <Button DockPanel.Dock="Right" Content="{DynamicResource Editor.Save}" Command="{Binding Save}" Style="{StaticResource PillButton}" FontSize="12" Padding="12,4" VerticalAlignment="Center" />
-                <Border x:Name="RunSummary" DockPanel.Dock="Right" CornerRadius="6" Padding="8,3" Margin="0,0,8,0" VerticalAlignment="Center">
+                <Border DockPanel.Dock="Right" Tag="{Binding HasSucceeded}" Margin="0,0,8,0" VerticalAlignment="Center">
                     <Border.Style>
-                        <Style TargetType="Border">
-                            <Setter Property="Background" Value="{DynamicResource ErrorSoft}" />
-                            <Setter Property="TextElement.Foreground" Value="{DynamicResource Error}" />
+                        <Style TargetType="Border" BasedOn="{StaticResource StatusPill}">
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding HasSucceeded}" Value="True">
-                                    <Setter Property="Background" Value="{DynamicResource SuccessSoft}" />
-                                    <Setter Property="TextElement.Foreground" Value="{DynamicResource Success}" />
-                                </DataTrigger>
                                 <DataTrigger Binding="{Binding Summary}" Value="{x:Null}">
                                     <Setter Property="Visibility" Value="Collapsed" />
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
                     </Border.Style>
-                    <TextBlock Text="{Binding Summary}" FontSize="12" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Summary}" />
                 </Border>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="{DynamicResource Workflow.Crumb}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,0,6,0" />
@@ -235,8 +213,8 @@
                                                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
                                                     <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFont}" FontSize="11" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0"
                                                                ToolTip="{DynamicResource Workflow.Retry}" Visibility="{Binding HasRetry, Converter={StaticResource VisibleWhenTrue}}" />
-                                                    <Border Style="{StaticResource Badge}">
-                                                        <TextBlock Text="{Binding Status}" Style="{StaticResource BadgeText}" />
+                                                    <Border Style="{StaticResource Badge}" Tag="{Binding IsSuccess}">
+                                                        <TextBlock Text="{Binding Status}" />
                                                     </Border>
                                                     <TextBlock Text="{Binding Elapsed}" Foreground="{DynamicResource Muted}" FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center" />
                                                     <TextBlock Text="{Binding State}" Foreground="{DynamicResource Muted}" FontSize="11" VerticalAlignment="Center" />

@@ -6,14 +6,14 @@ En AI arbejder med Hoboman udefra, gennem kommandolinjeprogrammet `hoboman-cli.e
 
 | AI'en vil | Sådan | Det sker |
 |---|---|---|
-| Finde requests | `hoboman-cli list` | Stierne til de gemte requests. Intet skrives |
-| Finde workflows og deres parametre | `hoboman-cli list workflows`, og læse `workflows\<navn>\workflow.json` | Intet skrives |
-| Sende en gemt request | `hoboman-cli send <sti>` | Ét kald med requestens egen auth eller mappens. Kaldet står i **Historik** med mærket **CLI** |
+| Finde requests | `hoboman-cli list` | Id og sti for hver gemt request. Intet skrives |
+| Finde workflows og deres parametre | `hoboman-cli list workflows`, og læse `workflows\<id>\workflow.json` | Intet skrives |
+| Sende en gemt request | `hoboman-cli send <id>` | Ét kald med requestens egen auth eller mappens. Kaldet står i **Historik** med mærket **CLI** |
 | Sende et direkte kald | `hoboman-cli send <METODE> <url>` | Ét kald uden auth ud over de headers, AI'en giver |
 | Hente en fil, fx en PDF | `hoboman-cli send … --out <fil>` | Svaret gemmes byte for byte i filen |
-| Køre et workflow | `hoboman-cli run <navn>` | Alle trin i rækkefølge. Hvert trin skrives som en JSON-linje, mens det kører, og i `runs\` |
+| Køre et workflow | `hoboman-cli run <id>` | Alle trin i rækkefølge. Hvert trin skrives som en JSON-linje, mens det kører, og i `runs\` |
 | Følge en kørsel, du startede i appen | Læse den nyeste fil i `runs\<workflow-id>\` | Intet skrives |
-| Bygge eller rette et workflow, når du beder om det | Skrive `workflow.json` og `.js`-filer i `workflows\<navn>\` | Workflowet står i appen med det samme |
+| Bygge eller rette et workflow, når du beder om det | Skrive `workflow.json` og `.js`-filer i `workflows\<id>\` | Workflowet står i appen med det samme |
 | Stoppe en kørsel | Ctrl+C | Kørslen slutter som `Cancelled` |
 
 Det gør du selv i appen:
@@ -34,7 +34,7 @@ Du kan sende API-kald og køre workflows gennem **Hoboman**, et API-værktøj p�
 ## Opsætning
 
 - Programmet ligger i `C:\sti\til\Hoboman\publish\hoboman-cli.exe`. Kald det altid med fuld sti.
-- Data ligger i samme mappe som programmet: `requests\`, `request-order.json`, `workflows\`, `runs\`, `history\`, `logs\`, `themes\`, `environments.json`, `credentials.json`, `settings.json`, `secrets.json` og `pending-secret-cleanup.json`. Det er uden betydning, hvilken mappe du står i.
+- Data ligger i samme mappe som programmet: `requests\`, `folders\`, `request-order.json`, `workflows\`, `runs\`, `history\`, `logs\`, `themes\`, `environments.json`, `credentials.json`, `settings.json`, `secrets.json` og `pending-secret-cleanup.json`. Det er uden betydning, hvilken mappe du står i.
 - Hoboman-appen behøver ikke at være åben. Er den det, viser den dine kald og de filer, du skriver, med det samme.
 - Kører du i Windows PowerShell 5.1, så sæt begge dele før kald. Ellers bliver æ, ø og å forkerte, eller til `?` uden fejl:
 
@@ -47,7 +47,7 @@ Du kan sende API-kald og køre workflows gennem **Hoboman**, et API-værktøj p�
 
 ## Regler
 
-1. **Rør ikke Hobomans datafiler.** Du må ikke oprette, ændre eller slette noget i `requests\`, `workflows\` eller `environments.json`, medmindre brugeren udtrykkeligt beder om det. `secrets.json`, `credentials.json`, `settings.json`, `request-order.json` og `pending-secret-cleanup.json` skriver du aldrig i.
+1. **Rør ikke Hobomans datafiler.** Du må ikke oprette, ændre eller slette noget i `requests\`, `folders\`, `workflows\` eller `environments.json`, medmindre brugeren udtrykkeligt beder om det. `secrets.json`, `credentials.json`, `settings.json`, `request-order.json` og `pending-secret-cleanup.json` skriver du aldrig i.
 2. **Læs altid exitkoden** (`$LASTEXITCODE`), før du bruger outputtet. stdout og stderr er JSON, bortset fra `list`, `--help` og `--version`, der skriver tekst.
 3. **Giv følsomme værdier via stdin** med `--vars -` eller `--params -`, aldrig som `--var`/`--param` på kommandolinjen, så de ikke havner i shellens historik. `run` skriver dog parametre og variabler i klartekst på stdout og i run-loggen, så giv kun en hemmelighed som parameter, når brugeren har bedt om det.
 4. **Gentag ikke hemmeligheder** som tokens, passwords og API-nøgler i dine svar til brugeren. Opsummér i stedet, fx "login lykkedes, token gemt".
@@ -64,7 +64,9 @@ hoboman-cli run <workflow> [--env <miljø>] [--param <navn=værdi>]... [--params
 hoboman-cli --help
 ```
 
-- `list` skriver de gemte requests som stier, én pr. linje, fx `Shop/Login`. Brug netop den sti med `send`. Vil du vide, hvad en request gør, før du sender den, så læs `requests\<sti>.json`; en mappes auth står i `.folder.json` i mappen.
+- `list` skriver én linje pr. gemt request: id'et, en tabulator og stien gennem mapperne, fx `3f2c…<tab>Shop/Login`. Del ved den første tabulator, og giv `send` id'et. Stien virker også, men navne er ikke unikke, og et navn kan selv indeholde `/`.
+- En linje uden sti er en fil, der ikke kan læses eller mangler `name`. I appen står en fil, der ikke kan læses, øverst i samlingerne som **Kan ikke læses (xxxxxxxx…)** med id'ets første 8 tegn. Læs `requests\<id>.json` for at se hvorfor, og fortæl brugeren det. Send den ikke for at finde ud af det.
+- Vil du vide, hvad en request gør, før du sender den, så læs `requests\<id>.json`. Dens mappe er `folderId`, og en mappes navn, auth og overmappe (`parentId`) står i `folders\<id>.json`.
 - `--env` skal være miljøets navn præcis, også store og små bogstaver. Miljøernes navne er `name` i `environments.json`. Læs kun navnene, for værdierne er ikke krypteret.
 - Uden `--env` bruges det miljø, brugeren har valgt i appen. Har brugeren intet valgt, bruges intet miljø, og `{{navne}}` udfyldes ikke.
 - En gemt request sendes med sine egne headers, body og auth. Du kan kun ændre dens `{{variabler}}` med `--var`/`--vars`.
@@ -93,8 +95,8 @@ Et svar skrives som én JSON-linje på stdout, også ved 4xx og 5xx:
 Et workflow er en række trin, der hver sender sin egen request, kører et script eller venter et antal sekunder. Værdier fra et svar, fx et token, gemmes i variabler, som de næste trin bruger.
 
 **Find workflows og deres parametre.**
-- `hoboman-cli list workflows` skriver workflowenes navne, ét pr. linje. Navnet er det, du giver til `run`.
-- Hvert workflow er en mappe `workflows\<navn>\` med en `workflow.json`.
+- `hoboman-cli list workflows` skriver id og navn på hvert workflow, adskilt af en tabulator. Giv `run` id'et. Et workflow uden navn kan ikke læses eller mangler `name`. Læs dets `workflow.json` for at se hvorfor, og kør det ikke for at finde ud af det.
+- Hvert workflow er en mappe `workflows\<id>\` med en `workflow.json`.
 - Læs `parameters` i `workflow.json`. En parameter uden `default` er påkrævet og skal gives med `--param navn=værdi` eller `--params`.
 - `--param` giver altid tekst. Skal en værdi være et tal eller et objekt, så brug `--params` med et JSON-objekt.
 - Hvert trin har præcis én af `request` (metode, URL, query, headers, body og auth), `script` (en `.js`-fil i mappen) og `delaySeconds`. Et trin med `"auth": { "kind": "Inherit" }` bruger workflowets fælles `auth`; uden `auth` sender trinnet ingen. Hemmeligheder til auth ligger ikke i filen.
@@ -105,14 +107,15 @@ Et workflow er en række trin, der hver sender sin egen request, kører et scrip
 ```powershell
 $cli = "C:\sti\til\Hoboman\publish\hoboman-cli.exe"
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-$lines = & $cli run Ordre-sync --env Demo --param orderId=o-17
+$id = "9bf2fef5-9047-4075-969c-db7c7377a62d"   # fra list workflows
+$lines = & $cli run $id --env Demo --param orderId=o-17
 $code = $LASTEXITCODE
 ```
 
 Med parametre fra stdin:
 
 ```powershell
-@{ orderId = 'o-17'; pageSize = 50 } | ConvertTo-Json | & $cli run Ordre-sync --params -
+@{ orderId = 'o-17'; pageSize = 50 } | ConvertTo-Json | & $cli run $id --params -
 ```
 
 **Events.** `run` skriver én JSON-linje pr. event på stdout, mens kørslen sker. Der er altid kun én kørsel pr. kald.
@@ -159,18 +162,18 @@ switch ($finished.outcome) {
 **Lange kørsler.**
 - Start `run` som en baggrundsopgave, og læs `runFile` fra første linje.
 - Eller følg filen live: `Get-Content -LiteralPath $runFile -Wait -Encoding UTF8`. Stop ved `run.finished`.
-- Kørsler startet i appen ligger også i `runs\<workflowId>\`. Id'et står i `workflow.json`. Den nyeste fil er den seneste kørsel. Appen kan være sat til at slette kald og kørsler efter et antal dage.
+- Kørsler startet i appen ligger også i `runs\<workflowId>\`. Id'et er navnet på workflowets mappe. Den nyeste fil er den seneste kørsel. Appen kan være sat til at slette kald og kørsler efter et antal dage.
 - Ctrl+C afbryder pænt med `run.finished` `Cancelled`. Dræbes processen, fx når en baggrundsopgave når sin tidsgrænse, kommer der ingen `run.finished`.
 
 ## Byg et workflow (kun når brugeren beder om det)
 
-- Skriv `workflows\<navn>\workflow.json` som UTF-8. Navnet må ikke indeholde `/`, starte med `.` eller slutte med `.` eller mellemrum. Scripts ligger som `.js`-filer i samme mappe.
-- Giv workflowet et nyt `id`, fx fra `[guid]::NewGuid()`. Kopiér aldrig et `id` fra et andet workflow, en request eller et trin.
+- Opret mappen `workflows\<id>\` med et nyt id, fx fra `[guid]::NewGuid()`, og skriv `workflow.json` i den som UTF-8 med workflowets navn i `name`. Id'et skal stå som 36 tegn med bindestreger uden `{}`; en mappe med et andet navn springes over uden besked. Scripts ligger som `.js`-filer i samme mappe.
+- Kopiér aldrig et id fra et andet workflow, en request eller et trin.
 - Hvert navn, et trin gemmer i, skal stå i `variables`. Et eksisterende workflow er et godt forlæg, og hele formatet står i Hobomans `CLI.md`. Et lille eksempel:
 
   ```json
   {
-    "id": "8cfcb72a-66ca-4f32-830a-cd886d8c478e",
+    "name": "Ny kurv",
     "parameters": [ { "name": "username", "default": "emilys" }, { "name": "password" } ],
     "variables": [ { "name": "token" }, { "name": "newCart" } ],
     "steps": [
@@ -190,17 +193,18 @@ switch ($finished.outcome) {
 - Skriv egenskaberne i camelCase og enums som tekst, fx `"Json"`, `"Inherit"`, `"OAuth2"`. En ukendt eller stavet forkert egenskab giver `Workflow file is not valid.` med fil, sti og linje.
 - Skriv ikke `id` i trinenes `request`; appen giver dem et, når brugeren gemmer workflowet. Skal et trin have auth med en hemmelighed, så bed brugeren udfylde den under Auth i appen og gemme. Auth kan også gives som en header med et token fra et tidligere trin, fx `Authorization: Bearer {{token}}`.
 - Et script læser `vars.navn`, som ikke kan ændres, og returnerer det, trinnet gemmer fra med `saves`, fx `"from": "$.cart"`. Det kører som strict JavaScript uden filer, netværk, .NET og `eval` og stoppes efter 5 sekunder.
-- Appen viser workflowet med det samme. Har brugeren ugemte ændringer i det samme workflow, genindlæses det ikke, og brugerens næste gem overskriver din fil, så sig til, når du har skrevet. Når brugeren gemmer, skriver appen `variables` ud fra trinenes `saves`.
+- Appen viser workflowet med det samme. Kan `workflow.json` ikke læses, står det under **Workflows** som **Kan ikke læses (xxxxxxxx…)**. Har brugeren ugemte ændringer i det samme workflow, genindlæses det ikke, og brugerens næste gem overskriver din fil, så sig til, når du har skrevet. Når brugeren gemmer, skriver appen `variables` ud fra trinenes `saves`.
 - Vil du teste workflowet, så spørg først: `run` sender med det samme.
 - Slet ikke workflow-mapper selv. Slettes et workflow i appen, slettes dets hemmeligheder også.
 
 ## Fejl og hvad du gør
 
-Ved `run` står de samme tekster som `error` i et trins `step.finished` (exitkode 1), fx når en hemmelighed eller et token mangler på et workflow-trin. Et trin med egen auth finder sine hemmeligheder under `id` i trinnets `request`, og et trin med `Inherit` under workflowets `id`. Mangler `id`, eller er hemmeligheden aldrig skrevet under Auth i appen og gemt, så bed brugeren gøre det.
+Ved `run` står de samme tekster som `error` i et trins `step.finished` (exitkode 1), fx når en hemmelighed eller et token mangler på et workflow-trin. Et trin med egen auth finder sine hemmeligheder under `id` i trinnets `request`, og et trin med `Inherit` under workflowets id. Mangler trinnets `id`, eller er hemmeligheden aldrig skrevet under Auth i appen og gemt, så bed brugeren gøre det.
 
 | Fejl (stderr `error`) | Gør |
 |---|---|
-| `Saved request could not be loaded.` | Stien findes ikke. Kør `list`, og brug en sti derfra |
+| `Saved request could not be loaded.` | Id'et eller stien findes ikke. Kør `list`, og brug et id derfra |
+| `Saved request name is ambiguous. Use its id.` | Flere requests har stien. Brug id'et fra `list` |
 | `Saved request file is not valid.` | Den gemte request er ugyldig JSON. `file`, `path` og `line` viser hvor. Fortæl brugeren det |
 | `Selected environment was not found.` | Miljøet findes ikke. Spørg brugeren om det rigtige navn |
 | `Environment settings could not be read.` | Bed brugeren åbne Hoboman og tjekke miljøerne |
@@ -208,14 +212,15 @@ Ved `run` står de samme tekster som `error` i et trins `step.finished` (exitkod
 | `Required authentication secret is missing.` | Bed brugeren udfylde auth på requesten, mappen, workflowet eller workflow-trinnet i Hoboman og gemme |
 | `Network request failed.` / `Request timed out.` | Serveren kunne ikke nås eller svarede ikke inden for 100 sekunder. Fortæl det, og prøv højst én gang til efter aftale |
 | `Invalid request URL.` / `Invalid request input.` | Tjek URL, metode, headers og variabler. Et ukendt `{{navn}}` bliver stående i URL'en |
-| `Input could not be read.` | En fil kunne ikke læses, typisk `@fil`, `--vars fil` eller `--params fil`. Tjek stien. En relativ sti læses fra den mappe, du står i |
+| `Input could not be read.` | En fil kunne ikke læses, typisk `@fil`, `--vars fil` eller `--params fil`. Tjek stien. En relativ sti læses fra den mappe, du står i. Gav du ingen fil, er det en af Hobomans egne filer, fx en mappes `folders\<id>.json`. Fortæl brugeren det |
 | `Request body could not be encoded.` | Bodyen kunne ikke Base64-encodes, fx fordi den ikke er gyldig JSON eller mangler et markeret felt. Bed brugeren rette requesten eller trinnet i Hoboman |
 | `Request was cancelled.` | Kaldet blev afbrudt med Ctrl+C |
 | `Request failed.` | En anden fejl. Fortæl brugeren det |
 | `Output file could not be written.` | Filen i `--out` kunne ikke skrives. Tjek stien; mappen skal findes. Kaldet er sendt |
-| `Invalid command arguments. Use --help for usage.` | Ret kommandoen. `--env`, `--json`, `--text`, `--vars` og `--params` må kun gives én gang |
+| `Invalid command arguments. Use --help for usage.` | Ret kommandoen. `--env`, `--json`, `--text`, `--out`, `--vars` og `--params` må kun gives én gang |
 | `Invalid variable input.` / `Invalid parameter input.` | `--var`/`--param` skal være `navn=værdi`, og `--vars`/`--params` et JSON-objekt. `-` kræver, at der pipes noget ind |
-| `Workflow could not be loaded.` | Workflowet findes ikke. Se mapperne i `workflows\` |
+| `Workflow could not be loaded.` | Workflowet findes ikke. Kør `list workflows`, og brug et id derfra |
+| `Workflow name is ambiguous. Use its id.` | Flere workflows har navnet. Brug id'et fra `list workflows` |
 | `Workflow file is not valid.` | `workflow.json` er ugyldig. `file`, `path` og `line` viser hvor. Fortæl brugeren det |
 | `Workflow cannot run.` | Se `problems` nedenfor |
 
@@ -227,7 +232,7 @@ Ved `run` står de samme tekster som `error` i et trins `step.finished` (exitkod
 | `UnknownParameter` | Fjern eller ret parameteren. Se `parameters` i `workflow.json` |
 | `UsedBeforeSaved` | Et trin bruger en variabel, før et tidligere trin har gemt den. Workflowet skal rettes |
 | `UnknownName` | Navnet findes hverken i workflowet eller i det valgte miljø. Tjek, at det rigtige miljø er valgt (`--env`). Ellers skal workflowet eller miljøet rettes |
-| `MissingId`, `MissingUrl`, `InvalidName`, `DuplicateName`, `NotAVariable`, `InvalidSource`, `MixedStep`, `InvalidDelay`, `InvalidRetry` | Workflowet er sat forkert op. Har du selv skrevet det, så ret det; ellers bed brugeren rette det i Hoboman |
+| `MissingUrl`, `InvalidName`, `DuplicateName`, `NotAVariable`, `InvalidSource`, `MixedStep`, `InvalidDelay`, `InvalidRetry` | Workflowet er sat forkert op. Har du selv skrevet det, så ret det; ellers bed brugeren rette det i Hoboman |
 | `ScriptNotFound`, `InvalidScript` | Et script-trins `.js`-fil mangler eller har en syntaksfejl (`detail` viser fil og linje). Ret den, hvis du selv har skrevet den; ellers bed brugeren rette den |
 
 Et trin, hvor en værdi i `saves` mangler i svaret, fejler med `error` = `Nothing to save was found at <sti>.` Svaret havde ikke den forventede form. Værdier gemmes kun efter et 2xx-svar.

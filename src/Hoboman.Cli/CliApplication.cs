@@ -38,10 +38,22 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         }
     }
 
+    // The id first, as a name can hold anything but a tab, so a line splits at its first tab.
+    // A file that cannot be read has no name, so it is listed by its id alone, and send or run with the id tells what is wrong with it.
     async Task<int> ListAsync(bool workflowNames, CancellationToken cancellationToken)
     {
-        var names = workflowNames ? await workflows.NamesAsync(cancellationToken) : await library.NamesAsync(cancellationToken);
-        await output.WriteNamesAsync(names.Order(StringComparer.OrdinalIgnoreCase).ThenBy(name => name, StringComparer.Ordinal), cancellationToken);
+        IEnumerable<(Guid Id, string Name)> listed;
+        if (workflowNames)
+        {
+            listed = (await workflows.ListAsync(cancellationToken)).Select(workflow => (workflow.Id, workflow.Name ?? ""));
+        }
+        else
+        {
+            var collection = await library.LoadAllAsync(cancellationToken);
+            listed = collection.Requests.Select(request => (request.Id, collection.PathOf(request))).Concat(collection.Unreadable.Select(id => (id, "")));
+        }
+        await output.WriteNamesAsync(listed.OrderBy(line => line.Name, StringComparer.OrdinalIgnoreCase).ThenBy(line => line.Name, StringComparer.Ordinal).ThenBy(line => line.Id)
+            .Select(line => $"{line.Id}\t{line.Name}"), cancellationToken);
         return 0;
     }
 
@@ -56,18 +68,32 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         {
             return await output.WriteErrorAsync("Invalid variable input.");
         }
-        var name = input.IsDirect ? null : input.Target[0];
         ApiRequest? request;
         try
         {
-            request = input.IsDirect ? await RequestInput.CreateAsync(input, cancellationToken) : await library.LoadAsync(name!, cancellationToken);
+            if (input.IsDirect)
+            {
+                request = await RequestInput.CreateAsync(input, cancellationToken);
+            }
+            else
+            {
+                // A request found by its id is read alone, and one found by its path needs them all, as names are only in the files.
+                IReadOnlyList<ApiRequest> found = RequestLibrary.TryIdOf(input.Target[0], out var id)
+                    ? await library.LoadAsync(id, cancellationToken) is { } loaded ? [loaded] : []
+                    : (await library.LoadAllAsync(cancellationToken)).Find(input.Target[0]);
+                if (found.Count > 1)
+                {
+                    return await output.WriteErrorAsync("Saved request name is ambiguous. Use its id.");
+                }
+                request = found.SingleOrDefault();
+            }
         }
         catch (InvalidFileException exception) when (!input.IsDirect && exception.InnerException is JsonException invalid)
         {
             // Only where the file is wrong is told, as the message of the exception can quote a value from it.
             return await output.WriteErrorAsync(new { error = "Saved request file is not valid.", file = exception.FilePath, path = invalid.Path, line = invalid.LineNumber + 1 });
         }
-        catch (Exception exception) when (!input.IsDirect && (FileProblem.Is(exception) || exception is ArgumentException))
+        catch (Exception exception) when (!input.IsDirect && FileProblem.Is(exception))
         {
             request = null;
         }
@@ -82,7 +108,7 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         }
         // The temporary values only live in this call, and a token is saved for the environment, so it is fetched without them.
         var used = overrides.Count > 0 ? environment.WithVariables(overrides) : environment;
-        var response = await runner.RunAsync(request, name, used, HistorySource.Cli, auth => tokens.FetchAsync(auth, environment, cancellationToken), cancellationToken);
+        var response = await runner.RunAsync(request, used, HistorySource.Cli, auth => tokens.FetchAsync(auth, environment, cancellationToken), cancellationToken);
         if (input.OutFile is null)
         {
             return await output.WriteResponseAsync(response, cancellationToken);
@@ -114,14 +140,20 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         Workflow? workflow;
         try
         {
-            workflow = await workflows.LoadAsync(input.Workflow, cancellationToken);
+            var found = RequestLibrary.TryIdOf(input.Workflow, out var id) ? [id]
+                : (await workflows.ListAsync(cancellationToken)).Where(named => string.Equals(named.Name, input.Workflow, StringComparison.OrdinalIgnoreCase)).Select(named => named.Id).ToList();
+            if (found.Count > 1)
+            {
+                return await output.WriteErrorAsync("Workflow name is ambiguous. Use its id.");
+            }
+            workflow = found.Count == 1 ? await workflows.LoadAsync(found[0], cancellationToken) : null;
         }
         catch (InvalidFileException exception) when (exception.InnerException is JsonException invalid)
         {
             // Only where the file is wrong is told, as the message of the exception can quote a value from it.
             return await output.WriteErrorAsync(new { error = "Workflow file is not valid.", file = exception.FilePath, path = invalid.Path, line = invalid.LineNumber + 1 });
         }
-        catch (Exception exception) when (FileProblem.Is(exception) || exception is ArgumentException)
+        catch (Exception exception) when (FileProblem.Is(exception))
         {
             workflow = null;
         }
@@ -134,7 +166,7 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         {
             return await output.WriteErrorAsync(problem!);
         }
-        var checkedWorkflow = await check.CheckAsync(input.Workflow, workflow, environment, parameters, cancellationToken);
+        var checkedWorkflow = await check.CheckAsync(workflow, environment, parameters, cancellationToken);
         if (checkedWorkflow.Problems.Count > 0)
         {
             return await output.WriteErrorAsync(new { error = "Workflow cannot run.", problems = checkedWorkflow.Problems });
@@ -153,7 +185,7 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
             var environment = chosen switch
             {
                 null => await environments.FindAsync(name, cancellationToken),
-                { EnvironmentId: null, EnvironmentName: null } => ApiEnvironment.None,
+                { EnvironmentId: null } => ApiEnvironment.None,
                 _ => chosen.EnvironmentIn(await environments.AllAsync(cancellationToken)),
             };
             return environment is null ? (null, "Selected environment was not found.") : (environment, null);

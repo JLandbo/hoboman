@@ -28,16 +28,16 @@ public sealed class AuthRefreshServiceTests : IDisposable
         var requestsMade = 0;
         var service = Service(new(cancellationToken => { requestsMade++; return login.Task.WaitAsync(cancellationToken); }));
         var source = new AuthSource(Guid.NewGuid(), new(AuthKind.OAuth2));
-        var fetching = service.FetchAsync(source, "secret", _dev, (_, _, _) => Task.FromResult(true), Cancellation);
+        var fetching = service.FetchAsync(source, "secret", _dev, (_, _) => Task.FromResult(true), Cancellation);
 
-        var duplicate = await service.FetchAsync(source, "secret", _dev, (_, _, _) => Task.FromResult(true), Cancellation);
+        var duplicate = await service.FetchAsync(source, "secret", _dev, (_, _) => Task.FromResult(true), Cancellation);
         login.SetResult(FakeOAuthClient.Token);
         var fetched = await fetching;
 
         Assert.False(duplicate);
         Assert.True(fetched);
         Assert.Equal(1, requestsMade);
-        Assert.False(service.IsRefreshing(AuthRefreshService.OwnerOf(source), _dev.Id));
+        Assert.False(service.IsRefreshing(source.SecretsId, _dev.Id));
     }
 
     [Fact]
@@ -47,12 +47,12 @@ public sealed class AuthRefreshServiceTests : IDisposable
         var service = Service(new(cancellationToken => login.Task.WaitAsync(cancellationToken)));
         var source = new AuthSource(Guid.NewGuid(), new(AuthKind.OAuth2));
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(Cancellation);
-        var fetching = service.FetchAsync(source, "secret", ApiEnvironment.None, (_, _, _) => Task.FromResult(true), cancellation.Token);
+        var fetching = service.FetchAsync(source, "secret", ApiEnvironment.None, (_, _) => Task.FromResult(true), cancellation.Token);
 
         cancellation.Cancel();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fetching);
-        Assert.False(service.IsRefreshing(AuthRefreshService.OwnerOf(source), Guid.Empty));
+        Assert.False(service.IsRefreshing(source.SecretsId, Guid.Empty));
     }
 
     [Fact]
@@ -61,39 +61,32 @@ public sealed class AuthRefreshServiceTests : IDisposable
         var service = Service(new(_ => Task.FromException<OAuthToken>(new HttpRequestException("Rejected"))));
         var source = new AuthSource(Guid.NewGuid(), new(AuthKind.OAuth2));
 
-        await Assert.ThrowsAsync<HttpRequestException>(() => service.FetchAsync(source, "secret", ApiEnvironment.None, (_, _, _) => Task.FromResult(true), Cancellation));
+        await Assert.ThrowsAsync<HttpRequestException>(() => service.FetchAsync(source, "secret", ApiEnvironment.None, (_, _) => Task.FromResult(true), Cancellation));
 
-        Assert.False(service.IsRefreshing(AuthRefreshService.OwnerOf(source), Guid.Empty));
+        Assert.False(service.IsRefreshing(source.SecretsId, Guid.Empty));
     }
 
     [Fact]
-    public async Task RefreshFolderAsync_WhenTheFolderHasItsOwnId_ThenSavesItsTokenWithoutChangingTheId()
+    public async Task RefreshFolderAsync_WhenTheFolderHasOAuth_ThenSavesItsTokenUnderItsIdAndLeavesItsFile()
     {
-        var settings = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.OAuth2) };
-        await Library.SaveFolderAsync("Users", settings, Cancellation);
-        await Secrets.SaveAsync(settings.Id, SecretKind.ClientSecret, "secret", Cancellation);
+        var folder = new RequestFolder { Id = Guid.NewGuid(), Name = "Users", Auth = new(AuthKind.OAuth2) };
+        await Library.SaveFolderAsync(folder, Cancellation);
+        await Secrets.SaveAsync(folder.Id, SecretKind.ClientSecret, "secret", Cancellation);
         var oauth = new FakeOAuthClient();
 
-        var refreshed = await Service(oauth).RefreshFolderAsync(new(settings.Id, settings.Auth, "Users"), _dev, Cancellation);
+        var refreshed = await Service(oauth).RefreshFolderAsync(new(folder.Id, folder.Auth, "Users"), _dev, Cancellation);
 
         Assert.True(refreshed);
-        Assert.Equal(settings, await Library.LoadFolderAsync("Users", Cancellation));
-        Assert.Equal(FakeOAuthClient.Token.ToJson(), await Secrets.OfAsync(settings.Id, SecretKind.OAuthToken, _dev.Id, Cancellation));
+        Assert.Equal(folder, await Library.LoadFolderAsync(folder.Id, Cancellation));
+        Assert.Equal(FakeOAuthClient.Token.ToJson(), await Secrets.OfAsync(folder.Id, SecretKind.OAuthToken, _dev.Id, Cancellation));
         Assert.Equal("secret", oauth.Asked!.Value.ClientSecret);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task RefreshFolderAsync_WhenTheIdChangesDuringParallelRefreshes_ThenAllEnvironmentsUseTheNewId(bool sharedId)
+    [Fact]
+    public async Task RefreshFolderAsync_WhenRefreshedInSeveralEnvironmentsAtOnce_ThenFetchesOncePerEnvironmentAndSavesEach()
     {
-        var settings = new FolderSettings { Id = sharedId ? Guid.NewGuid() : Guid.Empty, Auth = new(AuthKind.OAuth2) };
-        await Library.SaveFolderAsync("Users", settings, Cancellation);
-        if (sharedId)
-        {
-            await Library.SaveFolderAsync("Copy", settings, Cancellation);
-            await Secrets.SaveAsync(settings.Id, SecretKind.ClientSecret, "secret", Cancellation);
-        }
+        var folder = new RequestFolder { Id = Guid.NewGuid(), Name = "Users", Auth = new(AuthKind.OAuth2) };
+        await Library.SaveFolderAsync(folder, Cancellation);
         var developmentLogin = new TaskCompletionSource<OAuthToken>();
         var productionLogin = new TaskCompletionSource<OAuthToken>();
         using var loginStarted = new SemaphoreSlim(0);
@@ -109,7 +102,7 @@ public sealed class AuthRefreshServiceTests : IDisposable
             loginStarted.Release();
             return login;
         }));
-        var source = new AuthSource(settings.Id, settings.Auth, "Users");
+        var source = new AuthSource(folder.Id, folder.Auth, "Users");
         var development = service.RefreshFolderAsync(source, _dev, Cancellation);
         await loginStarted.WaitAsync(Cancellation);
         var production = service.RefreshFolderAsync(source, _prod, Cancellation);
@@ -117,55 +110,47 @@ public sealed class AuthRefreshServiceTests : IDisposable
 
         developmentLogin.SetResult(FakeOAuthClient.Token);
         Assert.True(await development);
-        var saved = (await Library.LoadFolderAsync("Users", Cancellation))!;
-        Assert.NotEqual(settings.Id, saved.Id);
-        Assert.True(service.IsRefreshing(AuthRefreshService.OwnerOf(source), _prod.Id));
-        Assert.True(service.IsRefreshing(AuthRefreshService.OwnerOf(source with { SecretsId = saved.Id }), _prod.Id));
-        Assert.False(await service.RefreshFolderAsync(source with { SecretsId = saved.Id }, _prod, Cancellation));
+        Assert.True(service.IsRefreshing(source.SecretsId, _prod.Id));
+        Assert.False(await service.RefreshFolderAsync(source, _prod, Cancellation));
         Assert.Equal(2, requestsMade);
         Assert.True(await service.RefreshFolderAsync(source, _staging, Cancellation));
         productionLogin.SetResult(FakeOAuthClient.Token);
 
         Assert.True(await production);
-        Assert.Equal(new[] { _dev.Id, _prod.Id, _staging.Id }.Order(), (await Secrets.OfEachEnvironmentAsync(saved.Id, SecretKind.OAuthToken, Cancellation)).Keys.Order());
-        if (sharedId)
-        {
-            Assert.Equal("secret", await Secrets.OfAsync(saved.Id, SecretKind.ClientSecret, Cancellation));
-            Assert.Equal(settings, await Library.LoadFolderAsync("Copy", Cancellation));
-        }
+        Assert.Equal(new[] { _dev.Id, _prod.Id, _staging.Id }.Order(), (await Secrets.OfEachEnvironmentAsync(folder.Id, SecretKind.OAuthToken, Cancellation)).Keys.Order());
     }
 
     [Fact]
-    public async Task RefreshFolderAsync_WhenTheFolderMovesDuringLogin_ThenDoesNotRecreateIt()
+    public async Task RefreshFolderAsync_WhenTheFolderIsDeletedDuringLogin_ThenDoesNotRecreateIt()
     {
-        var settings = new FolderSettings { Auth = new(AuthKind.OAuth2) };
-        await Library.SaveFolderAsync("Users", settings, Cancellation);
+        var folder = new RequestFolder { Id = Guid.NewGuid(), Name = "Users", Auth = new(AuthKind.OAuth2) };
+        await Library.SaveFolderAsync(folder, Cancellation);
         var login = new TaskCompletionSource<OAuthToken>();
         var service = Service(new(cancellationToken => login.Task.WaitAsync(cancellationToken)));
-        var fetching = service.RefreshFolderAsync(new(settings.Id, settings.Auth, "Users"), ApiEnvironment.None, Cancellation);
+        var fetching = service.RefreshFolderAsync(new(folder.Id, folder.Auth, "Users"), ApiEnvironment.None, Cancellation);
 
-        await Library.RenameFolderAsync("Users", "Moved", Cancellation);
+        await Library.DeleteFolderAsync(folder.Id, Cancellation);
         login.SetResult(FakeOAuthClient.Token);
 
         Assert.False(await fetching);
-        Assert.False(Library.FolderExists("Users"));
-        Assert.Equal(settings, await Library.LoadFolderAsync("Moved", Cancellation));
+        Assert.False(Library.FolderExists(folder.Id));
+        Assert.Null(await Secrets.OfAsync(folder.Id, SecretKind.OAuthToken, Cancellation));
     }
 
     [Fact]
     public async Task RefreshFolderAsync_WhenTheAuthChangesDuringLogin_ThenDiscardsTheToken()
     {
-        var settings = new FolderSettings { Id = Guid.NewGuid(), Auth = new(AuthKind.OAuth2) };
-        await Library.SaveFolderAsync("Users", settings, Cancellation);
+        var folder = new RequestFolder { Id = Guid.NewGuid(), Name = "Users", Auth = new(AuthKind.OAuth2) };
+        await Library.SaveFolderAsync(folder, Cancellation);
         var login = new TaskCompletionSource<OAuthToken>();
         var service = Service(new(cancellationToken => login.Task.WaitAsync(cancellationToken)));
-        var fetching = service.RefreshFolderAsync(new(settings.Id, settings.Auth, "Users"), ApiEnvironment.None, Cancellation);
+        var fetching = service.RefreshFolderAsync(new(folder.Id, folder.Auth, "Users"), ApiEnvironment.None, Cancellation);
 
-        await Library.SaveFolderAsync("Users", settings with { Auth = AuthSettings.None }, Cancellation);
+        await Library.SaveFolderAsync(folder with { Auth = AuthSettings.None }, Cancellation);
         login.SetResult(FakeOAuthClient.Token);
 
         Assert.False(await fetching);
-        Assert.Null(await Secrets.OfAsync(settings.Id, SecretKind.OAuthToken, Cancellation));
+        Assert.Null(await Secrets.OfAsync(folder.Id, SecretKind.OAuthToken, Cancellation));
     }
 
     [Fact]

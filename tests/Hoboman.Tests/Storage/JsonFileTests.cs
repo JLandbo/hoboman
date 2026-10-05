@@ -44,7 +44,7 @@ public sealed class JsonFileTests : IDisposable
         File.WriteAllText(FilePath, "{");
 
         // Act
-        var updating = Store().UpdateAsync(settings => settings with { EnvironmentName = "Test" }, Cancellation);
+        var updating = Store().UpdateAsync(settings => settings with { LanguageName = "Test" }, Cancellation);
 
         // Assert
         await Assert.ThrowsAsync<InvalidFileException>(() => updating);
@@ -58,7 +58,7 @@ public sealed class JsonFileTests : IDisposable
         File.WriteAllText(FilePath, "{");
 
         // Act
-        await Record.ExceptionAsync(() => Store().UpdateAsync(settings => settings with { EnvironmentName = "Test" }, Cancellation));
+        await Record.ExceptionAsync(() => Store().UpdateAsync(settings => settings with { LanguageName = "Test" }, Cancellation));
 
         // Assert
         Assert.Equal("{", File.ReadAllText(FilePath));
@@ -68,20 +68,20 @@ public sealed class JsonFileTests : IDisposable
     public async Task SaveAsync_WhenCalled_ThenWritesCamelCaseNames()
     {
         // Act
-        await Store().SaveAsync(new AppSettings("Test"), Cancellation);
+        await Store().SaveAsync(new AppSettings(LanguageName: "Test"), Cancellation);
 
         // Assert
-        Assert.Contains("\"environmentName\": \"Test\"", File.ReadAllText(FilePath));
+        Assert.Contains("\"languageName\": \"Test\"", File.ReadAllText(FilePath));
     }
 
     [Fact]
     public async Task SaveAsync_WhenTextHasQuotesAndLetters_ThenWritesThemAsTheyAre()
     {
         // Act
-        await Store().SaveAsync(new AppSettings("Søren \"&\" Co"), Cancellation);
+        await Store().SaveAsync(new AppSettings(LanguageName: "Søren \"&\" Co"), Cancellation);
 
         // Assert
-        Assert.Contains("\"environmentName\": \"Søren \\\"&\\\" Co\"", File.ReadAllText(FilePath));
+        Assert.Contains("\"languageName\": \"Søren \\\"&\\\" Co\"", File.ReadAllText(FilePath));
     }
 
     [Fact]
@@ -91,7 +91,7 @@ public sealed class JsonFileTests : IDisposable
         await Store().SaveAsync(AppSettings.Default, Cancellation);
 
         // Assert
-        Assert.DoesNotContain("environmentName", File.ReadAllText(FilePath));
+        Assert.DoesNotContain("languageName", File.ReadAllText(FilePath));
     }
 
     [Fact]
@@ -102,7 +102,7 @@ public sealed class JsonFileTests : IDisposable
         File.WriteAllText(FilePath, """
             {
               // chosen by an agent
-              "environmentName": "Dev",
+              "languageName": "Dev",
             }
             """);
 
@@ -110,33 +110,33 @@ public sealed class JsonFileTests : IDisposable
         var settings = await Store().LoadAsync(Cancellation);
 
         // Assert
-        Assert.Equal("Dev", settings.EnvironmentName);
+        Assert.Equal("Dev", settings.LanguageName);
     }
 
     [Fact]
     public async Task LoadAsync_WhenSaved_ThenReturnsTheSameValue()
     {
         // Arrange
-        await Store().SaveAsync(new AppSettings("Test", IgnoreCertificateErrors: true), Cancellation);
+        await Store().SaveAsync(new AppSettings(LanguageName: "Test", IgnoreCertificateErrors: true), Cancellation);
 
         // Act
         var settings = await Store().LoadAsync(Cancellation);
 
         // Assert
-        Assert.Equal(new AppSettings("Test", IgnoreCertificateErrors: true), settings);
+        Assert.Equal(new AppSettings(LanguageName: "Test", IgnoreCertificateErrors: true), settings);
     }
 
     [Fact]
     public async Task LoadAsync_WhenTheFileIsLockedForAMoment_ThenReadsItOnceItIsReleased()
     {
         // Arrange
-        ReleaseSoon(Locked("""{"environmentName": "Test"}"""));
+        ReleaseSoon(Locked("""{"languageName": "Test"}"""));
 
         // Act
         var settings = await Store().LoadAsync(Cancellation);
 
         // Assert
-        Assert.Equal("Test", settings.EnvironmentName);
+        Assert.Equal("Test", settings.LanguageName);
     }
 
     [Fact]
@@ -159,10 +159,10 @@ public sealed class JsonFileTests : IDisposable
         ReleaseSoon(Locked("{}"));
 
         // Act
-        await Store().SaveAsync(new AppSettings("Test"), Cancellation);
+        await Store().SaveAsync(new AppSettings(LanguageName: "Test"), Cancellation);
 
         // Assert
-        Assert.Equal("Test", (await Store().LoadAsync(Cancellation)).EnvironmentName);
+        Assert.Equal("Test", (await Store().LoadAsync(Cancellation)).LanguageName);
     }
 
     [Fact]
@@ -184,13 +184,13 @@ public sealed class JsonFileTests : IDisposable
     {
         // Arrange
         var store = Store();
-        Func<AppSettings, AppSettings>[] changes = [settings => settings with { EnvironmentName = "Test" }, settings => settings with { IgnoreCertificateErrors = true }];
+        Func<AppSettings, AppSettings>[] changes = [settings => settings with { LanguageName = "Test" }, settings => settings with { IgnoreCertificateErrors = true }];
 
         // Act
         await Parallel.ForEachAsync(changes, Cancellation, async (change, cancellationToken) => await store.UpdateAsync(change, cancellationToken));
 
         // Assert
-        Assert.Equal(new AppSettings("Test", IgnoreCertificateErrors: true), await store.LoadAsync(Cancellation));
+        Assert.Equal(new AppSettings(LanguageName: "Test", IgnoreCertificateErrors: true), await store.LoadAsync(Cancellation));
     }
 
     [Fact]
@@ -233,7 +233,7 @@ public sealed class JsonFileTests : IDisposable
     {
         // Arrange
         Directory.CreateDirectory(_temporary.Path);
-        File.WriteAllText(FilePath, """{"environmentNam": "Dev"}""");
+        File.WriteAllText(FilePath, """{"languageNam": "Dev"}""");
 
         // Act
         var loading = Store().LoadAsync(Cancellation);
@@ -249,13 +249,13 @@ public sealed class JsonFileTests : IDisposable
         var store = Store();
 
         // Act
-        var first = store.UpdateAsync(settings => settings with { EnvironmentName = "First" }, Cancellation);
-        var last = store.UpdateAsync(settings => settings with { EnvironmentName = "Last" }, Cancellation);
+        var first = store.UpdateAsync(settings => settings with { LanguageName = "First" }, Cancellation);
+        var last = store.UpdateAsync(settings => settings with { LanguageName = "Last" }, Cancellation);
         await first;
         await last;
 
         // Assert
-        Assert.Equal("Last", (await store.LoadAsync(Cancellation)).EnvironmentName);
+        Assert.Equal("Last", (await store.LoadAsync(Cancellation)).LanguageName);
     }
 
     [Fact]
@@ -274,8 +274,8 @@ public sealed class JsonFileTests : IDisposable
         Directory.CreateDirectory(_temporary.Path);
         var store = Store();
 
-        await store.SaveAsync(new AppSettings("Dev"), Cancellation, createDirectory: false);
+        await store.SaveAsync(new AppSettings(LanguageName: "Dev"), Cancellation, createDirectory: false);
 
-        Assert.Equal("Dev", (await store.LoadAsync(Cancellation)).EnvironmentName);
+        Assert.Equal("Dev", (await store.LoadAsync(Cancellation)).LanguageName);
     }
 }

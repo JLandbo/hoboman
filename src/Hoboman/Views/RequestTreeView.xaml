@@ -22,13 +22,37 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition />
         </Grid.RowDefinitions>
-        <Border x:Name="RootDropTarget" Background="{DynamicResource Box}" CornerRadius="6" Padding="8,6" Margin="2,2,2,6" Visibility="Collapsed" AllowDrop="True"
+        <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="2,0,2,6">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Left" Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="12" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                <ToggleButton DockPanel.Dock="Right" Content="&#xE8B7;" FontFamily="{StaticResource IconFont}" IsChecked="{Binding Tree.ShowWholeFolders}" Style="{StaticResource Segment}" Margin="2"
+                              ToolTip="{DynamicResource Tree.WholeFolders}" AutomationProperties.Name="{DynamicResource Tree.WholeFolders}" />
+                <Grid>
+                    <TextBox x:Name="SearchBox" Text="{Binding Tree.Search, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" FontFamily="{StaticResource UiFont}" Padding="8,6"
+                             AutomationProperties.Name="{DynamicResource Tree.Search}" KeyDown="SearchBox_KeyDown" />
+                    <TextBlock Text="{DynamicResource Tree.Search}" Foreground="{DynamicResource Muted}" Margin="10,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Text, ElementName=SearchBox}" Value="">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
+            </DockPanel>
+        </Border>
+        <Border x:Name="RootDropTarget" Grid.Row="1" Background="{DynamicResource Box}" CornerRadius="6" Padding="8,6" Margin="2,2,2,6" Visibility="Collapsed" AllowDrop="True"
                 DragEnter="Tree_DragOver" DragOver="Tree_DragOver" DragLeave="Tree_DragLeave" Drop="Tree_Drop">
             <TextBlock Text="{DynamicResource Tree.Root}" Foreground="{DynamicResource Muted}" />
         </Border>
-        <TreeView x:Name="Tree" Grid.Row="1" ItemsSource="{Binding Tree.Nodes}" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource Text}"
+        <TreeView x:Name="Tree" Grid.Row="2" ItemsSource="{Binding Tree.Nodes}" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource Text}"
                   ScrollViewer.HorizontalScrollBarVisibility="Disabled" AllowDrop="True"
                   PreviewMouseLeftButtonDown="Tree_PreviewMouseLeftButtonDown" PreviewMouseLeftButtonUp="Tree_PreviewMouseLeftButtonUp" MouseMove="Tree_MouseMove" DragEnter="Tree_DragOver" DragOver="Tree_DragOver" DragLeave="Tree_DragLeave" Drop="Tree_Drop">
             <TreeView.ItemContainerStyle>
@@ -36,6 +60,7 @@
                     <EventSetter Event="MouseLeftButtonUp" Handler="Item_MouseLeftButtonUp" />
                     <EventSetter Event="KeyDown" Handler="Item_KeyDown" />
                     <Setter Property="ContextMenu" Value="{StaticResource FolderMenu}" />
+                    <Setter Property="Visibility" Value="{Binding IsShown, Converter={StaticResource VisibleWhenTrue}}" />
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding IsFolder}" Value="False">
                             <Setter Property="ContextMenu" Value="{StaticResource RequestMenu}" />
@@ -88,7 +113,9 @@
                 </HierarchicalDataTemplate>
             </TreeView.ItemTemplate>
         </TreeView>
-        <TextBlock Grid.Row="1" Text="{DynamicResource Tree.Empty}" Foreground="{DynamicResource Muted}" Margin="8,4,0,0" IsHitTestVisible="False">
+        <TextBlock Grid.Row="2" Text="{DynamicResource Tree.NoMatches}" Foreground="{DynamicResource Muted}" Margin="8,4,0,0" IsHitTestVisible="False"
+                   Visibility="{Binding Tree.NothingFound, Converter={StaticResource VisibleWhenTrue}}" />
+        <TextBlock Grid.Row="2" Text="{DynamicResource Tree.Empty}" Foreground="{DynamicResource Muted}" Margin="8,4,0,0" IsHitTestVisible="False">
             <TextBlock.Style>
                 <Style TargetType="TextBlock">
                     <Setter Property="Visibility" Value="Collapsed" />
