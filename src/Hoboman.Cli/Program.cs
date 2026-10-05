@@ -41,7 +41,12 @@ try
     using var input = new StreamReader(Console.OpenStandardInput(), Encoding.UTF8);
     var deletion = new RequestDeletion(library, secrets, folder, NullLogger<RequestDeletion>.Instance);
     var workflowDeletion = new WorkflowDeletion(workflows, secrets, NullLogger<WorkflowDeletion>.Instance);
-    return await new CliApplication(library, settings, environments, runner, workflows, check, workflowRunner, tokens, output, new(input, Console.IsInputRedirected), deletion, workflowDeletion)
+    var variables = new VariableInput(input, Console.IsInputRedirected);
+    var targets = new Targets(workflows, environments);
+    var environmentChanges = new EnvironmentChanges(environments, secrets, new(folder, secrets, NullLogger<CredentialStore>.Instance));
+    return await new CliApplication(library, settings, environments, runner, workflows, check, workflowRunner, tokens, output, variables, deletion, workflowDeletion, targets,
+            new(library, workflows, environments, targets, output), new(library, workflows, workflowDeletion, environments, environmentChanges, targets, variables, output), new(folder, targets, output),
+            environmentChanges, new(history, output))
         .RunAsync(args, cancellation.Token);
 }
 finally

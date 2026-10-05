@@ -30,7 +30,7 @@ public sealed class RunLog : IAsyncDisposable
     public static RunLog Create(AppFolder folder, Guid workflowId, ILogger logger)
     {
         var runId = string.Create(CultureInfo.InvariantCulture, $"{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}-{Random.Shared.Next(0x10000):x4}");
-        var path = Path.GetFullPath(Path.Combine(folder.Runs, $"{workflowId}", $"{runId}.jsonl"));
+        var path = PathOf(folder, workflowId, runId);
         FileStream? file = null;
         try
         {
@@ -42,6 +42,15 @@ public sealed class RunLog : IAsyncDisposable
             logger.LogError(exception, "Could not create the run log {Path}", path);
         }
         return new(runId, path, file, logger);
+    }
+
+    public static string PathOf(AppFolder folder, Guid workflowId, string runId) => Path.GetFullPath(Path.Combine(folder.Runs, $"{workflowId}", $"{runId}.jsonl"));
+
+    // The newest first, as a run's id starts with when it started.
+    public static IReadOnlyList<string> RunsOf(AppFolder folder, Guid workflowId)
+    {
+        var runs = Path.Combine(folder.Runs, $"{workflowId}");
+        return Directory.Exists(runs) ? [.. Directory.EnumerateFiles(runs, "*.jsonl").Select(Path.GetFileNameWithoutExtension).OfType<string>().OrderDescending(StringComparer.Ordinal)] : [];
     }
 
     // Each line is written in one go and flushed, so a reader sees an event as soon as it happens.

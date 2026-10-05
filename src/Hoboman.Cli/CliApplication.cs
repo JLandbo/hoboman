@@ -11,10 +11,9 @@ using Hoboman.Core.Workflows;
 namespace Hoboman.Cli;
 
 sealed class CliApplication(RequestLibrary library, SettingsStore settings, EnvironmentStore environments, RequestRunner runner, WorkflowLibrary workflows, WorkflowCheck check,
-    WorkflowRunner workflowRunner, UnaskedTokens tokens, CliOutput output, VariableInput variables, RequestDeletion deletion, WorkflowDeletion workflowDeletion)
+    WorkflowRunner workflowRunner, UnaskedTokens tokens, CliOutput output, VariableInput variables, RequestDeletion deletion, WorkflowDeletion workflowDeletion,
+    Targets targets, ShowCommand show, UpdateCommand update, LogCommand log, EnvironmentChanges environmentChanges, HistoryCommand history)
 {
-    sealed record Saved(SavedKind Kind, Guid Id, string Name, string Path);
-
     public async Task<int> RunAsync(string[] arguments, CancellationToken cancellationToken)
     {
         try
@@ -40,6 +39,22 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
             {
                 return await ChangeAsync(input.Change, cancellationToken);
             }
+            if (input.Show is not null)
+            {
+                return await show.RunAsync(input.Show, cancellationToken);
+            }
+            if (input.Update is not null)
+            {
+                return await update.RunAsync(input.Update, cancellationToken);
+            }
+            if (input.Log is not null)
+            {
+                return await log.RunAsync(input.Log, cancellationToken);
+            }
+            if (input.History is not null)
+            {
+                return await history.RunAsync(input.History, cancellationToken);
+            }
             return input.IsList ? await ListAsync(input, cancellationToken) : await SendAsync(input.Send!, cancellationToken);
         }
         catch (Exception exception)
@@ -52,6 +67,10 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
     // A file that cannot be read has no name, so it is listed by its id alone, and send or run with the id tells what is wrong with it.
     async Task<int> ListAsync(CommandInput input, CancellationToken cancellationToken)
     {
+        if (input.ListsEnvironments)
+        {
+            return await ListEnvironmentsAsync(cancellationToken);
+        }
         IEnumerable<(Guid Id, string Name)> listed;
         if (input.ListsWorkflows)
         {
@@ -69,6 +88,25 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         }
         await output.WriteNamesAsync(listed.OrderBy(line => line.Name, StringComparer.OrdinalIgnoreCase).ThenBy(line => line.Name, StringComparer.Ordinal).ThenBy(line => line.Id)
             .Select(line => $"{line.Id}\t{line.Name}"), cancellationToken);
+        return 0;
+    }
+
+    // The environment chosen in the app is marked, as send, run and check use it without --env. Names are unique, so they sort alone.
+    async Task<int> ListEnvironmentsAsync(CancellationToken cancellationToken)
+    {
+        Guid? chosen;
+        IReadOnlyList<ApiEnvironment> all;
+        try
+        {
+            chosen = (await settings.LoadAsync(cancellationToken)).EnvironmentId;
+            all = await environments.AllAsync(cancellationToken);
+        }
+        catch (Exception exception) when (FileProblem.Is(exception))
+        {
+            return await output.WriteErrorAsync("Environment settings could not be read.");
+        }
+        await output.WriteNamesAsync(all.OrderBy(environment => environment.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(environment => environment.Id == chosen ? $"{environment.Id}\t{environment.Name}\tselected" : $"{environment.Id}\t{environment.Name}"), cancellationToken);
         return 0;
     }
 
@@ -105,7 +143,7 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         }
         catch (InvalidFileException exception) when (!input.IsDirect && exception.InnerException is JsonException invalid)
         {
-            return await InvalidFileAsync("Saved request file is not valid.", exception, invalid);
+            return await output.WriteInvalidFileAsync("Saved request file is not valid.", exception, invalid);
         }
         catch (Exception exception) when (!input.IsDirect && FileProblem.Is(exception))
         {
@@ -155,8 +193,7 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         try
         {
             // A workflow found by its id is read alone, without reading the others for their names.
-            var found = RequestLibrary.TryIdOf(input.Workflow, out var id) ? [id]
-                : Matching(input.Workflow, await workflows.ListAsync(cancellationToken), named => named.Id, named => named.Name ?? "").Select(named => named.Id).ToList();
+            var found = await targets.WorkflowsAsync(input.Workflow, cancellationToken);
             if (found.Count > 1)
             {
                 return await output.WriteErrorAsync("Workflow name is ambiguous. Use its id.");
@@ -165,7 +202,7 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         }
         catch (InvalidFileException exception) when (exception.InnerException is JsonException invalid)
         {
-            return await InvalidFileAsync("Workflow file is not valid.", exception, invalid);
+            return await output.WriteInvalidFileAsync("Workflow file is not valid.", exception, invalid);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
@@ -175,15 +212,19 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         {
             return await output.WriteErrorAsync("Workflow could not be loaded.");
         }
-        var (environment, problem) = await EnvironmentAsync(input.EnvironmentName, cancellationToken);
+        var (environment, environmentProblem) = await EnvironmentAsync(input.EnvironmentName, cancellationToken);
         if (environment is null)
         {
-            return await output.WriteErrorAsync(problem!);
+            return await output.WriteErrorAsync(environmentProblem!);
         }
         var checkedWorkflow = await check.CheckAsync(workflow, environment, parameters, cancellationToken);
         if (checkedWorkflow.Problems.Count > 0)
         {
             return await output.WriteErrorAsync(new { error = "Workflow cannot run.", problems = checkedWorkflow.Problems });
+        }
+        if (input.CheckOnly)
+        {
+            return await output.WriteResultAsync(new { id = workflow.Id, name = workflow.Name });
         }
         // As for send, a token is saved for the environment, so it is fetched without the values of the run.
         var outcome = await workflowRunner.RunAsync(checkedWorkflow, environment, auth => tokens.FetchAsync(auth, environment, cancellationToken), output.WriteEventAsync, cancellationToken);
@@ -201,6 +242,12 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         if (input.Kind == SavedKind.Workflow)
         {
             return await SavedAsync(async () => (await workflows.CreateAsync(name, cancellationToken)).Id, name);
+        }
+        if (input.Kind == SavedKind.Environment)
+        {
+            return await environmentChanges.IsTakenAsync(name, null, cancellationToken)
+                ? await output.WriteErrorAsync("Environment name is taken.")
+                : await SavedAsync(() => environmentChanges.CreateAsync(name, cancellationToken), name);
         }
         var collection = await library.LoadAllAsync(cancellationToken);
         var (folder, problem) = FolderOf(input.Folder!, collection);
@@ -222,7 +269,16 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
     async Task<int> ChangeAsync(ChangeInput input, CancellationToken cancellationToken)
     {
         var collection = await library.LoadAllAsync(cancellationToken);
-        var (found, problem) = await FindAsync(input.Target, collection, cancellationToken);
+        Saved? found;
+        string? problem;
+        try
+        {
+            (found, problem) = await targets.FindAsync(input.Target, collection, withEnvironments: true, cancellationToken);
+        }
+        catch (InvalidFileException exception) when (exception.InnerException is JsonException invalid)
+        {
+            return await output.WriteInvalidFileAsync("File is not valid.", exception, invalid);
+        }
         if (found is null)
         {
             return await output.WriteErrorAsync(problem!);
@@ -242,6 +298,10 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         {
             return await output.WriteErrorAsync("Invalid name.");
         }
+        if (found.Kind == SavedKind.Environment && await environmentChanges.IsTakenAsync(name, found.Id, cancellationToken))
+        {
+            return await output.WriteErrorAsync("Environment name is taken.");
+        }
         var parent = found.Kind switch
         {
             SavedKind.Request => collection.RequestOf(found.Id) is { } request ? collection.FolderIdOf(request) : null,
@@ -254,17 +314,18 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
             {
                 SavedKind.Request => library.RenameAsync(found.Id, name, cancellationToken),
                 SavedKind.Folder => library.RenameFolderAsync(found.Id, name, cancellationToken),
+                SavedKind.Environment => environmentChanges.RenameAsync(found.Id, name, cancellationToken),
                 _ => workflows.RenameAsync(found.Id, name, cancellationToken),
             });
             return found.Id;
-        }, found.Kind == SavedKind.Workflow ? name : PathIn(collection, parent, name));
+        }, found.Kind is SavedKind.Workflow or SavedKind.Environment ? name : PathIn(collection, parent, name));
     }
 
     async Task<int> MoveAsync(Saved found, string target, RequestCollection collection, CancellationToken cancellationToken)
     {
-        if (found.Kind == SavedKind.Workflow)
+        if (found.Kind is SavedKind.Workflow or SavedKind.Environment)
         {
-            return await output.WriteErrorAsync("A workflow cannot be moved.");
+            return await output.WriteErrorAsync(found.Kind == SavedKind.Workflow ? "A workflow cannot be moved." : "An environment cannot be moved.");
         }
         var (folder, problem) = FolderOf(target, collection);
         if (problem is not null)
@@ -293,20 +354,14 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         }
         return await SavedAsync(async () =>
         {
-            await (found.Kind == SavedKind.Workflow ? workflowDeletion.DeleteAsync(found.Id, cancellationToken) : deletion.DeleteAsync(found.Id, found.Kind == SavedKind.Folder, cancellationToken));
+            await (found.Kind switch
+            {
+                SavedKind.Workflow => workflowDeletion.DeleteAsync(found.Id, cancellationToken),
+                SavedKind.Environment => environmentChanges.DeleteAsync(found.Id, cancellationToken),
+                _ => deletion.DeleteAsync(found.Id, found.Kind == SavedKind.Folder, cancellationToken),
+            });
             return found.Id;
         }, found.Path);
-    }
-
-    // Something saved is known by its id, or by its path or name when only one thing has it.
-    async Task<(Saved? Found, string? Problem)> FindAsync(string target, RequestCollection collection, CancellationToken cancellationToken)
-    {
-        var saved = collection.Requests.Select(request => new Saved(SavedKind.Request, request.Id, request.Name, collection.PathOf(request)))
-            .Concat(collection.Unreadable.Select(id => new Saved(SavedKind.Request, id, "", "")))
-            .Concat(collection.Folders.Select(folder => new Saved(SavedKind.Folder, folder.Id, folder.Name, collection.FolderPathOf(folder.Id))))
-            .Concat((await workflows.ListAsync(cancellationToken)).Select(workflow => new Saved(SavedKind.Workflow, workflow.Id, workflow.Name ?? "", workflow.Name ?? "")));
-        var found = Matching(target, saved, item => item.Id, item => item.Path);
-        return found.Count switch { 0 => (null, "Target could not be found."), 1 => (found[0], null), _ => (null, "Target is ambiguous. Use its id.") };
     }
 
     // . is the top, as a shell such as Git Bash turns / into a path, and a folder is otherwise known by its id or its path.
@@ -316,13 +371,9 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         {
             return (null, null);
         }
-        var found = Matching(target, collection.Folders, folder => folder.Id, folder => collection.FolderPathOf(folder.Id));
+        var found = Targets.Matching(target, collection.Folders, folder => folder.Id, folder => collection.FolderPathOf(folder.Id));
         return found.Count switch { 0 => (null, "Folder could not be found."), 1 => (found[0].Id, null), _ => (null, "Folder is ambiguous. Use its id.") };
     }
-
-    // A path or name can be shared, so all that have it are given, and the caller tells when there is more than one.
-    static List<T> Matching<T>(string target, IEnumerable<T> items, Func<T, Guid> idOf, Func<T, string> pathOf) =>
-        RequestLibrary.TryIdOf(target, out var id) ? [.. items.Where(item => idOf(item) == id)] : [.. items.Where(item => pathOf(item).Equals(target, StringComparison.OrdinalIgnoreCase))];
 
     static string PathIn(RequestCollection collection, Guid? folder, string name) => folder is null ? name : $"{collection.FolderPathOf(folder)}/{name}";
 
@@ -336,7 +387,7 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         }
         catch (InvalidFileException exception) when (exception.InnerException is JsonException invalid)
         {
-            return await InvalidFileAsync("File is not valid.", exception, invalid);
+            return await output.WriteInvalidFileAsync("File is not valid.", exception, invalid);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
@@ -344,10 +395,6 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         }
         return await output.WriteResultAsync(new { id, path });
     }
-
-    // Only where the file is wrong is told, as the message of the exception can quote a value from it.
-    Task<int> InvalidFileAsync(string error, InvalidFileException exception, JsonException invalid) =>
-        output.WriteErrorAsync(new { error, file = exception.FilePath, path = invalid.Path, line = invalid.LineNumber + 1 });
 
     // --env wins over the environment selected in the app, which is used without reading the environments when there is none.
     async Task<(ApiEnvironment? Environment, string? Problem)> EnvironmentAsync(string? name, CancellationToken cancellationToken)

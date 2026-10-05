@@ -12,6 +12,7 @@ public sealed class AppFolderWatcher : IDisposable
     readonly Timer _requests;
     readonly Timer _history;
     readonly Timer _environments;
+    readonly Timer _credentials;
     readonly Timer _workflows;
     FileSystemWatcher? _watcher;
 
@@ -22,6 +23,7 @@ public sealed class AppFolderWatcher : IDisposable
         _requests = new(_ => RequestsChanged?.Invoke());
         _history = new(_ => HistoryChanged?.Invoke());
         _environments = new(_ => EnvironmentsChanged?.Invoke());
+        _credentials = new(_ => CredentialsChanged?.Invoke());
         _workflows = new(_ => WorkflowsChanged?.Invoke());
     }
 
@@ -30,6 +32,8 @@ public sealed class AppFolderWatcher : IDisposable
     public event Action? HistoryChanged;
 
     public event Action? EnvironmentsChanged;
+
+    public event Action? CredentialsChanged;
 
     public event Action? WorkflowsChanged;
 
@@ -61,6 +65,7 @@ public sealed class AppFolderWatcher : IDisposable
         _requests.Dispose();
         _history.Dispose();
         _environments.Dispose();
+        _credentials.Dispose();
         _workflows.Dispose();
     }
 
@@ -79,7 +84,7 @@ public sealed class AppFolderWatcher : IDisposable
                 _logger.LogError(exception, "Could not watch {Folder} again", _folder.Root);
             }
         }
-        foreach (var timer in new[] { _requests, _history, _environments, _workflows })
+        foreach (var timer in new[] { _requests, _history, _environments, _credentials, _workflows })
         {
             timer.Change(_settle, Timeout.InfiniteTimeSpan);
         }
@@ -90,6 +95,7 @@ public sealed class AppFolderWatcher : IDisposable
         var timer = IsIn(path, _folder.Requests) || IsIn(path, _folder.Folders) || path.StartsWith(_folder.RequestOrder, StringComparison.OrdinalIgnoreCase) ? _requests
             : IsIn(path, _folder.History) ? _history
             : path.StartsWith(_folder.Environments, StringComparison.OrdinalIgnoreCase) ? _environments
+            : path.StartsWith(_folder.Credentials, StringComparison.OrdinalIgnoreCase) ? _credentials
             : IsIn(path, _folder.Workflows) ? _workflows
             : null;
         timer?.Change(_settle, Timeout.InfiniteTimeSpan);

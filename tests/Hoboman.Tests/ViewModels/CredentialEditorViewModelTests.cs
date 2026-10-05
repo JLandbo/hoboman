@@ -58,6 +58,42 @@ public sealed class CredentialEditorViewModelTests
     }
 
     [Fact]
+    public async Task SaveAsync_WhenTheCredentialsChangedOnDisk_ThenRefusesAndKeepsThem()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.SaveCredentialsAsync();
+        var editor = await EditorAsync(harness);
+        await harness.CredentialStore.SaveAsync([], TestContext.Current.CancellationToken);
+
+        // Act
+        var saved = await editor.SaveAsync();
+
+        // Assert
+        Assert.Equal((false, harness.Translator.Of("Credentials.ChangedOnDisk"), 0), (saved, editor.Problem, (await harness.CredentialStore.AllAsync(TestContext.Current.CancellationToken)).Count));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenSavedTwiceInTheOpenWindow_ThenSavesBoth()
+    {
+        // Arrange
+        using var harness = new Harness();
+        await harness.SaveCredentialsAsync();
+        var editor = await EditorAsync(harness);
+        editor.Add();
+        editor.Selected!.Name = "Første";
+        await editor.SaveAsync();
+        editor.Add();
+        editor.Selected!.Name = "Anden";
+
+        // Act
+        var saved = await editor.SaveAsync();
+
+        // Assert
+        Assert.Equal((true, (string?)null), (saved, editor.Problem));
+    }
+
+    [Fact]
     public async Task SaveAsync_WhenTwoInAnEnvironmentShareAName_ThenRefuses()
     {
         // Arrange

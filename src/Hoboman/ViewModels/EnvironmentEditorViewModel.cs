@@ -72,7 +72,7 @@ public sealed class EnvironmentEditorViewModel(EnvironmentStore store, Environme
             return false;
         }
         var names = Environments.Select(environment => environment.Name.Trim()).ToList();
-        if (names.Any(name => name.Length == 0) || names.Distinct(StringComparer.OrdinalIgnoreCase).Count() != names.Count)
+        if (!EnvironmentStore.AreValidNames(names))
         {
             Problem = translator.Of("Environments.Invalid");
             return false;

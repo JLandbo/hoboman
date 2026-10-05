@@ -25,6 +25,9 @@ public sealed class EnvironmentStore(AppFolder folder, ILogger<EnvironmentStore>
 
     public Task SaveAsync(IReadOnlyList<ApiEnvironment> environments, CancellationToken cancellationToken) => _file.SaveAsync(environments, cancellationToken);
 
+    // An environment is chosen by its name, with --env and in the app, so no name is empty and no two are alike in any case.
+    public static bool AreValidNames(IReadOnlyCollection<string> names) => names.All(name => name.Length > 0) && names.Distinct(StringComparer.OrdinalIgnoreCase).Count() == names.Count;
+
     static bool HaveIds(IReadOnlyList<ApiEnvironment> environments) =>
         environments.All(environment => environment.Id != Guid.Empty) && environments.DistinctBy(environment => environment.Id).Count() == environments.Count;
 

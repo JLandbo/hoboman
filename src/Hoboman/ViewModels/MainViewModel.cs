@@ -37,6 +37,8 @@ public sealed class MainViewModel(
 
     Coalescer EnvironmentsReload => field ??= new(() => environments.LoadAsync(CancellationToken.None));
 
+    Coalescer CredentialsReload => field ??= new(() => credentials.LoadAsync(CancellationToken.None));
+
     Coalescer WorkflowsReload => field ??= new(ReloadWorkflowsAsync);
 
     public RequestTreeViewModel Tree => tree;
@@ -149,6 +151,9 @@ public sealed class MainViewModel(
     public Task HistoryChangedAsync() => HistoryReload.RunAsync();
 
     public Task EnvironmentsChangedAsync() => EnvironmentsReload.RunAsync();
+
+    // Credentials change from outside when the CLI deletes an environment and its credentials with it.
+    public Task CredentialsChangedAsync() => CredentialsReload.RunAsync();
 
     public Task WorkflowsChangedAsync() => WorkflowsReload.RunAsync();
 

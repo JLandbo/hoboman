@@ -65,6 +65,7 @@ public partial class App : Application
         watcher.RequestsChanged += () => OnUi(main.RequestsChangedAsync);
         watcher.HistoryChanged += () => OnUi(main.HistoryChangedAsync);
         watcher.EnvironmentsChanged += () => OnUi(main.EnvironmentsChangedAsync);
+        watcher.CredentialsChanged += () => OnUi(main.CredentialsChangedAsync);
         watcher.WorkflowsChanged += () => OnUi(main.WorkflowsChangedAsync);
         main.History.DayChanged += () => OnUi(main.HistoryChangedAsync);
         main.Environments.PropertyChanged += (_, args) =>

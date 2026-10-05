@@ -6,8 +6,13 @@
 
 Det kan:
 
-- vise de gemte requests (`list`), mapper (`list folders`) og workflows (`list workflows`)
-- oprette, omdøbe, flytte og slette requests, mapper og workflows (`new`, `rename`, `move`, `delete`)
+- vise de gemte requests (`list`), mapper (`list folders`), workflows (`list workflows`) og miljøer (`list environments`)
+- vise en request, mappe, et workflow med dets scripts eller et miljø som JSON (`show`)
+- oprette, rette, omdøbe, flytte og slette requests, mapper og workflows (`new`, `update`, `rename`, `move`, `delete`)
+- oprette, rette, omdøbe og slette miljøer (`new environment`, `update`, `rename`, `delete`)
+- vise de nyeste kald i historikken og et enkelt kald (`history`)
+- tjekke et workflow uden at sende noget (`check <workflow>`)
+- vise og følge kørsler, også dem startet i appen (`log <workflow>`)
 - sende en gemt request med dens egen metode, URL, headers, body, Base64-valg og auth, eller auth fra nærmeste mappe (`send <request>`)
 - sende et direkte kald med headers og en JSON- eller tekst-body (`send <METODE> <url>`)
 - køre et workflow med parametre og skrive hvert trin som en JSON-linje, mens det kører (`run <workflow>`)
@@ -20,10 +25,14 @@ Det kan ikke:
 
 - logge ind med authorization code. Det kræver en browser, så tokenet hentes i appen
 - skifte det valgte miljø, ændre indstillinger eller bruge `credentials.json`
-- give en gemt request en anden body, andre headers eller anden auth
+- ændre en mappes auth; `show` viser den, men den rettes i appen
+- rette en request eller et workflow, hvis fil ikke kan læses; `show` fortæller hvor, men det rettes i appen eller af brugeren
+- sende en gemt request med en anden body, andre headers eller anden auth end den gemte; ret den med `update` i stedet
 - se ugemte ændringer i appen; det bruger filerne, som de er gemt
 
 ## Kom i gang
+
+**Antivirus.** `hoboman-cli.exe` er et .NET-program i én fil, der pakker sig selv ud, når det starter. Den slags bliver nogle gange fejlagtigt markeret som mistænkeligt af antivirus. Sker det, skal `hoboman-cli.exe` kodesigneres med et kodesigneringscertifikat (Authenticode, fx med `signtool sign`), før det bruges. Det samme gælder `Hoboman.exe`. Slå ikke antivirus fra, og undtag ikke mappen uden godkendelse fra den, der står for maskinens sikkerhed.
 
 `install.ps1` udgiver `hoboman-cli.exe` ved siden af `Hoboman.exe` i `publish\`, men tilføjer det ikke til `PATH`. Kald det med fuld sti, og kør det som den samme Windows-bruger som appen, for hemmelighederne er krypteret for den bruger. Appen behøver ikke at være åben.
 
@@ -122,33 +131,34 @@ $finished = $lines[-1] | ConvertFrom-Json
 
 ### Følg en kørsel fra appen
 
-En kørsel startet i appen skrives også i `runs\<workflowId>\`. Følg den nyeste fil, og stop ved `run.finished`. Id'et er navnet på workflowets mappe:
+`log` læser også kørsler startet i appen. Den følger den nyeste og stopper selv ved `run.finished`:
 
 ```powershell
-$runs = "C:\sti\til\Hoboman\publish\runs\5d3c8f0e-2b7a-4c61-9a1e-7f4b2d9c6e10"
-$file = Get-ChildItem $runs -Filter *.jsonl | Sort-Object Name | Select-Object -Last 1
-Get-Content -LiteralPath $file.FullName -Wait -Encoding UTF8 | ForEach-Object {
+& $cli log Ordre-sync --last --follow | ForEach-Object {
     $line = $_ | ConvertFrom-Json
     '{0} {1} {2} {3}' -f $line.type, $line.index, $line.outcome, $line.status
-    if ($line.type -eq 'run.finished') { break }
 }
 ```
-
-Uden `-Encoding UTF8` læser Windows PowerShell æ, ø og å forkert.
 
 ## Kommandoer
 
 ```text
-hoboman-cli list [workflows|folders]
+hoboman-cli list [workflows|folders|environments]
+hoboman-cli show <id|sti|navn>
 hoboman-cli new request <mappe> <navn> [--method <METODE>] [--url <url>] [-H "Navn: Værdi"]... [--json <tekst|@fil> | --text <tekst|@fil>]
 hoboman-cli new folder <mappe> <navn>
 hoboman-cli new workflow <navn>
+hoboman-cli new environment <navn>
 hoboman-cli rename <id|sti|navn> <nyt navn>
 hoboman-cli move <id|sti> <mappe>
 hoboman-cli delete <id|sti|navn> --yes
+hoboman-cli update <id|sti|navn> --file <fil|->
+hoboman-cli history [<navn>] [--count <antal>]
 hoboman-cli send <gemt request> [--env <navn>] [--var <navn=værdi>]... [--vars <fil|->] [--out <fil>]
 hoboman-cli send <METODE> <url> [--env <navn>] [-H "Navn: Værdi"]... [--json <tekst|@fil> | --text <tekst|@fil>] [--var <navn=værdi>]... [--vars <fil|->] [--out <fil>]
 hoboman-cli run <workflow> [--env <navn>] [--param <navn=værdi>]... [--params <fil|->]
+hoboman-cli check <workflow> [--env <navn>] [--param <navn=værdi>]... [--params <fil|->]
+hoboman-cli log <workflow> [<runId> | --last] [--follow]
 hoboman-cli --help
 hoboman-cli --version
 ```
@@ -156,16 +166,22 @@ hoboman-cli --version
 - `list` skriver én linje pr. gemt request, sorteret efter stien: id'et, en tabulator og stien gennem mapperne med `/`, fx `3f2c…<tab>Brugere/Hent bruger`. Del linjen ved den første tabulator, for et navn kan selv indeholde `/`.
 - `list workflows` skriver på samme måde id'et og navnet på hvert workflow, sorteret efter navnet.
 - `list folders` skriver id'et og stien på hver mappe, fx `<id><tab>Shop/Orders`.
-- En request eller et workflow, hvis fil ikke kan læses, står med id'et og intet navn. `send` eller `run` med id'et fortæller, hvad der er galt med filen.
+- `list environments` skriver id'et og navnet på hvert miljø, sorteret efter navnet. Det miljø, der er valgt i appen og bruges uden `--env`, ender med `<tab>selected`.
+- En request eller et workflow, hvis fil ikke kan læses, står med id'et og intet navn. `show` med id'et fortæller, hvad der er galt med filen.
 
-### Oprette, omdøbe, flytte og slette
+### Vise, oprette, rette, omdøbe, flytte og slette
 
-- `<mappe>` er en mappes id eller sti fra `list folders`, eller `.` for øverste niveau. Det, der ændres, er et id eller en sti/et navn fra `list`, `list folders` eller `list workflows`.
+- `show` skriver det gemte som JSON på stdout: `{"request": …}`, `{"folder": …}`, `{"environment": …}` med variabler og værdier, eller `{"workflow": …, "scripts": {"navn.js": "kode"}}` med alle `.js`-filer i workflowets mappe. Hemmeligheder står aldrig i filerne og derfor heller ikke her. Målet er et id eller en sti/et navn som ved `rename`. Miljøer findes på deres navn eller id. Har en request, mappe eller et workflow samme navn, giver det `Target is ambiguous. Use its id.`, så en ændring aldrig rammer det forkerte.
+- `update` erstatter indholdet af en request, et workflow eller et miljø med JSON i præcis den form, `show` skrev, fra en fil eller stdin (`--file -`). Id, navn og mappe bliver, og dermed hemmeligheder, historik og kørsler. `id`, `name` og `folderId` i inputtet skal være uændrede; navn og mappe ændres med `rename` og `move`. Et trin uden `id` får et nyt; et trin med et id, workflowet ikke havde, afvises, da det ville dele et andet trins eller en requests hemmeligheder. Fjernes et trin, glemmes dets hemmeligheder. Scripts i `scripts` skrives, et script givet som `null` slettes, og andre bliver liggende. Et script, et trin bruger, kan ikke slettes. Et miljø rettes på samme måde med `{"environment": …}`, hvor variablerne erstattes. Inputtet læses med de samme regler som filerne, så en ukendt egenskab giver `Input is not valid.` med `path` og `line`. En mappe kan ikke rettes; dens auth ændres i appen. `update` tjekker ikke workflowet; brug `check`.
+- `new environment <navn>` laver et tomt miljø, og `rename` og `delete --yes` virker også på miljøer. Navne skal være unikke uden hensyn til store og små bogstaver, ellers giver det `Environment name is taken.` `delete` glemmer også miljøets OAuth-tokens og de credentials, der hører til det, som appen gør. Et miljø kan ikke flyttes. Slettes det miljø, der er valgt i appen, er intet valgt, og `send` og `run` uden `--env` giver `Selected environment was not found.`
+- `history` skriver de nyeste kald, som standard 20, nyeste først: `navn<tab>tid<tab>kilde<tab>metode<tab>status<tab>adresse`. Tid er UTC, kilde er `App` eller `Cli`, og status er fejlens art, når kaldet ikke fik noget svar. `--count <antal>` giver et andet antal. `history <navn>` skriver hele kaldet som `{"call": …}` med request, svar eller fejl og miljø.
+
+- `<mappe>` er en mappes id eller sti fra `list folders`, eller `.` for øverste niveau. Det, der ændres, er et id eller en sti/et navn fra `list`, `list folders`, `list workflows` eller `list environments`.
 - `new request` laver en request, der arver auth fra sin mappe. Metoden er `GET`, når `--method` ikke gives. `-H`, `--json` og `--text` virker som ved et direkte kald.
 - `move` flytter en request eller mappe. En mappe kan ikke flyttes ind i sig selv, og et workflow kan ikke flyttes.
 - `delete` sletter en request, en mappe med alt i den eller et workflow, og deres hemmeligheder. Uden `--yes` slettes intet, og fejlen fortæller, hvor mange mapper og requests der ville forsvinde.
 - Navne må ikke være tomme eller indeholde linjeskift. Matcher en sti eller et navn flere ting, giver det `Target is ambiguous. Use its id.`.
-- Ved succes skrives `{"id": ..., "path": ...}` på stdout med exitkode 0. Ved fejl skrives fejlen på stderr med exitkode 2, og intet er ændret. Nye requests og mapper står sidst i deres mappe. Indholdet af en request ændres i appen; CLI'et kan slette og oprette den igen, men så får den et nyt id.
+- Ved succes skrives `{"id": ..., "path": ...}` på stdout med exitkode 0. Ved fejl skrives fejlen på stderr med exitkode 2, og intet er ændret. Nye requests og mapper står sidst i deres mappe.
 - `<gemt request>` og `<workflow>` er et id eller en sti/et navn fra `list`, uden forskel på store og små bogstaver. Navne behøver ikke være unikke; har flere samme sti eller navn, giver det en fejl, og så skal id'et bruges.
 - Ét argument efter `send` er en gemt request. To er en metode og en URL.
 - `--out <fil>` gemmer svarets body byte for byte i filen og overskriver den, hvis den findes. Relative stier læses fra den mappe, du står i, og mappen skal findes.
@@ -186,6 +202,7 @@ hoboman-cli --version
 - `--env` vælger miljø for både `send` og `run` og skal skrives præcis som miljøets navn, også store og små bogstaver. Valget gemmes ikke.
 - Uden `--env` bruges det miljø, der er valgt i appen. Er intet valgt, bruges intet miljø, og `{{navne}}` bliver stående. Er det valgte miljø slettet, giver det `Selected environment was not found.`
 - Kun variabler, der er slået til i miljøet, udfyldes.
+- Miljøer oprettes, rettes, omdøbes og slettes med `new environment`, `show` og `update`, `rename` og `delete`, se [Vise, oprette, rette, omdøbe, flytte og slette](#vise-oprette-rette-omdøbe-flytte-og-slette).
 - `--var navn=værdi` sætter en midlertidig variabel og deles ved første `=`. `--vars fil.json` eller `--vars -` (stdin) læser et JSON-objekt, fx `{"userId":42}`. Værdier, der ikke er tekst, indsættes som deres JSON.
 - `--var` vinder over `--vars`, som vinder over miljøets værdier, og sidste værdi for et navn vinder. De midlertidige værdier gælder kun det ene kald, gemmes aldrig og bruges også, hvor miljøets variabel er slået fra.
 - I en gemt request udfyldes URL, query, headers og auth-felter. Bodyen udfyldes kun, når requesten har **Brug environment-variabler i body** slået til.
@@ -230,9 +247,20 @@ Fejl, før der kommer et svar, skrives som `{"error":"..."}` på stderr, og stdo
 | `Deleting needs --yes.` | `delete` uden `--yes`. `path`, `folders` og `requests` fortæller, hvad der ville blive slettet |
 | `File is not valid.` | Filen, der skulle ændres, er ugyldig JSON. `file`, `path` og `line` viser hvor |
 | `The change could not be saved.` | En fil kunne ikke skrives eller slettes, fx fordi den er låst |
+| `Input is not valid.` | Inputtet til `update` passer ikke til formatet. `path` og `line` viser hvor |
+| `Use rename to change the name.` / `Use move to change the folder.` / `Target is not the one in the input.` | `update` fik et andet navn, en anden mappe eller et andet id end målets |
+| `Step id is not one of the workflow's.` | Et trin i `update` har et id, workflowet ikke havde, eller to trin har det samme |
+| `Invalid script name.` | Et navn i `scripts` er ikke et filnavn, der ender på `.js` |
+| `A folder cannot be updated.` | `update` fik en mappe |
+| `Environment name is taken.` | Et andet miljø har navnet, også med andre store og små bogstaver |
+| `An environment cannot be moved.` | `move` fik et miljø |
+| `A script a step uses cannot be deleted.` | `update` gav et script som `null`, som et trin stadig bruger |
+| `Call could not be found.` | `history` fik et navn, der ikke er i historikken |
+| `Target could not be read.` | Det, `show` skulle vise, kunne ikke læses, fx fordi det lige er slettet |
+| `Workflow could not be found.` / `Run could not be found.` / `Run could not be read.` | `log` fandt ikke workflowet eller kørslen, eller kørslens fil kunne ikke læses |
 | `Selected environment was not found.` | Miljøet findes ikke |
 | `Environment settings could not be read.` | `settings.json` eller `environments.json` kan ikke læses |
-| `Workflow cannot run.` | Tjekket fejlede, se [Workflows](#workflows) |
+| `Workflow cannot run.` | Tjekket fejlede ved `run` eller `check`, se [Workflows](#workflows) |
 | `Invalid request URL.` / `Invalid request input.` | URL'en er ugyldig, eller en metode, header eller værdi er ugyldig |
 | `Required authentication secret is missing.` | Password eller token til Basic eller Bearer er ikke gemt |
 | `Fetch a new OAuth token in Hoboman before sending this request.` | Der er intet gyldigt OAuth-token, og det kan ikke hentes uden appen |
@@ -246,7 +274,7 @@ Fejl, før der kommer et svar, skrives som `{"error":"..."}` på stderr, og stdo
 
 ## Workflows
 
-`run` kører et workflow, der er gemt i `workflows\<id>\workflow.json`. `<workflow>` er dets id eller navn, fx `Ordre-sync`. Et workflow oprettes i appen eller ved at skrive filen selv i en ny mappe, der hedder et nyt id:
+`run` kører et gemt workflow. `<workflow>` er dets id eller navn, fx `Ordre-sync`. Et workflow oprettes i appen eller med `new workflow` og fyldes med `update`. `check` tjekker det med de samme argumenter som `run` uden at sende noget og skriver `{"id", "name"}` med exitkode 0, eller `Workflow cannot run.` med exitkode 2. Sådan ser et workflow ud, som `show` viser det under `workflow`:
 
 ```json
 {
@@ -287,7 +315,7 @@ Fejl, før der kommer et svar, skrives som `{"error":"..."}` på stderr, og stdo
 - `from` i `saves` er `$` for hele bodyen (som tekst, hvis svarets `Content-Type` ikke er JSON, dvs. `json` eller en type med `+json` som `application/problem+json`, eller hvis bodyen ikke er JSON; en sti læser JSON uanset `Content-Type`), en sti som `$.data.items[0].id`, `header:Navn`, `status` eller en fast JSON-værdi, der gemmes, som den er, fx `"from": "1"` for tallet 1 og `"from": "\"ja\""` for teksten ja. En sti kan ikke bruge `[*]`. Der gemmes kun efter et 2xx-svar, og et trin gemmer alle sine værdier eller ingen.
 - `{{navn}}` udfyldes i URL, query og headers, i Basic-brugernavn og -password og i Bearer-token og i body, når `useEnvironmentVariablesInBody` er `true`. Navnet får sin værdi fra workflowets parametre og variabler. Kun et navn, som workflowet ikke selv har, hentes fra miljøet. Tekst indsættes uændret, og alt andet som kompakt JSON. OAuth-felterne udfyldes kun fra miljøet.
 - `--param navn=værdi` giver en parameter som tekst og kan gentages. `--params fil.json` eller `--params -` (stdin) læser et JSON-objekt, hvor værdierne beholder deres type, fx `{"orderId":"o-17","pageSize":50}`. `--param` vinder over `--params`.
-- Før første kald tjekkes hele workflowet: at hvert trin har en URL, at parametrene er kendte, at de påkrævede er givet, og at hvert `{{navn}}` i en request har en værdi, når trinnet kører. Et navn, der kun står i bodyen, og som hverken workflowet eller miljøet har, bliver stående som skrevet og tjekkes ikke, så fx en Handlebars-template kan bruge sine egne `{{navne}}`. Navne, et script læser i `vars`, tjekkes ikke. Fejler tjekket, sendes intet. Der er ingen måde kun at tjekke eller kun at køre ét trin.
+- Før første kald tjekkes hele workflowet: at hvert trin har en URL, at parametrene er kendte, at de påkrævede er givet, og at hvert `{{navn}}` i en request har en værdi, når trinnet kører. Et navn, der kun står i bodyen, og som hverken workflowet eller miljøet har, bliver stående som skrevet og tjekkes ikke, så fx en Handlebars-template kan bruge sine egne `{{navne}}`. Navne, et script læser i `vars`, tjekkes ikke. Fejler tjekket, sendes intet. `check` laver kun tjekket. Der er ingen måde kun at køre ét trin.
 - Trinene køres ét ad gangen i rækkefølge. Et trin fejler ved en status uden for 2xx, ved en fejl før svaret, eller hvis en værdi i `saves` ikke findes. Så springes resten over.
 
 ### Events
@@ -305,7 +333,7 @@ Kørslen skriver én JSON-linje pr. event på stdout og de samme linjer i `runs\
 
 | Event | Indhold |
 |---|---|
-| `run.started` | Altid første linje: `runId`, `workflowId`, `workflow` (workflowets navn), `environment` (tom uden miljø), `runFile` (fuld sti til logfilen) og `parameters`, også dem med standardværdi |
+| `run.started` | Altid første linje: `runId`, `workflowId`, `workflow` (workflowets navn), `environment` (tom uden miljø), `runFile` (fuld sti til logfilen, som `log` læser) og `parameters`, også dem med standardværdi |
 | `step.started` | `index` (første trin er 0), `name` (trinnets navn), `method` og `address` (vært, port og sti uden skema og query; tom for script og ventetid) |
 | `step.finished` | `outcome` (`Succeeded` eller `Failed`), svaret med samme navne som ved `send`, `attempts` ved et trin med `retry`, `error` ved en fejl og `saved` med de gemte værdier. En ventetid har kun `index`, `outcome` og `elapsedMs` |
 | `step.retrying` | Et forsøg, der ikke var klar, før trinnet prøves igen: `index`, `attempt` (forsøgets nummer), `status` og `value` (det, `until` gav, højst 200 tegn) eller `error` ved en netværksfejl. Uden body |
@@ -370,14 +398,14 @@ En ugyldig `workflow.json`, fx med en ukendt eller stavet forkert egenskab, angi
    "exit=$code outcome=$($finished.outcome)"
    ```
 
-2. **I baggrunden.** Start `run` som en baggrundsopgave. AI'en får besked, når processen slutter, og læser outputtet eller `runFile` fra første linje.
-3. **Live pr. trin.** Kør `run` under Claude Codes Monitor, så hver linje bliver en notifikation. En linje kan være stor, fordi bodyen er med, så klip den. Monitor stopper kommandoen efter højst 30 minutter, så start lange kørsler i baggrunden, og følg deres `runFile` i stedet.
+2. **I baggrunden.** Start `run` som en baggrundsopgave. AI'en får besked, når processen slutter, og læser outputtet, eller den følger kørslen med `log <workflow> <runId> --follow`, hvor `runId` står i første linje.
+3. **Live pr. trin.** Kør `run` under Claude Codes Monitor, så hver linje bliver en notifikation. En linje kan være stor, fordi bodyen er med, så klip den. Monitor stopper kommandoen efter højst 30 minutter, så start lange kørsler i baggrunden, og følg dem med `log … --follow` i stedet.
 
    ```bash
    '/c/sti/til/Hoboman/publish/hoboman-cli.exe' run Ordre-sync --param orderId=o-17 2>&1 | grep --line-buffered -o '^.\{0,300\}'
    ```
 
-4. **Følg en kørsel fra appen eller i baggrunden** som i [eksemplet ovenfor](#følg-en-kørsel-fra-appen).
+4. **Følg en kørsel fra appen eller i baggrunden** med `log`, som i [eksemplet ovenfor](#følg-en-kørsel-fra-appen). `log <workflow>` giver `runId<tab>start<tab>outcome` for hver kørsel, nyeste først, med `start` i UTC og `outcome` som `-`, hvis kørslen kører eller blev stoppet uden `run.finished`. `log <workflow> <runId>` eller `--last` skriver kørslens events, og `--follow` venter på nye, til `run.finished` kommer (exitkode 0). Skriver intet længere i kørslens fil, uden at `run.finished` er kommet, fordi kørslen blev dræbt, stopper `--follow` med exitkode 1. Ctrl+C stopper den også med exitkode 1.
 
 Ctrl+C afbryder pænt: `send` slutter med `Request was cancelled.` og exitkode 2, og `run` med `step.cancelled`, `step.skipped` for resten og `run.finished` med `Cancelled` og exitkode 1. Dræbes processen i stedet, kommer der ingen `run.finished`.
 
@@ -395,11 +423,11 @@ En færdig instruktion til AI-agenter står i [AI-PROMPT.md](AI-PROMPT.md).
 
 ## Historik og hvad CLI'et skriver
 
-- Hvert kald med `send` gemmes i historikken som et kald fra CLI'et, også direkte kald og kald, der fejler, mens Hoboman bygger eller sender det, fx en ugyldig URL eller en manglende hemmelighed. Den åbne app viser det med det samme i **Historik** med mærket **CLI**. Trin i et workflow gemmes kun i kørslens logfil.
+- Hvert kald med `send` gemmes i historikken som et kald fra CLI'et, også direkte kald og kald, der fejler, mens Hoboman bygger eller sender det, fx en ugyldig URL eller en manglende hemmelighed. Den åbne app viser det med det samme i **Historik** med mærket **CLI**. Trin i et workflow gemmes kun i kørslens logfil. `history` læser historikken, både kald fra appen og fra CLI'et.
 - Fejl, før kaldet bygges, gemmes ikke: forkerte argumenter eller variabler, et direkte kalds `-H` eller `@fil`, en request, der ikke kan indlæses, og problemer med miljøet. Kald, du selv afbryder, gemmes heller ikke.
 - Requesten gemmes, som den er skrevet, med variablerne uudfyldte. De midlertidige værdier gemmes ikke for sig, men står i den gemte adresse, hvis de bruges i vært, port eller sti.
 - Hver kørsel med `run` skrives i `runs\<workflowId>\<runId>.jsonl`. Er **Slet historik efter** udfyldt i appens Indstillinger, sletter appen kald og kørsler, der er ældre end det antal dage, når den starter; ellers ryddes de ikke op.
-- CLI'et skriver kun i `history\`, `runs\`, filen i `--out` og, når det henter et token, i `secrets.json`. Læser det miljøer uden id, giver det dem id i `environments.json`. `list`, `--help` og `--version` skriver ingenting, og CLI'et skriver ingen logfiler.
+- CLI'et skriver i `history\`, `runs\`, filen i `--out` og, når det henter et token, i `secrets.json`. `new`, `update`, `rename`, `move` og `delete` skriver requests, mapper, workflows og `environments.json`, og `update` og `delete` kan glemme hemmeligheder i `secrets.json` og, når et miljø slettes, credentials i `credentials.json`. Læser det miljøer uden id, giver det dem id i `environments.json`. `list`, `show`, `check`, `log`, `history`, `--help` og `--version` skriver ingenting, og CLI'et skriver ingen logfiler.
 - Kan historikken ikke skrives, fx ved fuld disk eller manglende rettigheder, skrives svaret alligevel, og kaldet sendes ikke igen.
 - Historikken og `runs\` er ikke krypteret. Headers, du selv skriver, fx `Authorization`, samt bodies, svar, den udfyldte adresse og gemte værdier som tokens kan indeholde hemmeligheder.
 

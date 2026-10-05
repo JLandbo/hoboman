@@ -179,4 +179,21 @@ public sealed class AppFolderWatcherTests : IDisposable
         // Assert
         await changed.Task.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
     }
+
+    [Fact]
+    public async Task CredentialsChanged_WhenTheCredentialsAreSaved_ThenFires()
+    {
+        // Arrange
+        var folder = new AppFolder(_temporary.Path);
+        using var watcher = new AppFolderWatcher(folder, NullLogger<AppFolderWatcher>.Instance);
+        var changed = new TaskCompletionSource();
+        watcher.CredentialsChanged += changed.SetResult;
+        watcher.Start();
+
+        // Act
+        await new CredentialStore(folder, new(folder, NullLogger<SecretStore>.Instance), NullLogger<CredentialStore>.Instance).SaveAsync([], Cancellation);
+
+        // Assert
+        await changed.Task.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+    }
 }

@@ -76,6 +76,7 @@
     "Environments.Invalid": "Every environment needs a name, and the names must be unique.",
     "Environments.LoadFailed": "The environments could not be loaded: {0}",
     "Environments.SaveFailed": "The environments could not be saved: {0}",
+    "Credentials.ChangedOnDisk": "The credentials changed on disk while this window was open. Close the window and open it again.",
     "Environments.ChangedOnDisk": "The environments changed on disk while this window was open. Close the window and open it again.",
     "Credentials.Title": "Credentials",
     "Credentials.Edit": "Edit credentials…",

@@ -29,6 +29,9 @@ public sealed class JsonFile<T>(string path, T empty, ILogger logger)
 
     readonly SemaphoreSlim _writing = new(1, 1);
 
+    // Text given by a program, such as the CLI's input, is read by the same rules as the files, so a mistake is told with its line.
+    public static T Parse(string text) => JsonSerializer.Deserialize<T>(text, _options) is { } value ? value : throw new JsonException("The input holds nothing.");
+
     public async Task<T> LoadAsync(CancellationToken cancellationToken)
     {
         await LeaveCallersThread();

@@ -107,6 +107,12 @@ public sealed class CommandLineTests
     [InlineData("run", "a", "--var", "a=1")]
     [InlineData("run", "a", "--param")]
     [InlineData("send", "saved", "--param", "a=1")]
+    [InlineData("show")]
+    [InlineData("history", "--count", "0")]
+    [InlineData("history", "20261005-120000-000-abc", "--count", "5")]
+    [InlineData("update", "Ping")]
+    [InlineData("log", "Flow", "--follow")]
+    [InlineData("log", "Flow", "20261005-120000-000-abcd", "--last")]
     public void Parse_WhenTheArgumentsAreInvalid_ThenSaysSo(params string[] arguments)
     {
         // Act
@@ -114,6 +120,66 @@ public sealed class CommandLineTests
 
         // Assert
         Assert.Equal("Invalid command arguments. Use --help for usage.", input.Problem);
+    }
+
+    [Fact]
+    public void Parse_WhenUpdating_ThenTakesTheTargetAndTheFile()
+    {
+        // Act
+        var input = new CommandLine().Parse(["update", "Ping", "--file", "-"]);
+
+        // Assert
+        Assert.Equal(new UpdateInput("Ping", "-"), input.Update);
+    }
+
+    [Fact]
+    public void Parse_WhenTheLastRunIsFollowed_ThenTakesIt()
+    {
+        // Act
+        var input = new CommandLine().Parse(["log", "Flow", "--last", "--follow"]);
+
+        // Assert
+        Assert.Equal(new LogInput("Flow", null, true, true), input.Log);
+    }
+
+    [Fact]
+    public void Parse_WhenChecking_ThenIsARunThatOnlyChecks()
+    {
+        // Act
+        var input = new CommandLine().Parse(["check", "Flow", "--env", "Dev"]);
+
+        // Assert
+        Assert.Equal(("Flow", "Dev", true), (input.Run!.Workflow, input.Run.EnvironmentName, input.Run.CheckOnly));
+    }
+
+    [Fact]
+    public void Parse_WhenTheHistoryIsListed_ThenTakesTwentyCallsWhenNoCountIsGiven()
+    {
+        // Act
+        var input = new CommandLine().Parse(["history"]);
+
+        // Assert
+        Assert.Equal(new HistoryInput(null, 20), input.History);
+    }
+
+    [Fact]
+    public void Parse_WhenAnEnvironmentIsMade_ThenTakesItsName()
+    {
+        // Act
+        var input = new CommandLine().Parse(["new", "environment", "Dev"]);
+
+        // Assert
+        Assert.Equal((SavedKind.Environment, "Dev"), (input.New!.Kind, input.New.Name));
+    }
+
+    [Fact]
+    public void Parse_WhenShowing_ThenTakesTheTarget()
+    {
+        // Act
+        var input = new CommandLine().Parse(["show", "Shop/Ping"]);
+
+        // Assert
+        Assert.Equal("Shop/Ping", input.Show);
     }
 
     [Fact]

@@ -2,6 +2,7 @@ using System.CommandLine;
 using System.Text;
 using System.Text.Json;
 using Hoboman.Core.Sending;
+using Hoboman.Core.Storage;
 using Hoboman.Core.Text;
 using Hoboman.Core.Workflows;
 
@@ -48,6 +49,13 @@ sealed class CliOutput(Stream output, Stream error)
         await output.FlushAsync(CancellationToken.None);
     }
 
+    // A line as it was logged, written in one go and flushed like an event.
+    public async Task WriteLineAsync(byte[] line)
+    {
+        await output.WriteAsync(line, CancellationToken.None);
+        await output.FlushAsync(CancellationToken.None);
+    }
+
     public async Task<int> WriteResultAsync<T>(T result)
     {
         await WriteJsonAsync(output, result, CancellationToken.None);
@@ -55,6 +63,10 @@ sealed class CliOutput(Stream output, Stream error)
     }
 
     public Task<int> WriteErrorAsync(string problem) => WriteErrorAsync(new { error = problem });
+
+    // Only where the file is wrong is told, as the message of the exception can quote a value from it.
+    public Task<int> WriteInvalidFileAsync(string problem, InvalidFileException exception, JsonException invalid) =>
+        WriteErrorAsync(new { error = problem, file = exception.FilePath, path = invalid.Path, line = invalid.LineNumber + 1 });
 
     // Written even when the call was cancelled, so the caller learns why it stopped.
     public async Task<int> WriteErrorAsync<T>(T problem)

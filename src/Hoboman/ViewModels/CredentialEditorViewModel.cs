@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Text.Json;
 using Hoboman.Core.Auth;
 using Hoboman.Core.Environments;
 using Hoboman.Core.Languages;
@@ -13,6 +14,8 @@ namespace Hoboman.ViewModels;
 public sealed class CredentialEditorViewModel(CredentialStore store, SecretStore secrets, AuthRefreshService refreshes, EnvironmentsViewModel environments, IClipboard clipboard, Translator translator,
     TimeProvider clock, ILogger<CredentialEditorViewModel> logger) : ObservableObject
 {
+    string _loadedJson = "";
+
     public ObservableCollection<CredentialGroupViewModel> Environments { get; } = [];
 
     public CredentialGroupViewModel? SelectedEnvironment
@@ -62,6 +65,7 @@ public sealed class CredentialEditorViewModel(CredentialStore store, SecretStore
         try
         {
             var credentials = await store.AllAsync(cancellationToken);
+            _loadedJson = JsonSerializer.Serialize(credentials);
             foreach (var environment in environments.Items)
             {
                 var drafts = new List<CredentialDraftViewModel>();
@@ -124,12 +128,20 @@ public sealed class CredentialEditorViewModel(CredentialStore store, SecretStore
         }
         try
         {
+            // The file wins: if the CLI changed it while the window was open, such as by deleting an environment, its change is not overwritten.
+            if (JsonSerializer.Serialize(await store.AllAsync(CancellationToken.None)) != _loadedJson)
+            {
+                Problem = translator.Of("Credentials.ChangedOnDisk");
+                return false;
+            }
             var drafts = Environments.SelectMany(group => group.Drafts).ToList();
             foreach (var draft in drafts)
             {
                 await draft.Auth.SaveSecretsAsync(draft.Id, CancellationToken.None);
             }
             await store.SaveAsync([.. drafts.Select(draft => new Credential(draft.Id, draft.EnvironmentId, draft.Name.Trim(), draft.Auth.ToSettings()))], CancellationToken.None);
+            // The window stays open, so what it saved is what the next save compares with.
+            _loadedJson = JsonSerializer.Serialize(await store.AllAsync(CancellationToken.None));
             Problem = null;
         }
         catch (Exception exception) when (FileProblem.Is(exception))

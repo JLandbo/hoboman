@@ -16,19 +16,24 @@ sealed class VariableInput(TextReader input, bool inputRedirected)
     public Task<IReadOnlyDictionary<string, JsonElement>> ReadAsync(RunInput command, CancellationToken cancellationToken) =>
         ReadAsync(command.Parameters, command.ParametersFile, cancellationToken);
 
+    // A file, or - for redirected stdin.
+    public async Task<string> TextOfAsync(string path, CancellationToken cancellationToken)
+    {
+        // Without redirected input, it would wait for someone to type the JSON.
+        if (path == "-" && !inputRedirected)
+        {
+            throw new FormatException();
+        }
+        // Reading the console's input does not stop when it is cancelled, so the wait does.
+        return path == "-" ? await input.ReadToEndAsync(cancellationToken).WaitAsync(cancellationToken) : await File.ReadAllTextAsync(path, Encoding.UTF8, cancellationToken);
+    }
+
     async Task<IReadOnlyDictionary<string, JsonElement>> ReadAsync(string[] options, string? file, CancellationToken cancellationToken)
     {
         var values = new Dictionary<string, JsonElement>();
         if (file is { } path)
         {
-            // Without redirected input, it would wait for someone to type the JSON.
-            if (path == "-" && !inputRedirected)
-            {
-                throw new FormatException();
-            }
-            // Reading the console's input does not stop when it is cancelled, so the wait does.
-            var json = path == "-" ? await input.ReadToEndAsync(cancellationToken).WaitAsync(cancellationToken) : await File.ReadAllTextAsync(path, Encoding.UTF8, cancellationToken);
-            using var document = JsonDocument.Parse(json);
+            using var document = JsonDocument.Parse(await TextOfAsync(path, cancellationToken));
             if (document.RootElement.ValueKind != JsonValueKind.Object)
             {
                 throw new FormatException();

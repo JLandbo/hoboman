@@ -102,6 +102,15 @@ public sealed class WorkflowLibrary(AppFolder folder, ILogger<WorkflowLibrary> l
         logger.LogInformation("Saved the script {Script} of the workflow {Id}", script, id);
     }
 
+    public Task<IReadOnlyList<string>> ScriptsAsync(Guid id, CancellationToken cancellationToken) => Task.Run<IReadOnlyList<string>>(() =>
+        [.. Directory.EnumerateFiles(FolderOf(id), "*.js").Select(path => Path.GetFileName(path)).Order(StringComparer.OrdinalIgnoreCase)], cancellationToken);
+
+    public Task DeleteScriptAsync(Guid id, string script, CancellationToken cancellationToken) => Retrying.RunAsync(() =>
+    {
+        File.Delete(ScriptPathOf(id, script));
+        logger.LogInformation("Deleted the script {Script} of the workflow {Id}", script, id);
+    }, logger, script, cancellationToken);
+
     // A request step's secrets are saved under its id, and the workflow's own auth under the workflow's id.
     public static IEnumerable<Guid> SecretOwnersOf(Workflow workflow) =>
         workflow.Steps.Select(step => step.Request?.Id ?? Guid.Empty).Append(workflow.Auth is null ? Guid.Empty : workflow.Id).Where(id => id != Guid.Empty);

@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Hoboman.Cli;
 using Hoboman.Tests.Auth;
 using Hoboman.Tests.Requests;
@@ -33,6 +34,10 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     HistoryStore History => new(Folder, NullLogger<HistoryStore>.Instance);
 
     WorkflowLibrary Workflows => new(Folder, NullLogger<WorkflowLibrary>.Instance);
+
+    CredentialStore Credentials => new(Folder, Secrets, NullLogger<CredentialStore>.Instance);
+
+    EnvironmentChanges EnvironmentChanges => new(Environments, Secrets, Credentials);
 
     ApiRequest Request => ApiRequest.New() with { Url = $"{server.Http}", Auth = AuthSettings.None };
 
@@ -76,8 +81,14 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
         var check = new WorkflowCheck(Workflows, Secrets, NullLogger<WorkflowCheck>.Instance);
         var workflowRunner = new WorkflowRunner(sender, Folder, TimeProvider.System, NullLogger<WorkflowRunner>.Instance);
         var tokens = new UnaskedTokens(oauth ?? new(_ => throw new OAuthException(OAuthProblem.Denied, "access_denied")), Secrets, NullLogger<UnaskedTokens>.Instance);
-        return new CliApplication(Library, Settings, Environments, runner, Workflows, check, workflowRunner, tokens, new(_output, _error), new(input ?? TextReader.Null, input is not null),
-            new(Library, Secrets, Folder, NullLogger<RequestDeletion>.Instance), new(Workflows, Secrets, NullLogger<WorkflowDeletion>.Instance))
+        var output = new CliOutput(_output, _error);
+        var variables = new VariableInput(input ?? TextReader.Null, input is not null);
+        var targets = new Targets(Workflows, Environments);
+        var workflowDeletion = new WorkflowDeletion(Workflows, Secrets, NullLogger<WorkflowDeletion>.Instance);
+        return new CliApplication(Library, Settings, Environments, runner, Workflows, check, workflowRunner, tokens, output, variables,
+            new(Library, Secrets, Folder, NullLogger<RequestDeletion>.Instance), workflowDeletion, targets,
+            new(Library, Workflows, Environments, targets, output), new(Library, Workflows, workflowDeletion, Environments, EnvironmentChanges, targets, variables, output), new(Folder, targets, output),
+            EnvironmentChanges, new(History, output))
             .RunAsync(arguments, cancellationToken ?? Cancellation);
     }
 
@@ -1092,5 +1103,669 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
         Assert.Equal(0, exitCode);
         Assert.Empty(await Workflows.ListAsync(Cancellation));
         Assert.Null(await Secrets.OfAsync(step, SecretKind.Token, Cancellation));
+    }
+    JsonElement Shown => JsonSerializer.Deserialize<JsonElement>(_output.ToArray());
+
+    // What show wrote, with the output emptied for the command that follows.
+    async Task<JsonNode> ShownAsync(string target)
+    {
+        await RunAsync(["show", target]);
+        var shown = JsonNode.Parse(_output.ToArray())!;
+        _output.SetLength(0);
+        return shown;
+    }
+
+    Task<int> UpdateAsync(string target, JsonNode input)
+    {
+        var reader = new StringReader(input.ToJsonString());
+        return RunAsync(["update", target, "--file", "-"], input: reader);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenARequestIsShown_ThenWritesItAsSaved()
+    {
+        // Arrange
+        var request = Request with { Id = Guid.NewGuid(), Name = "Ping", Method = "POST" };
+        await Library.CreateAsync(request, Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["show", "Ping"]);
+
+        // Assert
+        Assert.Equal((0, "POST", $"{request.Id}"), (exitCode, Shown.GetProperty("request").GetProperty("method").GetString(), Shown.GetProperty("request").GetProperty("id").GetString()));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAWorkflowIsShown_ThenWritesItWithItsScripts()
+    {
+        // Arrange
+        var workflow = await Workflows.SaveAsync("Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Script = "map.js" }] }, Cancellation);
+        await Workflows.CreateScriptAsync(workflow.Id, "map.js", "return 1;", Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["show", "Flow"]);
+
+        // Assert
+        Assert.Equal((0, "map.js", "return 1;"), (exitCode, Shown.GetProperty("workflow").GetProperty("steps")[0].GetProperty("script").GetString(), Shown.GetProperty("scripts").GetProperty("map.js").GetString()));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAnEnvironmentIsShown_ThenWritesItsValues()
+    {
+        // Arrange
+        await Environments.SaveAsync([new("Dev", [new("baseUrl", "https://dev.local")]) { Id = Guid.NewGuid() }], Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["show", "Dev"]);
+
+        // Assert
+        Assert.Equal((0, "https://dev.local"), (exitCode, Shown.GetProperty("environment").GetProperty("variables")[0].GetProperty("value").GetString()));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAFolderIsShown_ThenWritesItsAuth()
+    {
+        // Arrange
+        var folder = await Library.FolderAtAsync("Shop", Cancellation);
+        await Library.SaveFolderAsync((await Library.LoadFolderAsync(folder!.Value, Cancellation))! with { Auth = new(AuthKind.Bearer) }, Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["show", "Shop"]);
+
+        // Assert
+        Assert.Equal((0, "Bearer"), (exitCode, Shown.GetProperty("folder").GetProperty("auth").GetProperty("kind").GetString()));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheEnvironmentsCannotBeRead_ThenARequestIsShownAllTheSame()
+    {
+        // Arrange
+        await Library.CreateAsync(Request with { Id = Guid.NewGuid(), Name = "Ping" }, Cancellation);
+        Directory.CreateDirectory(_temporary.Path);
+        await File.WriteAllTextAsync(Path.Combine(_temporary.Path, "environments.json"), "[", Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["show", "Ping"]);
+
+        // Assert
+        Assert.Equal(0, exitCode);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheSettingsCannotBeRead_ThenListingEnvironmentsTellsIt()
+    {
+        // Arrange
+        Directory.CreateDirectory(_temporary.Path);
+        await File.WriteAllTextAsync(Path.Combine(_temporary.Path, "settings.json"), "{", Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["list", "environments"]);
+
+        // Assert
+        Assert.Equal((2, "Environment settings could not be read."), (exitCode, Problem));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAnUpdateIsReadFromAFile_ThenSavesIt()
+    {
+        // Arrange
+        var request = Request with { Id = Guid.NewGuid(), Name = "Ping" };
+        await Library.CreateAsync(request, Cancellation);
+        var shown = await ShownAsync("Ping");
+        shown["request"]!["url"] = "https://changed.local";
+        var file = Path.Combine(_temporary.Path, "update.json");
+        await File.WriteAllTextAsync(file, shown.ToJsonString(), Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["update", "Ping", "--file", file]);
+
+        // Assert
+        Assert.Equal((0, "https://changed.local"), (exitCode, (await Library.LoadAsync(request.Id, Cancellation))!.Url));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAWorkflowIsCheckedWithItsParameter_ThenItCanRun()
+    {
+        // Arrange
+        await Workflows.SaveAsync("Flow", new() { Id = Guid.NewGuid(), Parameters = [new("orderId")], Steps = [new() { Request = Call with { Url = $"{server.Http}orders/{{{{orderId}}}}" } }] }, Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["check", "Flow", "--param", "orderId=o-17"]);
+
+        // Assert
+        Assert.Equal(0, exitCode);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAnEnvironmentIsMade_ThenItIsThereWithoutVariables()
+    {
+        // Act
+        var exitCode = await RunAsync(["new", "environment", "Dev"]);
+
+        // Assert
+        Assert.Equal((0, "Dev", 0), (exitCode, (await Environments.AllAsync(Cancellation)).Single().Name, (await Environments.AllAsync(Cancellation)).Single().Variables.Count));
+    }
+
+    [Theory]
+    [InlineData("new", "environment", "dev")]
+    [InlineData("rename", "Prod", "dev")]
+    public async Task RunAsync_WhenAnEnvironmentWouldTakeANameThatIsTaken_ThenFailsAsEnvironmentsAreChosenByName(params string[] arguments)
+    {
+        // Arrange
+        await Environments.SaveAsync([new("Dev", []) { Id = Guid.NewGuid() }, new("Prod", []) { Id = Guid.NewGuid() }], Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(arguments);
+
+        // Assert
+        Assert.Equal((2, "Environment name is taken.", "Dev|Prod"), (exitCode, Problem, string.Join('|', (await Environments.AllAsync(Cancellation)).Select(environment => environment.Name))));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAShownEnvironmentIsUpdated_ThenGetsTheNewVariables()
+    {
+        // Arrange
+        await Environments.SaveAsync([new("Dev", [new("baseUrl", "https://old.local")]) { Id = Guid.NewGuid() }], Cancellation);
+        var shown = await ShownAsync("Dev");
+        shown["environment"]!["variables"]![0]!["value"] = "https://new.local";
+
+        // Act
+        var exitCode = await UpdateAsync("Dev", shown);
+
+        // Assert
+        Assert.Equal((0, "https://new.local"), (exitCode, (await Environments.AllAsync(Cancellation)).Single().Variables.Single().Value));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAnUpdateRenamesAnEnvironment_ThenFails()
+    {
+        // Arrange
+        await Environments.SaveAsync([new("Dev", []) { Id = Guid.NewGuid() }], Cancellation);
+        var shown = await ShownAsync("Dev");
+        shown["environment"]!["name"] = "Prod";
+
+        // Act
+        var exitCode = await UpdateAsync("Dev", shown);
+
+        // Assert
+        Assert.Equal((2, "Use rename to change the name."), (exitCode, Problem));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAnEnvironmentIsDeletedWithYes_ThenForgetsItsTokensAndCredentials()
+    {
+        // Arrange
+        var environment = Guid.NewGuid();
+        var owner = Guid.NewGuid();
+        await Environments.SaveAsync([new("Dev", []) { Id = environment }], Cancellation);
+        await Secrets.SaveAsync(owner, SecretKind.OAuthToken, environment, "token", Cancellation);
+        await Credentials.SaveAsync([new(Guid.NewGuid(), environment, "Api", AuthSettings.None)], Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["delete", "Dev", "--yes"]);
+
+        // Assert
+        Assert.Equal((0, 0, (string?)null, 0), (exitCode, (await Environments.AllAsync(Cancellation)).Count, await Secrets.OfAsync(owner, SecretKind.OAuthToken, environment, Cancellation),
+            (await Credentials.AllAsync(Cancellation)).Count));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAnEnvironmentHasTheNameOfARequest_ThenTheNameIsAmbiguousAndNothingIsDeleted()
+    {
+        // Arrange
+        await Library.CreateAsync(Request with { Id = Guid.NewGuid(), Name = "Dev" }, Cancellation);
+        await Environments.SaveAsync([new("Dev", []) { Id = Guid.NewGuid() }], Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["delete", "Dev", "--yes"]);
+
+        // Assert
+        Assert.Equal((2, "Target is ambiguous. Use its id.", 1, 1), (exitCode, Problem, (await Library.LoadAllAsync(Cancellation)).Requests.Count, (await Environments.AllAsync(Cancellation)).Count));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheEnvironmentsCannotBeReadAndNothingElseHasTheTarget_ThenTellsWhereTheyAreWrong()
+    {
+        // Arrange
+        Directory.CreateDirectory(_temporary.Path);
+        await File.WriteAllTextAsync(Path.Combine(_temporary.Path, "environments.json"), "[", Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["delete", "Dev", "--yes"]);
+
+        // Assert
+        Assert.Equal((2, "File is not valid."), (exitCode, Problem));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAnEnvironmentIsMoved_ThenFails()
+    {
+        // Arrange
+        await Environments.SaveAsync([new("Dev", []) { Id = Guid.NewGuid() }], Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["move", "Dev", "."]);
+
+        // Assert
+        Assert.Equal((2, "An environment cannot be moved."), (exitCode, Problem));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAnUpdateGivesAScriptAsNull_ThenDeletesIt()
+    {
+        // Arrange
+        var workflow = await Workflows.SaveAsync("Flow", new() { Id = Guid.NewGuid() }, Cancellation);
+        await Workflows.CreateScriptAsync(workflow.Id, "old.js", "return 1;", Cancellation);
+        var shown = await ShownAsync("Flow");
+        shown["scripts"]!["old.js"] = null;
+
+        // Act
+        var exitCode = await UpdateAsync("Flow", shown);
+
+        // Assert
+        Assert.Equal((0, 0), (exitCode, (await Workflows.ScriptsAsync(workflow.Id, Cancellation)).Count));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAnUpdateDeletesAScriptAStepUses_ThenFailsAndKeepsIt()
+    {
+        // Arrange
+        var workflow = await Workflows.SaveAsync("Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Script = "map.js" }] }, Cancellation);
+        await Workflows.CreateScriptAsync(workflow.Id, "map.js", "return 1;", Cancellation);
+        var shown = await ShownAsync("Flow");
+        shown["scripts"]!["map.js"] = null;
+
+        // Act
+        var exitCode = await UpdateAsync("Flow", shown);
+
+        // Assert
+        Assert.Equal((2, "A script a step uses cannot be deleted.", "return 1;"), (exitCode, Problem, await Workflows.LoadScriptAsync(workflow.Id, "map.js", Cancellation)));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheHistoryIsListed_ThenTellsTheNewestCallsWithTheirStatus()
+    {
+        // Arrange
+        await RunAsync(["send", "GET", $"{server.Http}"]);
+        await RunAsync(["send", "POST", $"{server.Http}"]);
+        _output.SetLength(0);
+
+        // Act
+        var exitCode = await RunAsync(["history", "--count", "1"]);
+
+        // Assert
+        var lines = Output.TrimEnd().Split(Environment.NewLine);
+        var call = lines[0].Split('\t');
+        Assert.Equal((0, 1, "Cli", "POST", "200"), (exitCode, lines.Length, call[2], call[3], call[4]));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenACallInTheHistoryIsShown_ThenWritesItsRequestAndResponse()
+    {
+        // Arrange
+        await RunAsync(["send", "GET", $"{server.Http}"]);
+        _output.SetLength(0);
+        await RunAsync(["history"]);
+        var name = Output.Split('\t')[0];
+        _output.SetLength(0);
+
+        // Act
+        var exitCode = await RunAsync(["history", name]);
+
+        // Assert
+        Assert.Equal((0, "GET", 200), (exitCode, Shown.GetProperty("call").GetProperty("request").GetProperty("method").GetString(), Shown.GetProperty("call").GetProperty("response").GetProperty("statusCode").GetInt32()));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenACallIsNotInTheHistory_ThenFailsAlsoForACallOutsideIt()
+    {
+        // Arrange
+        await RunAsync(["send", "GET", $"{server.Http}"]);
+        var call = Directory.EnumerateFiles(Folder.History).Single();
+        File.Copy(call, Path.Combine(_temporary.Path, "outside.json"));
+
+        // Act
+        var exitCode = await RunAsync(["history", "../outside"]);
+
+        // Assert
+        Assert.Equal((2, "Call could not be found."), (exitCode, Problem));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAShownFileIsNotValid_ThenTellsWhere()
+    {
+        // Arrange
+        var id = Guid.NewGuid();
+        Directory.CreateDirectory(Folder.Requests);
+        await File.WriteAllTextAsync(Path.Combine(Folder.Requests, $"{id}.json"), "{ \"url\": ", Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["show", $"{id}"]);
+
+        // Assert
+        Assert.Equal((2, "File is not valid."), (exitCode, Problem));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAShownRequestIsUpdated_ThenKeepsItsIdNameAndFolder()
+    {
+        // Arrange
+        var folder = await Library.FolderAtAsync("Shop", Cancellation);
+        var request = Request with { Id = Guid.NewGuid(), Name = "Ping", FolderId = folder };
+        await Library.CreateAsync(request, Cancellation);
+        var shown = await ShownAsync("Shop/Ping");
+        shown["request"]!["method"] = "DELETE";
+
+        // Act
+        var exitCode = await UpdateAsync("Shop/Ping", shown);
+
+        // Assert
+        var saved = (await Library.LoadAsync(request.Id, Cancellation))!;
+        Assert.Equal((0, "DELETE", "Ping", folder), (exitCode, saved.Method, saved.Name, saved.FolderId));
+    }
+
+    [Theory]
+    [InlineData("name", "Pong", "Use rename to change the name.")]
+    [InlineData("folderId", null, "Use move to change the folder.")]
+    [InlineData("id", "6f0a7c1e-2b3d-4e5f-8a9b-0c1d2e3f4a5b", "Target is not the one in the input.")]
+    public async Task RunAsync_WhenAnUpdateChangesTheIdNameOrFolder_ThenFailsAndChangesNothing(string property, string? value, string problem)
+    {
+        // Arrange
+        var folder = await Library.FolderAtAsync("Shop", Cancellation);
+        var request = Request with { Id = Guid.NewGuid(), Name = "Ping", FolderId = folder };
+        await Library.CreateAsync(request, Cancellation);
+        var shown = await ShownAsync("Shop/Ping");
+        shown["request"]![property] = value;
+        shown["request"]!["method"] = "DELETE";
+
+        // Act
+        var exitCode = await UpdateAsync("Shop/Ping", shown);
+
+        // Assert
+        Assert.Equal((2, problem, "GET"), (exitCode, Problem, (await Library.LoadAsync(request.Id, Cancellation))!.Method));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheInputHasAnUnknownProperty_ThenTellsItsLine()
+    {
+        // Arrange
+        await Library.CreateAsync(Request with { Id = Guid.NewGuid(), Name = "Ping" }, Cancellation);
+        var input = new StringReader("{\n  \"request\": {\n    \"url\": \"https://dev.local\",\n    \"mystery\": 1\n  }\n}");
+
+        // Act
+        var exitCode = await RunAsync(["update", "Ping", "--file", "-"], input: input);
+
+        // Assert
+        using var error = JsonDocument.Parse(_error.ToArray());
+        Assert.Equal((2, "Input is not valid.", 4), (exitCode, Problem, error.RootElement.GetProperty("line").GetInt32()));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAShownWorkflowIsUpdated_ThenKeepsTheIdsOfItsStepsAndGivesANewOneItsOwn()
+    {
+        // Arrange
+        var step = Guid.NewGuid();
+        var workflow = await Workflows.SaveAsync("Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Call with { Id = step } }] }, Cancellation);
+        var shown = await ShownAsync("Flow");
+        shown["workflow"]!["steps"]!.AsArray().Add(JsonNode.Parse("""{ "script": "map.js" }"""));
+        shown["workflow"]!["steps"]!.AsArray().Add(JsonNode.Parse("""{ "request": { "url": "https://dev.local" } }"""));
+        shown["scripts"] = JsonNode.Parse("""{ "map.js": "return 1;" }""");
+
+        // Act
+        var exitCode = await UpdateAsync("Flow", shown);
+
+        // Assert
+        var saved = (await Workflows.LoadAsync(workflow.Id, Cancellation))!;
+        Assert.Equal((0, step, true, "return 1;"), (exitCode, saved.Steps[0].Request!.Id, saved.Steps[2].Request!.Id != Guid.Empty, await Workflows.LoadScriptAsync(workflow.Id, "map.js", Cancellation)));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenWhatWasShownIsUpdatedUnchanged_ThenShowsTheSame()
+    {
+        // Arrange
+        var step = Guid.NewGuid();
+        await Workflows.SaveAsync("Flow", new() { Id = Guid.NewGuid(), Variables = [new("token")], Steps = [new() { Request = Call with { Id = step }, Saves = [new("token", "$.token")] }] }, Cancellation);
+        var shown = await ShownAsync("Flow");
+
+        // Act
+        var exitCode = await UpdateAsync("Flow", shown);
+
+        // Assert
+        _output.SetLength(0);
+        Assert.Equal((0, shown.ToJsonString()), (exitCode, (await ShownAsync("Flow")).ToJsonString()));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTwoStepsHaveTheSameId_ThenFailsAsTheyWouldShareSecrets()
+    {
+        // Arrange
+        var step = Guid.NewGuid();
+        await Workflows.SaveAsync("Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Call with { Id = step } }] }, Cancellation);
+        var shown = await ShownAsync("Flow");
+        shown["workflow"]!["steps"]!.AsArray().Add(shown["workflow"]!["steps"]![0]!.DeepClone());
+
+        // Act
+        var exitCode = await UpdateAsync("Flow", shown);
+
+        // Assert
+        Assert.Equal((2, "Step id is not one of the workflow's."), (exitCode, Problem));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAnUpdateRemovesAStep_ThenForgetsItsSecrets()
+    {
+        // Arrange
+        var step = Guid.NewGuid();
+        await Workflows.SaveAsync("Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Call with { Id = step } }] }, Cancellation);
+        await Secrets.SaveAsync(step, SecretKind.Token, "token", Cancellation);
+        var shown = await ShownAsync("Flow");
+        shown["workflow"]!["steps"] = new JsonArray();
+
+        // Act
+        var exitCode = await UpdateAsync("Flow", shown);
+
+        // Assert
+        Assert.Equal((0, (string?)null), (exitCode, await Secrets.OfAsync(step, SecretKind.Token, Cancellation)));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAStepTakesTheIdOfARequest_ThenFailsAsItWouldShareItsSecrets()
+    {
+        // Arrange
+        var request = Request with { Id = Guid.NewGuid(), Name = "Ping" };
+        await Library.CreateAsync(request, Cancellation);
+        await Workflows.SaveAsync("Flow", new() { Id = Guid.NewGuid() }, Cancellation);
+        var shown = await ShownAsync("Flow");
+        shown["workflow"]!["steps"]!.AsArray().Add(JsonNode.Parse($$"""{ "request": { "id": "{{request.Id}}", "url": "https://dev.local" } }"""));
+
+        // Act
+        var exitCode = await UpdateAsync("Flow", shown);
+
+        // Assert
+        Assert.Equal((2, "Step id is not one of the workflow's."), (exitCode, Problem));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAnUpdateHasAScriptNameThatLeadsOut_ThenFails()
+    {
+        // Arrange
+        await Workflows.SaveAsync("Flow", new() { Id = Guid.NewGuid() }, Cancellation);
+        var shown = await ShownAsync("Flow");
+        shown["scripts"] = JsonNode.Parse("""{ "../map.js": "return 1;" }""");
+
+        // Act
+        var exitCode = await UpdateAsync("Flow", shown);
+
+        // Assert
+        Assert.Equal((2, "Invalid script name."), (exitCode, Problem));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAFolderIsUpdated_ThenFails()
+    {
+        // Arrange
+        await Library.FolderAtAsync("Shop", Cancellation);
+
+        // Act
+        var exitCode = await UpdateAsync("Shop", new JsonObject());
+
+        // Assert
+        Assert.Equal((2, "A folder cannot be updated."), (exitCode, Problem));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenListingEnvironments_ThenMarksTheSelectedOne()
+    {
+        // Arrange
+        var chosen = Guid.NewGuid();
+        await Environments.SaveAsync([new("Prod", []) { Id = Guid.NewGuid() }, new("Dev", []) { Id = chosen }], Cancellation);
+        await Settings.UpdateAsync(_ => new(EnvironmentId: chosen), Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["list", "environments"]);
+
+        // Assert
+        Assert.Equal((0, $"{chosen}\tDev\tselected"), (exitCode, Output.Split(Environment.NewLine)[0]));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheLastRunIsLogged_ThenWritesItsEventsAsTheRunDid()
+    {
+        // Arrange
+        await Workflows.SaveAsync("Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Call }] }, Cancellation);
+        await RunAsync(["run", "Flow"]);
+        var ran = Output;
+        _output.SetLength(0);
+
+        // Act
+        var exitCode = await RunAsync(["log", "Flow", "--last"]);
+
+        // Assert
+        Assert.Equal((0, ran), (exitCode, Output));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenRunsAreListed_ThenTellsEachWithItsOutcome()
+    {
+        // Arrange
+        await Workflows.SaveAsync("Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Call }] }, Cancellation);
+        await RunAsync(["run", "Flow"]);
+        _output.SetLength(0);
+
+        // Act
+        var exitCode = await RunAsync(["log", "Flow"]);
+
+        // Assert
+        Assert.Equal((0, "Succeeded"), (exitCode, Output.TrimEnd().Split('\t')[2]));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenARunIsNotOneOfTheWorkflows_ThenFails()
+    {
+        // Act
+        var exitCode = await RunAsync(["log", $"{Guid.NewGuid()}", "../secrets"]);
+
+        // Assert
+        Assert.Equal((2, "Run could not be found."), (exitCode, Problem));
+    }
+
+    // A run's file, kept open for writing as by a run that is running.
+    FileStream RunningRun(Guid workflow, string firstLine)
+    {
+        var path = RunLog.PathOf(Folder, workflow, "20261005-120000-000-abcd");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read | FileShare.Delete);
+        file.Write(Encoding.UTF8.GetBytes(firstLine));
+        file.Flush();
+        return file;
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenARunIsFollowed_ThenWritesItsEventsUntilItFinishes()
+    {
+        // Arrange
+        var workflow = Guid.NewGuid();
+        await using var run = RunningRun(workflow, "{\"type\":\"run.started\"}\n");
+
+        // Act
+        var following = RunAsync(["log", $"{workflow}", "--last", "--follow"]);
+        await Task.Delay(300, Cancellation);
+        run.Write("{\"type\":\"run.finished\",\"outcome\":\"Succeeded\"}\n"u8);
+        run.Flush();
+        var exitCode = await following.WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+
+        // Assert
+        Assert.Equal((0, 2), (exitCode, Events.Count()));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAFollowedRunIsWrittenNoMoreWithoutItsLastEvent_ThenStops()
+    {
+        // Arrange
+        var workflow = Guid.NewGuid();
+        RunningRun(workflow, "{\"type\":\"run.started\"}\n").Dispose();
+
+        // Act
+        var exitCode = await RunAsync(["log", $"{workflow}", "--last", "--follow"]).WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+
+        // Assert
+        Assert.Equal((1, 1), (exitCode, Events.Count()));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAFollowedRunHasALargeLine_ThenWritesItWhole()
+    {
+        // Arrange
+        var workflow = Guid.NewGuid();
+        await using var run = RunningRun(workflow, $"{{\"type\":\"step.finished\",\"body\":\"{new string('x', 30_000_000)}\"}}\n");
+        run.Write("{\"type\":\"run.finished\",\"outcome\":\"Succeeded\"}\n"u8);
+        run.Flush();
+
+        // Act
+        var exitCode = await RunAsync(["log", $"{workflow}", "--last", "--follow"]).WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+
+        // Assert
+        Assert.Equal((0, 2), (exitCode, Events.Count()));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheLastEventOfARunIsLarge_ThenTheListStillTellsItsOutcome()
+    {
+        // Arrange
+        var workflow = Guid.NewGuid();
+        RunningRun(workflow, $"{{\"type\":\"run.started\"}}\n{{\"type\":\"run.finished\",\"outcome\":\"Failed\",\"variables\":{{\"pdf\":\"{new string('x', 3_000_000)}\"}}}}\n").Dispose();
+
+        // Act
+        var exitCode = await RunAsync(["log", $"{workflow}"]);
+
+        // Assert
+        Assert.Equal((0, "Failed"), (exitCode, Output.TrimEnd().Split('\t')[2]));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAWorkflowIsChecked_ThenSendsNothing()
+    {
+        // Arrange
+        var sender = new FakeSender(() => throw new InvalidOperationException("Nothing is to be sent."));
+        await Workflows.SaveAsync("Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Call }] }, Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["check", "Flow"], sender);
+
+        // Assert
+        Assert.Equal((0, (ApiRequest?)null), (exitCode, sender.Request));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenACheckedWorkflowHasAProblem_ThenTellsItAsRunDoes()
+    {
+        // Arrange
+        await Workflows.SaveAsync("Flow", new() { Id = Guid.NewGuid(), Parameters = [new("orderId")], Steps = [new() { Request = Call }] }, Cancellation);
+
+        // Act
+        var exitCode = await RunAsync(["check", "Flow"]);
+
+        // Assert
+        Assert.Equal((2, "Workflow cannot run."), (exitCode, Problem));
     }
 }

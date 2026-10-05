@@ -22,7 +22,7 @@ Hoboman er et skrivebordsværktøj til at bygge, sende og undersøge API-kald. R
 - **OAuth uden omveje** – client credentials eller authorization code med PKCE og browser-login. Hent et nyt token med refresh-knappen ved Auth; ved client credentials hentes det automatisk, når det mangler eller er udløbet. Tokens holdes adskilt pr. miljø og følger miljøet, også når det omdøbes.
 - **Base64 efter dit valg** – markér bestemte JSON-felter til encoding ved afsendelse eller decoding i svaret. Hele bodyen kan også vælges.
 - **Workflows** – kæd requests, scripts og ventetider sammen, giv værdier fra ét svar videre til de næste trin, og kør det hele under **Workflows** i appen eller med `hoboman-cli run`. Hver kørsel skrives som JSON-linjer, som et script eller en AI kan følge.
-- **Kommandolinje og AI** – send gemte og direkte requests, kør workflows og opret, omdøb, flyt og slet requests, mapper og workflows fra scripts og AI-agenter med `hoboman-cli.exe`. Se [CLI.md](CLI.md) og [AI-PROMPT.md](AI-PROMPT.md).
+- **Kommandolinje og AI** – send gemte og direkte requests, kør, tjek og følg workflows, vis, opret, ret, omdøb, flyt og slet requests, mapper, workflows og miljøer, og læs historikken fra scripts og AI-agenter med `hoboman-cli.exe`. Se [CLI.md](CLI.md) og [AI-PROMPT.md](AI-PROMPT.md).
 - **Små værktøjer i hverdagen** – formatering og sammenfoldning af JSON, XML og HTML samt stringify/parse og Base64 af teksten i udklipsholderen.
 - **Indstillinger og temaer** – dansk eller engelsk brugerflade, temaet Sort og gul eller dine egne temaer som filer, og **Ignorér certifikatfejl**.
 
@@ -216,7 +216,7 @@ flowchart LR
 
 `RequestRunner` finder den gældende auth, sender kaldet gennem `HttpRequestSender` og gemmer resultatet i historikken. Mangler et token, som kan hentes uden login, henter den et nyt og sender én gang til. `AuthRefreshService` samordner tokenhentning, og `CollectionChanges` sørger for, at appens gemning, flytning og sletning ikke udføres oven i hinanden.
 
-En filovervåger opdaterer appen, når `requests\`, `folders\`, `request-order.json`, `history\`, `environments.json` eller `workflows\` ændres udefra, fx af CLI'et eller en AI. En ændret request-fil vinder over ugemte ændringer i dens fane. Et workflow genindlæses kun, når det ikke har ugemte ændringer, og under en kørsel først, når den er færdig.
+En filovervåger opdaterer appen, når `requests\`, `folders\`, `request-order.json`, `history\`, `environments.json`, `credentials.json` eller `workflows\` ændres udefra, fx af CLI'et eller en AI. En ændret request-fil vinder over ugemte ændringer i dens fane. Et workflow genindlæses kun, når det ikke har ugemte ændringer, og under en kørsel først, når den er færdig.
 
 `WorkflowLibrary` læser og gemmer workflows og deres scripts i `workflows\`. `WorkflowCheck` tjekker et workflow, før det køres, og `WorkflowRunner` kører trinene gennem den samme `HttpRequestSender` og skriver hver kørsel i `runs\`.
 
@@ -287,6 +287,6 @@ Auth-hemmeligheder beskyttes med Windows DPAPI for den aktuelle Windows-bruger. 
 
 ## Kommandolinje og AI
 
-`hoboman-cli.exe` sender gemte og direkte requests og kører workflows uden GUI'en og skriver resultatet som JSON. Hvordan det bruges, hvad det kan, og eksempler i PowerShell står i [CLI.md](CLI.md).
+`hoboman-cli.exe` sender gemte og direkte requests, kører, tjekker og følger workflows og viser og ændrer requests, mapper, workflows og miljøer uden GUI'en, og det skriver resultatet som JSON. Hvordan det bruges, hvad det kan, og eksempler i PowerShell står i [CLI.md](CLI.md).
 
-En AI-agent arbejder med Hoboman gennem CLI'et og datafilerne: den kan sende kald, køre og følge workflows og, når du beder om det, skrive workflows, som appen viser med det samme. Hvad den kan og ikke kan, og en færdig instruktion til den, står i [AI-PROMPT.md](AI-PROMPT.md).
+En AI-agent arbejder med Hoboman kun gennem CLI'et og rører aldrig datafilerne: den kan sende kald, køre, tjekke og følge workflows og læse historikken og, når du beder om det, oprette og rette requests, workflows og miljøer, som appen viser med det samme. Hvad den kan og ikke kan, og en færdig instruktion til den, står i [AI-PROMPT.md](AI-PROMPT.md).
