@@ -32,6 +32,6 @@ sealed class CliFactory(AppFolder folder, SecretStore secrets, IRequestSender se
             new(_workflows, secrets, NullLogger<WorkflowCheck>.Instance), new(sender, folder, TimeProvider.System, NullLogger<WorkflowRunner>.Instance),
             new(oauth, secrets, NullLogger<UnaskedTokens>.Instance), output, variables, new(_library, secrets, folder, NullLogger<RequestDeletion>.Instance), workflowDeletion, targets,
             new(_library, _workflows, _environments, targets, output), new(_library, _workflows, workflowDeletion, _environments, environmentChanges, targets, variables, output),
-            new(folder, targets, output), environmentChanges, new(_history, output), _files);
+            new(folder, _workflows, targets, output), environmentChanges, new(_history, output), _files);
     }
 }

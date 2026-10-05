@@ -31,6 +31,9 @@ public sealed class WorkflowLibrary(AppFolder folder, ILogger<WorkflowLibrary> l
         return [.. ids.Select((id, index) => (id, names[index]))];
     }
 
+    // Its folder tells, also when its file cannot be read.
+    public bool Exists(Guid id) => Directory.Exists(FolderOf(id));
+
     public async Task<Workflow?> LoadAsync(Guid id, CancellationToken cancellationToken) =>
         await FileOf(id).LoadAsync(cancellationToken).ConfigureAwait(false) is { } workflow ? workflow with { Id = id } : null;
 

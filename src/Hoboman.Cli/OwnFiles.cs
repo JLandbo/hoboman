@@ -15,7 +15,17 @@ sealed class OwnFiles(AppFolder folder)
         await file.WriteAsync(bytes, cancellationToken);
     }
 
-    public string Outside(string path) => folder.Holds(path) ? throw new OwnFileException() : Path.GetFullPath(path);
+    // Only a plain path on a drive is taken. \\?\, \\.\, a share or an NTFS stream such as ::$INDEX_ALLOCATION would lead past the check of the folder,
+    // and a share would make Windows log in to another machine.
+    public string Outside(string path)
+    {
+        var full = Path.GetFullPath(path);
+        if (full is not [var drive, ':', '\\', ..] || !char.IsAsciiLetter(drive) || full.IndexOf(':', 2) >= 0)
+        {
+            throw new OwnFileException("Only a plain path on a drive, such as C:\\folder\\file, can be used.");
+        }
+        return folder.Holds(full) ? throw new OwnFileException("Hoboman's own files cannot be used.") : full;
+    }
 }
 
-sealed class OwnFileException() : Exception("Hoboman's own files cannot be used.");
+sealed class OwnFileException(string message) : Exception(message);

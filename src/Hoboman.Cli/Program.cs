@@ -28,7 +28,8 @@ try
     // MCP talks over stdin and stdout itself, so each call gets its own output and input instead of the console's.
     if (command.IsMcp)
     {
-        await new McpTools((output, error, input) => factory.Create(output, error, input, inputRedirected: true)).ServeAsync(cancellation.Token);
+        var downloads = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Hoboman");
+        await new McpTools((output, error, input) => factory.Create(output, error, input, inputRedirected: true), downloads).ServeAsync(cancellation.Token);
         return 0;
     }
     using var input = new StreamReader(Console.OpenStandardInput(), Encoding.UTF8);

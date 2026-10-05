@@ -258,6 +258,26 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     }
 
     [Theory]
+    [InlineData(@"\\?\{0}\x.txt")]
+    [InlineData(@"\\.\{0}\x.txt")]
+    [InlineData(@"\\localhost\{1}$\{2}\x.txt")]
+    [InlineData(@"{0}::$INDEX_ALLOCATION\x.txt")]
+    public async Task RunAsync_WhenTheOutFileIsNoPlainPathOnADrive_ThenSendsNothing(string form)
+    {
+        // Arrange
+        Directory.CreateDirectory(Folder.Root);
+        var root = Path.GetFullPath(Folder.Root);
+        var sender = Answering();
+
+        // Act
+        var exitCode = await RunAsync(["send", "GET", "https://localhost/", "--out", string.Format(form, root, root[0], root[3..])], sender);
+
+        // Assert
+        Assert.Equal((2, @"Only a plain path on a drive, such as C:\folder\file, can be used.", true, false),
+            (exitCode, Problem, sender.Request is null, File.Exists(Path.Combine(root, "x.txt"))));
+    }
+
+    [Theory]
     [InlineData("send", "POST", "https://localhost/", "--text", "@{0}")]
     [InlineData("send", "GET", "https://localhost/", "--vars", "{0}")]
     [InlineData("run", "Flow", "--params", "{0}")]
@@ -511,7 +531,7 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
         // Arrange
         await Environments.SaveAsync([new("Dev", [])], Cancellation);
         await Settings.UpdateAsync(_ => new(EnvironmentId: selected ? Guid.NewGuid() : null), Cancellation);
-        string[] options = selected ? [] : ["--env", "dev"];
+        string[] options = selected ? [] : ["--env", "Prod"];
         var sender = Answering();
 
         // Act
@@ -1726,8 +1746,11 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     [Fact]
     public async Task RunAsync_WhenARunIsNotOneOfTheWorkflows_ThenFails()
     {
+        // Arrange
+        await Workflows.SaveAsync("Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Call }] }, Cancellation);
+
         // Act
-        var exitCode = await RunAsync(["log", $"{Guid.NewGuid()}", "../secrets"]);
+        var exitCode = await RunAsync(["log", "Flow", "../secrets"]);
 
         // Assert
         Assert.Equal((2, "Run could not be found."), (exitCode, Problem));

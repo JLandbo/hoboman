@@ -20,8 +20,9 @@ public sealed class EnvironmentStore(AppFolder folder, ILogger<EnvironmentStore>
         return environments;
     }
 
+    // Names are unique in any case, so the case a name is given in does not matter.
     public async Task<ApiEnvironment?> FindAsync(string? name, CancellationToken cancellationToken) =>
-        name is null ? null : (await AllAsync(cancellationToken).ConfigureAwait(false)).FirstOrDefault(environment => environment.Name == name);
+        name is null ? null : (await AllAsync(cancellationToken).ConfigureAwait(false)).FirstOrDefault(environment => environment.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
 
     public Task SaveAsync(IReadOnlyList<ApiEnvironment> environments, CancellationToken cancellationToken) => _file.SaveAsync(environments, cancellationToken);
 

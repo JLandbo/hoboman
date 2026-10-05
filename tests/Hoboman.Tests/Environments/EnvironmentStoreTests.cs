@@ -26,6 +26,19 @@ public sealed class EnvironmentStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task FindAsync_WhenTheNameIsGivenInAnotherCase_ThenGivesTheEnvironment()
+    {
+        // Arrange
+        await Store().SaveAsync([new("Dev", [new("base", "https://dev.local")])], Cancellation);
+
+        // Act
+        var environment = await Store().FindAsync("dEV", Cancellation);
+
+        // Assert
+        Assert.Equal("https://dev.local", environment?.Resolve("{{base}}"));
+    }
+
+    [Fact]
     public async Task FindAsync_WhenNoNameIsGiven_ThenGivesNull()
     {
         // Arrange

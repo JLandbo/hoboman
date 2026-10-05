@@ -27,8 +27,10 @@ public sealed class McpToolsTests : IDisposable
     McpTools Tools(IRequestSender? sender = null)
     {
         var factory = new CliFactory(Folder, Secrets, sender ?? Answering(), new FakeOAuthClient(_ => throw new OAuthException(OAuthProblem.Denied, "access_denied")));
-        return new((output, error, input) => factory.Create(output, error, input, inputRedirected: true));
+        return new((output, error, input) => factory.Create(output, error, input, inputRedirected: true), Downloads);
     }
+
+    string Downloads => Path.Combine(_temporary.Path, "downloads");
 
     static FakeSender Answering(int status = 200, string body = "") => new(() => Task.FromResult(new ApiResponse(status, "OK", 0, 0, [], body)));
 
@@ -96,17 +98,109 @@ public sealed class McpToolsTests : IDisposable
         Assert.Equal((false, 404), (result.IsError, JsonDocument.Parse(TextOf(result)).RootElement.GetProperty("status").GetInt32()));
     }
 
+    [Theory]
+    [InlineData(@"..\svar.pdf")]
+    [InlineData(@"C:\Users\Public\svar.pdf")]
+    [InlineData(@"Startup\svar.cmd")]
+    [InlineData("svar.pdf:stream")]
+    [InlineData("..")]
+    [InlineData("svar.")]
+    [InlineData("NUL")]
+    [InlineData("com1.txt")]
+    [InlineData("CONOUT$")]
+    [InlineData("com¹.txt")]
+    public async Task SendSavedAsync_WhenTheOutFileIsNotAPlainFileName_ThenSendsNothing(string name)
+    {
+        // Arrange
+        await Library.CreateAsync(ApiRequest.New() with { Id = Guid.NewGuid(), Name = "Ping", Url = "https://localhost/" }, Cancellation);
+        var sender = Answering();
+
+        // Act
+        var result = await Tools(sender).SendSavedAsync("Ping", @out: name, cancellationToken: Cancellation);
+
+        // Assert
+        Assert.Equal(("Output file must be a plain file name.", true), (ProblemOf(result), sender.Request is null));
+    }
+
     [Fact]
-    public async Task SendSavedAsync_WhenTheOutFileIsNotAFullPath_ThenSendsNothing()
+    public async Task SendAsync_WhenAnOutFileNameIsGiven_ThenSavesTheBodyInDownloads()
+    {
+        // Act
+        var result = await Tools(Answering(body: "svar")).SendAsync("GET", "https://localhost/", @out: "svar.txt", cancellationToken: Cancellation);
+
+        // Assert
+        var file = Path.Combine(Downloads, "svar.txt");
+        Assert.Equal((file, true), (JsonDocument.Parse(TextOf(result)).RootElement.GetProperty("file").GetString(), File.Exists(file)));
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenVariablesAreGiven_ThenTheCallGetsThem()
     {
         // Arrange
         var sender = Answering();
 
         // Act
-        var result = await Tools(sender).SendSavedAsync("Ping", @out: "svar.pdf", cancellationToken: Cancellation);
+        await Tools(sender).SendAsync("GET", "https://localhost/{{id}}", variables: new JsonObject { ["id"] = 42 }, cancellationToken: Cancellation);
 
         // Assert
-        Assert.Equal(("Output file must be a full path.", true), (ProblemOf(result), sender.Request is null));
+        Assert.Equal("42", sender.Environment?.Resolve("{{id}}"));
+    }
+
+    [Fact]
+    public async Task NewRequestAsync_WhenOnlyTheUrlIsGiven_ThenMakesAGetWithTheBodyAsWritten()
+    {
+        // Act
+        await Tools().NewRequestAsync(".", "Ping", "https://localhost/", json: "@body.json", cancellationToken: Cancellation);
+
+        // Assert
+        var request = (await Library.LoadAllAsync(Cancellation)).Requests.Single();
+        Assert.Equal(("GET", "@body.json"), (request.Method, request.Body));
+    }
+
+    [Theory]
+    [InlineData("Folders", "Shop")]
+    [InlineData("Workflows", "Flow")]
+    public async Task ListAsync_WhenAKindIsGiven_ThenListsThatKind(string kind, string expected)
+    {
+        // Arrange
+        await Library.CreateFolderAsync(new() { Id = Guid.NewGuid(), Name = "Shop" }, Cancellation);
+        await SaveWorkflowAsync();
+
+        // Act
+        var result = await Tools().ListAsync(Enum.Parse<ListKind>(kind), Cancellation);
+
+        // Assert
+        Assert.EndsWith($"\t{expected}", TextOf(result));
+    }
+
+    [Fact]
+    public async Task ListAsync_WhenTheKindIsNotOneOfTheFour_ThenIsInvalid()
+    {
+        // Act
+        var result = await Tools().ListAsync((ListKind)7, Cancellation);
+
+        // Assert
+        Assert.Equal("Invalid tool arguments: kind is requests, workflows, folders or environments.", ProblemOf(result));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenNoContentIsGiven_ThenIsInvalid()
+    {
+        // Act
+        var result = await Tools().UpdateAsync("Ping", null, Cancellation);
+
+        // Assert
+        Assert.Equal("Invalid tool arguments: content is the JSON object from show.", ProblemOf(result));
+    }
+
+    [Fact]
+    public async Task LogAsync_WhenTheWorkflowIdIsUnknown_ThenSaysSo()
+    {
+        // Act
+        var result = await Tools().LogAsync($"{Guid.NewGuid()}", cancellationToken: Cancellation);
+
+        // Assert
+        Assert.Equal("Workflow could not be found.", ProblemOf(result));
     }
 
     [Fact]
@@ -220,7 +314,7 @@ public sealed class McpToolsTests : IDisposable
 
         // Assert
         var finished = events.Single(line => line["type"]!.GetValue<string>() == "step.finished");
-        Assert.Equal((false, false, "run.finished"), (finished.ContainsKey("body"), finished.ContainsKey("headers"), events[^1]["type"]!.GetValue<string>()));
+        Assert.Equal((false, false, false, "run.finished"), (finished.ContainsKey("body"), finished.ContainsKey("headers"), events[0].ContainsKey("runFile"), events[^1]["type"]!.GetValue<string>()));
     }
 
     [Fact]
@@ -236,6 +330,38 @@ public sealed class McpToolsTests : IDisposable
 
         // Assert
         Assert.Equal("svar", step["body"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAStepHasABodyButNoKind_ThenSendsItAsJson()
+    {
+        // Arrange
+        var workflows = new WorkflowLibrary(Folder, NullLogger<WorkflowLibrary>.Instance);
+        var workflow = await workflows.CreateAsync("Flow", Cancellation);
+        await workflows.SaveAsync(workflow with { Steps = [new() { Request = new() { Method = "POST", Url = "https://localhost/", Body = "{}" } }] }, Cancellation);
+        var sender = Answering();
+
+        // Act
+        await Tools(sender).RunAsync("Flow", cancellationToken: Cancellation);
+
+        // Assert
+        Assert.Equal((BodyKind.Json, "{}"), (sender.Request?.BodyKind, sender.Request?.Body));
+    }
+
+    [Fact]
+    public async Task LogAsync_WhenALineOfTheRunIsNotJson_ThenSaysTheRunCannotBeRead()
+    {
+        // Arrange
+        await SaveWorkflowAsync();
+        var tools = Tools();
+        await tools.RunAsync("Flow", cancellationToken: Cancellation);
+        await File.AppendAllTextAsync(Directory.EnumerateFiles(Folder.Runs, "*.jsonl", SearchOption.AllDirectories).Single(), "not json\n", Cancellation);
+
+        // Act
+        var result = await tools.LogAsync("Flow", last: true, cancellationToken: Cancellation);
+
+        // Assert
+        Assert.Equal("Run could not be read.", ProblemOf(result));
     }
 
     [Fact]

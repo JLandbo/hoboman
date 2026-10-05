@@ -12,7 +12,7 @@ En AI arbejder med Hoboman udefra og kun gennem Hobomans MCP-server, `hoboman-cl
 | Tjekke et workflow uden at sende noget | `check` | Intet sendes |
 | Sende en gemt request | `send_saved` | Ét kald med requestens egen auth eller mappens. Kaldet står i **Historik** med mærket **CLI** |
 | Sende et direkte kald | `send` | Ét kald uden auth ud over de headers, AI'en giver |
-| Hente en fil, fx en PDF | `send_saved` eller `send` med `out` | Svaret gemmes byte for byte i en ny fil. En fil, der findes, overskrives aldrig |
+| Hente en fil, fx en PDF | `send_saved` eller `send` med `out` | Svaret gemmes byte for byte i en ny fil i `Downloads\Hoboman` i din profil. AI'en giver kun et filnavn og kan ikke gemme andre steder, og en fil, der findes, overskrives aldrig |
 | Køre et workflow | `run` | Alle trin i rækkefølge. Kørslen gemmes, så `log` kan læse den |
 | Se kørsler, også dem startet i appen | `log` | Intet skrives |
 | Oprette, omdøbe, flytte eller slette requests, mapper, workflows og miljøer, når du beder om det | `new_request`, `new_folder`, `new_workflow`, `new_environment`, `rename`, `move`, `delete` | Ændringen står i appen med det samme |

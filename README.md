@@ -53,7 +53,7 @@ Build-outputtet har ingen `themes\`-mappe, så her kan kun Sort og gul vælges, 
 .\install.ps1
 ```
 
-Scriptet publicerer appen og `hoboman-cli.exe` til `publish\`, kopierer temafilerne fra `src\Hoboman\Themes\` (i dag Lys) til `publish\themes\` uden at overskrive dem, der er der, opretter en genvej i Start-menuen og starter `Hoboman.exe`. Hvis den publicerede app allerede kører, beder scriptet dig lukke den først, så ugemte requests ikke bliver lukket ned bag din ryg. Kører `hoboman-cli.exe`, fejler publiceringen, så stop den først. Det gælder også MCP-serveren, som et AI-program holder kørende, så længe det er åbent; luk programmet først.
+Scriptet publicerer appen og `hoboman-cli.exe` til `publish\`, kopierer temafilerne fra `src\Hoboman\Themes\` (i dag Lys) til `publish\themes\` uden at overskrive dem, der er der, opretter en genvej i Start-menuen og starter `Hoboman.exe`. Hvis den publicerede app allerede kører, beder scriptet dig lukke den først, så ugemte requests ikke bliver lukket ned bag din ryg. Det samme gælder `hoboman-cli.exe`, også som MCP-server, som et AI-program som hamster-pet eller Claude Code holder kørende, så længe det er åbent. Er Claude Code installeret, registrerer scriptet MCP-serveren for din bruger som `hoboman` med `claude mcp add --scope user` og tillader de værktøjer, der kun læser (`list`, `show`, `history`, `log`, `check` og `guide`), i `~/.claude/settings.json`, så du kun bliver spurgt, før noget sendes, køres eller ændres. Er serveren allerede registreret med samme sti, røres den ikke.
 
 ## Sådan sender du en request
 
@@ -229,7 +229,7 @@ Hoboman/
 ├─ src/Hoboman.Cli/        Kommandolinjeværktøjet hoboman-cli og dets MCP-server (McpTools.cs, McpGuide.md)
 ├─ tests/Hoboman.Tests/    xUnit-tests af core, CLI, MCP, viewmodels og UI
 ├─ docs/images/            Screenshots til denne README
-├─ install.ps1             Publish og genvej i Start-menuen
+├─ install.ps1             Publish, genvej i Start-menuen og MCP-server i Claude Code
 ├─ CLI.md                  Brug af kommandolinjeværktøjet
 ├─ AI-PROMPT.md            Hvad en AI kan i Hoboman, og en instruktion til den
 ├─ Directory.Build.props   Fælles projektindstillinger, fx net10.0-windows

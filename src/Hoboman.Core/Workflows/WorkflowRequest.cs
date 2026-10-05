@@ -20,7 +20,8 @@ public sealed record WorkflowRequest
 
     public IReadOnlyList<KeyValue> Headers { get; init; } = [];
 
-    public BodyKind BodyKind { get; init; } = BodyKind.None;
+    // Json as for a saved request, so a body written without a kind is sent. An empty body is never sent, whatever its kind.
+    public BodyKind BodyKind { get; init; } = BodyKind.Json;
 
     public string Body { get; init; } = "";
 

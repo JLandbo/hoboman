@@ -187,7 +187,7 @@ hoboman-cli --version
 - `<gemt request>` og `<workflow>` er et id eller en sti/et navn fra `list`, uden forskel på store og små bogstaver. Navne behøver ikke være unikke; har flere samme sti eller navn, giver det en fejl, og så skal id'et bruges.
 - Ét argument efter `send` er en gemt request. To er en metode og en URL.
 - `--out <fil>` gemmer svarets body byte for byte i en ny fil. Findes filen, sendes intet, og det giver `Output file already exists.` Relative stier læses fra den mappe, du står i, og mappen skal findes.
-- `--out`, `@fil`, `--vars <fil>`, `--params <fil>` og `--file <fil>` må ikke pege ind i Hobomans mappe, ellers giver det `Hoboman's own files cannot be used.`, og intet sendes eller ændres. Hobomans filer nås kun gennem kommandoerne. Stien sammenlignes, som den er skrevet, så et link eller et kort 8.3-navn ind i mappen fanges ikke.
+- `--out`, `@fil`, `--vars <fil>`, `--params <fil>` og `--file <fil>` skal være en almindelig sti på et drev, fx `C:\mappe\fil`, ellers giver det `Only a plain path on a drive, such as C:\folder\file, can be used.` Det udelukker `\\?\`, `\\.\`, netværksstier som `\\server\share` og NTFS-strømme med `:`. De må heller ikke pege ind i Hobomans mappe, ellers giver det `Hoboman's own files cannot be used.` I begge tilfælde sendes eller ændres intet, og en netværkssti røres ikke. Hobomans filer nås kun gennem kommandoerne. Stien sammenlignes, som den er skrevet, så et link eller et kort 8.3-navn ind i mappen fanges ikke.
 - `--help`, `-h` og `-?` virker både alene og efter en kommando. `--version` virker kun alene og skriver versionen og committen, fx `1.0.0+<commit>`. Uden kommando er det en fejl.
 - Options kan stå før eller efter argumenterne, og `--env=Demo` virker også. Options med en værdi må kun gives én gang, undtagen `-H`, `--var` og `--param`, som gentages for hver værdi. `--yes`, `--last` og `--follow` må gerne gentages.
 - `-H`, `--json` og `--text` virker kun ved direkte kald og `new request`, og `--json` og `--text` kan ikke bruges sammen.
@@ -202,12 +202,12 @@ hoboman-cli --version
 
 ## Miljøer og variabler
 
-- `--env` vælger miljø for både `send` og `run` og skal skrives præcis som miljøets navn, også store og små bogstaver. Valget gemmes ikke.
-- Uden `--env` bruges det miljø, der er valgt i appen. Er intet valgt, bruges intet miljø, og `{{navne}}` bliver stående. Er det valgte miljø slettet i appen, giver det `Selected environment was not found.`, indtil brugeren vælger et andet. `--env` tager kun navnet, ikke id'et.
+- `--env` vælger miljø for både `send` og `run` med miljøets navn, uden hensyn til store og små bogstaver. Valget gemmes ikke.
+- Uden `--env` bruges det miljø, der er valgt i appen. Er intet valgt, bruges intet miljø, og `{{navne}}` udfyldes kun fra `--var` og `--vars` og ellers bliver stående. Er det valgte miljø slettet i appen, giver det `Selected environment was not found.`, indtil brugeren vælger et andet. `--env` tager kun navnet, ikke id'et.
 - Kun variabler, der er slået til i miljøet, udfyldes.
 - Miljøer oprettes, rettes, omdøbes og slettes med `new environment`, `show` og `update`, `rename` og `delete`, se [Vise, oprette, rette, omdøbe, flytte og slette](#vise-oprette-rette-omdøbe-flytte-og-slette).
 - `--var navn=værdi` sætter en midlertidig variabel og deles ved første `=`. `--vars fil.json` eller `--vars -` (stdin) læser et JSON-objekt, fx `{"userId":42}`. Værdier, der ikke er tekst, indsættes som deres JSON.
-- `--var` vinder over `--vars`, som vinder over miljøets værdier, og sidste værdi for et navn vinder. De midlertidige værdier gælder kun det ene kald, gemmes aldrig og bruges også, hvor miljøets variabel er slået fra.
+- `--var` vinder over `--vars`, som vinder over miljøets værdier, og sidste værdi for et navn vinder. De midlertidige værdier gælder kun det ene kald, gemmes ikke som variabler og bruges også, hvor miljøets variabel er slået fra. En værdi i URL'ens vært eller sti står dog i den adresse, historikken gemmer.
 - I en gemt request udfyldes URL, query, headers og auth-felter. Bodyen udfyldes kun, når requesten har **Brug environment-variabler i body** slået til.
 - I et direkte kald udfyldes URL og headers, men bodyen sendes, som den er skrevet. Et ukendt `{{navn}}` bliver stående og kan give `Invalid request URL.`
 - Giv følsomme værdier gennem `--vars -` eller `--params -` frem for `--var` og `--param`, så de ikke havner i shellens historik.
@@ -238,7 +238,7 @@ Fejl, før der kommer et svar, skrives som `{"error":"..."}` på stderr, og stdo
 |---|---|
 | `Invalid command arguments. Use --help for usage.` | Kommandoen er forkert, fx en ukendt option eller en option givet to gange |
 | `Invalid variable input.` / `Invalid parameter input.` | `--var`/`--param` mangler `=`, `--vars`/`--params` er ikke et JSON-objekt, eller `-` blev brugt uden noget på stdin |
-| `Input could not be read.` | En fil i `@fil`, `--vars`, `--params` eller `update --file` kunne ikke læses, eller `--file -` blev brugt uden noget på stdin |
+| `Input could not be read.` | En fil i `@fil`, `--vars`, `--params` eller `update --file` kunne ikke læses, `-` blev brugt uden omdirigeret stdin, eller en af Hobomans egne filer kunne ikke læses. Tomt omdirigeret stdin giver i stedet `Input is not valid.` |
 | `Saved request could not be loaded.` / `Saved request file is not valid.` | Requesten findes ikke, eller filen er ugyldig |
 | `Saved request name is ambiguous. Use its id.` | Flere requests har stien. Brug id'et fra `list` |
 | `Workflow could not be loaded.` / `Workflow file is not valid.` | Workflowet findes ikke, eller `workflow.json` er ugyldig |
@@ -260,7 +260,7 @@ Fejl, før der kommer et svar, skrives som `{"error":"..."}` på stderr, og stdo
 | `A script a step uses cannot be deleted.` | `update` gav et script som `null`, som et trin stadig bruger |
 | `Call could not be found.` | `history` fik et navn, der ikke er i historikken |
 | `Target could not be read.` | Det, `show` skulle vise, kunne ikke læses, fx fordi det lige er slettet |
-| `Workflow could not be found.` / `Run could not be found.` / `Run could not be read.` | `log` fandt ikke workflowet eller kørslen, eller kørslens fil kunne ikke læses. Et id slås ikke op, så kørsler kan læses, selv om workflowets fil ikke kan; et ukendt id giver en tom liste |
+| `Workflow could not be found.` / `Run could not be found.` / `Run could not be read.` | `log` fandt ikke workflowet eller kørslen, eller kørslens fil kunne ikke læses. Kørsler af et workflow, hvis fil ikke kan læses, kan stadig læses med dets id; et id uden workflow og uden kørsler er ukendt |
 | `Selected environment was not found.` | Miljøet findes ikke |
 | `Environment settings could not be read.` | `settings.json` eller `environments.json` kan ikke læses |
 | `Workflow cannot run.` | Tjekket fejlede ved `run` eller `check`, se [Workflows](#workflows) |
@@ -274,6 +274,7 @@ Fejl, før der kommer et svar, skrives som `{"error":"..."}` på stderr, og stdo
 | `Output file could not be written.` | Filen i `--out` kunne ikke skrives, fx fordi mappen ikke findes. Kaldet er sendt og står i historikken |
 | `Output file already exists.` | Filen i `--out` findes. Intet er sendt |
 | `Hoboman's own files cannot be used.` | `--out`, `@fil`, `--vars`, `--params` eller `--file` pegede ind i Hobomans mappe. Intet er sendt eller ændret |
+| `Only a plain path on a drive, such as C:\folder\file, can be used.` | `--out`, `@fil`, `--vars`, `--params` eller `--file` var en `\\?\`-, `\\.\`- eller netværkssti eller havde `:` efter drevet. Intet er sendt eller ændret |
 
 `send` tjekker i denne rækkefølge: argumenter, variabler, requesten, miljøet, filen i `--out` og så kaldet. En ukendt request meldes derfor før et ukendt miljø.
 
@@ -301,7 +302,7 @@ Fejl, før der kommer et svar, skrives som `{"error":"..."}` på stderr, og stdo
 - `run` bruger filerne, som de er gemt. Ugemte ændringer i appens workflow-editor ses ikke.
 - Mappens navn er workflowets id. Kørslerne gemmes under det i `runs\`, så de følger med, når workflowet omdøbes. `name` er navnet, der vises i appen og bruges af `run`.
 - Et trin har præcis én af `request`, `script` og `delaySeconds`, og kan desuden have `retry` og `saves`.
-- `request` har de samme felter som en gemt request undtagen `name` og `folderId`: `method` (standard `GET`), `url`, `query`, `headers`, `bodyKind` (`None`, `Json`, `Xml` eller `Text`, standard `None`), `body`, `useEnvironmentVariablesInBody` (standard `true`), `base64` og `auth`. Workflowet bruger ikke gemte requests fra samlingerne, og i appen redigeres trinnet med samme editor som en fane, også Auth.
+- `request` har de samme felter som en gemt request undtagen `name` og `folderId`: `method` (standard `GET`), `url`, `query`, `headers`, `bodyKind` (`None`, `Json`, `Xml` eller `Text`, standard `Json`; en tom body sendes aldrig, og ved `None` sendes bodyen ikke), `body`, `useEnvironmentVariablesInBody` (standard `true`), `base64` og `auth`. Workflowet bruger ikke gemte requests fra samlingerne, og i appen redigeres trinnet med samme editor som en fane, også Auth.
 - `auth` er et objekt med `kind`: `None` (standard), `Inherit`, `Basic`, `Bearer` eller `OAuth2`, fx `"auth": { "kind": "Inherit" }` på et trin og `"auth": { "kind": "OAuth2", "oAuth": { "grant": "ClientCredentials", "tokenUrl": "https://auth.{{env}}.{{site}}.com/oauth2/token", "clientId": "…", "scope": "…", "clientAuthentication": "BasicHeader" } }` på workflowet. Basic har også `userName`. `Inherit` bruger workflowets egen `auth`, som står øverst i `workflow.json` ved siden af `steps`, ligesom en request arver fra sin mappe. Et trin kan altid have sin egen auth i stedet, fx til et andet API. Har workflowet ingen `auth`, sender et trin med `Inherit` ingen.
 - Passwords, tokens og client secrets står aldrig i `workflow.json`. De gemmes krypteret i `secrets.json` under `id` i trinnets `request` og, ved `Inherit`, under workflowets id (mappens navn). Auth kan også gives som header, fx `Authorization: Bearer {{token}}` med et token fra et tidligere trin.
 - `id` i trinnets `request` sættes af appen eller `update`, første gang workflowet gemmes med trinnet. Auth med hemmeligheder virker derfor først i `run`, når hemmeligheden er skrevet under Auth i appen, og workflowet er gemt. Skriv ikke `id` direkte på trinnet; det gør filen ugyldig. Kopiér aldrig et `id` fra en gemt request eller et andet trin, for så deler de hemmeligheder, og sletter man den ene, kan den andens forsvinde.
@@ -424,7 +425,9 @@ Ctrl+C afbryder pænt: `send` slutter med `Request was cancelled.` og exitkode 2
 - Værktøjerne laver kommandoernes input direkte, så en værdi aldrig læses som en option, og reglerne og fejlene er CLI'ets egne.
 - `variables`, `parameters` og `content` er JSON-objekter i stedet for `--var`, `--vars`, `--param`, `--params` og `--file`.
 - `json` og `text` er altid teksten selv og læses aldrig fra en fil.
-- `out` skal være en fuld sti, ellers giver det `Output file must be a full path.`, og intet sendes.
+- `out` er kun et filnavn, fx `faktura.pdf`, og filen oprettes i `Downloads\Hoboman` i brugerens profil, så en prompt aldrig kan få en AI til at skrive andre steder, fx i Startup-mappen. Et navn med en mappe, et drev, `:`, `..` eller et enhedsnavn som `NUL` giver `Output file must be a plain file name.`, og intet sendes. En fil, der findes, overskrives aldrig.
+- `run.started` har ikke `runFile` i MCP, for stien fører ind i Hobomans mappe.
+- `update` uden `content` og en `kind` uden for de fire giver `Invalid tool arguments: …`.
 - Parametre, der ikke passer sammen, fx både `name` og `count` i `history`, giver `Invalid tool arguments: …` med, hvad der er galt. Mangler et påkrævet parameter, har det forkert type eller en værdi, der ikke findes, fx en ukendt `kind`, giver MCP-serveren selv `An error occurred invoking '<værktøj>'.` uden JSON.
 - `variables`, `parameters` og `content` er markeret som JSON-objekter, `kind` med sine fire værdier, og headers som tekst, så AI-programmet kan tjekke dem.
 - Exitkode 0 og 1 giver kommandoens output som resultat, også et svar med en anden status end 2xx og en kørsel, hvor et trin fejlede. Exitkode 2 giver en fejl med JSON'en fra stderr.

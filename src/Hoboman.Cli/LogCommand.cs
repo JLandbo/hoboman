@@ -6,7 +6,7 @@ using Hoboman.Core.Workflows;
 namespace Hoboman.Cli;
 
 // Reads the runs of a workflow, also those started in the app, as they are logged. It only reads, so it can never send anything.
-sealed class LogCommand(AppFolder folder, Targets targets, CliOutput output)
+sealed class LogCommand(AppFolder folder, WorkflowLibrary workflows, Targets targets, CliOutput output)
 {
     const int _chunk = 64 * 1024;
     static readonly TimeSpan _poll = TimeSpan.FromMilliseconds(200);
@@ -19,6 +19,11 @@ sealed class LogCommand(AppFolder folder, Targets targets, CliOutput output)
             return await output.WriteErrorAsync(found.Count == 0 ? "Workflow could not be found." : "Workflow name is ambiguous. Use its id.");
         }
         var runs = RunLog.RunsOf(folder, id);
+        // An id is not looked up, so the runs of a workflow whose file cannot be read are still read, but an id with neither a workflow nor runs is a mistake.
+        if (runs.Count == 0 && !workflows.Exists(id))
+        {
+            return await output.WriteErrorAsync("Workflow could not be found.");
+        }
         if (input.Run is null && !input.Last)
         {
             await output.WriteNamesAsync(runs.Take(input.Count ?? HistoryInput.DefaultCount).Select(run => $"{run}\t{StartOf(run)}\t{OutcomeOf(RunLog.PathOf(folder, id, run))}"), cancellationToken);

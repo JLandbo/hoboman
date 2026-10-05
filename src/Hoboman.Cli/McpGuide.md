@@ -12,7 +12,7 @@ Du kan sende API-kald og køre workflows gennem **Hoboman**, et API-værktøj p�
 > **UFRAVIGELIG REGEL: Passwords og client secrets skrives KUN af brugeren i Hoboman-appen.**
 >
 > - Du må bruge og sætte auth op med `update`: `kind`, `userName` og `oAuth` på requests, workflows og trin.
-> - Passwords, client secrets og Bearer-tokens til auth skriver brugeren under Auth i appen. Du kan hverken læse eller skrive dem gennem værktøjerne.
+> - Passwords, client secrets og tokenet i Bearer-auth skriver brugeren under Auth i appen. Du kan hverken læse eller skrive dem gennem værktøjerne. Vil du bruge et token fra et svar, så giv det i en header, `Authorization: Bearer {{token}}`, med `variables`.
 > - Send eller gem ALDRIG et password eller en client secret som tekst: ikke i en URL, header, body, `variables`, `parameters`, et miljø, en parameters `default` eller et script.
 > - Et login, der kræver et password, sker med en gemt request, som brugeren har sat op (`send_saved`), eller med auth, som brugeren har udfyldt i appen.
 > - Alle andre værdier må gerne gives som variabler og parametre, også et token, du har fået i et svar.
@@ -21,7 +21,7 @@ Du kan sende API-kald og køre workflows gennem **Hoboman**, et API-værktøj p�
 ## Regler
 
 1. **Ændr kun noget, når brugeren beder om det.** `list`, `show`, `history`, `log` og `check` læser. `new_…`, `update`, `rename`, `move` og `delete` ændrer. Brug kun `delete` med `confirm`, når brugeren har bedt om netop den sletning.
-2. **Send ikke kald med sideeffekter** (POST, PUT, PATCH, DELETE eller workflows, der ændrer data), uden at brugeren har bedt om netop det. `run` sender, så snart workflowet er tjekket; brug `check` for kun at tjekke.
+2. **Send ikke kald med sideeffekter** (kald eller workflows, der opretter, ændrer eller sletter data), uden at brugeren har bedt om netop det. Døm efter, hvad kaldet gør, ikke kun metoden: et login eller en søgning med POST ændrer intet. `run` sender, så snart workflowet er tjekket; brug `check` for kun at tjekke.
 3. **Gentag ikke hemmeligheder** som tokens, passwords og API-nøgler i dine svar til brugeren. Opsummér i stedet, fx "login lykkedes, token gemt".
 4. **Variabler og parametre er ikke hemmelige.** `run` skriver dem i klartekst i sit resultat og i kørslens log, og en værdi i en URL står i historikken. Derfor aldrig et password eller en client secret i dem.
 5. **Gæt ikke.** Findes en request, et workflow, et miljø eller en parameter ikke, så fortæl brugeren det, og spørg.
@@ -52,7 +52,7 @@ Du kan sende API-kald og køre workflows gennem **Hoboman**, et API-værktøj p�
 - **Mål.** `target`, `request` og `workflow` er et id eller en sti/et navn. Navne er ikke unikke, så brug id'et fra `list`. Har flere stien eller navnet, giver `target` fejlen `Target is ambiguous. Use its id.`, `request` `Saved request name is ambiguous. Use its id.` og `workflow` `Workflow name is ambiguous. Use its id.` For `target` gør et miljø med samme navn som en request, mappe eller et workflow også navnet flertydigt. `folder` er en mappes id eller sti, eller `.` for øverste niveau.
 - **Fejl.** Et værktøj, der fejler, giver et resultat markeret som fejl med `{"error": "…"}` og eventuelt flere felter, fx `path` og `line`. Intet er så ændret, men et kald med `send_saved` eller `send` kan være sendt og står i historikken, fx når `out` ikke kunne skrives. Mangler et påkrævet parameter, eller har et parameter forkert type, giver MCP-serveren selv fejlen `An error occurred invoking '<værktøj>'.` som tekst uden JSON. Et svar med en anden status end 2xx og en kørsel, hvor et trin fejlede, er svar, ikke fejl. Læs `status` eller `outcome`.
 - **Store svar.** Claude Code advarer over 10.000 tokens og gemmer et resultat over 25.000 tokens eller 50.000 tegn i en fil i stedet; andre AI-programmer har lignende grænser. Gem store og binære svar med `out`.
-- **Filer i resultater.** En sti i et resultat, fx `runFile` eller `file` i en fejl, er til at fortælle brugeren, hvor noget ligger. Åbn den aldrig selv.
+- **Filer i resultater.** En fil, du selv har gemt med `out`, må du bruge. En sti ind i Hobomans mappe, fx `file` i en fejl, er kun til at fortælle brugeren, hvor noget ligger. Åbn den aldrig selv.
 
 **Find ting.**
 - `list` giver én linje pr. gemt request: id'et, en tabulator og stien gennem mapperne, fx `3f2c…<tab>Shop/Login`. Del ved den første tabulator, for et navn kan selv indeholde `/`. Med `kind` `environments` ender det miljø, brugeren har valgt, med `<tab>selected`.
@@ -61,7 +61,7 @@ Du kan sende API-kald og køre workflows gennem **Hoboman**, et API-værktøj p�
 - `history` giver de nyeste kald, nyeste først: `navn<tab>tid<tab>kilde<tab>metode<tab>status<tab>adresse`, hvor tid er UTC, kilde er `App` eller `Cli` (også for MCP), og status er fejlens art, når der ikke kom noget svar. Med `name` giver den hele kaldet med request, svar eller fejl. Svar kan indeholde tokens, så gentag dem ikke.
 
 **Miljøer.**
-- `environment` skal være miljøets navn præcis, også store og små bogstaver, aldrig id'et. Uden `environment` bruges det miljø, brugeren har valgt i appen. Har brugeren intet valgt, bruges intet miljø, og `{{navne}}` udfyldes ikke.
+- `environment` er miljøets navn, uden hensyn til store og små bogstaver, aldrig id'et. Uden `environment` bruges det miljø, brugeren har valgt i appen. Har brugeren intet valgt, bruges intet miljø, og `{{navne}}` udfyldes kun fra `variables`, og i et workflow fra dets egne værdier.
 - Et miljø oprettes med `new_environment`, får sine variabler med `show` og `update`, omdøbes med `rename` og slettes med `delete`, der også glemmer miljøets tokens og de credentials, der hører til det. Navne skal være unikke uden hensyn til store og små bogstaver. Hemmeligheder hører til under Auth, ikke i et miljø.
 - Sletter du det miljø, brugeren har valgt, er intet valgt længere, og kald uden `environment` bruger intet miljø. Har brugeren slettet det valgte miljø i appen, giver de `Selected environment was not found.`, indtil brugeren vælger et andet.
 
@@ -69,7 +69,7 @@ Du kan sende API-kald og køre workflows gennem **Hoboman**, et API-værktøj p�
 - `send_saved` sender requesten med dens egne headers, body og auth. Du kan kun ændre dens `{{variabler}}` med `variables`. I bodyen udfyldes de kun, når requesten har `useEnvironmentVariablesInBody` sat til `true` (se `show`). Brug den til et login, der kræver et password.
 - `send` har ingen auth ud over de headers, du giver. `{{navne}}` udfyldes i URL og headers, men ikke i bodyen. Skriv aldrig et password eller en client secret i et direkte kald. `json` sender `Content-Type: application/json; charset=utf-8` og `text` `text/plain; charset=utf-8`; en header, du giver, erstatter typen. `json` og `text` er altid teksten selv og læses aldrig fra en fil.
 - `variables` vinder over miljøets værdier og gælder kun det ene kald. Værdier, der ikke er tekst, indsættes som deres JSON.
-- `out` er en fuld sti til en ny fil, som svarets body gemmes i byte for byte. Brug det til PDF'er, billeder og andre binære svar. Filen skrives også ved 4xx og 5xx, så læs `status`. Findes filen, sendes intet (`Output file already exists.`); vælg et andet navn, og slet aldrig brugerens fil for at gøre plads. En relativ sti og Hobomans mappe afvises, også uden at noget sendes. Kan filen ikke skrives, er kaldet sendt alligevel.
+- `out` er kun et filnavn, fx `faktura.pdf`. Filen oprettes i mappen `Downloads\Hoboman` i brugerens profil, og svarets body gemmes i den byte for byte; `file` i svaret er dens fulde sti. Brug det til PDF'er, billeder og andre binære eller store svar. Filen skrives også ved 4xx og 5xx, så læs `status`. Et navn med en mappe, et drev, `:`, `..` eller et enhedsnavn som `NUL` afvises (`Output file must be a plain file name.`), og findes filen, sendes intet (`Output file already exists.`); vælg et andet navn. Kan filen ikke skrives, er kaldet sendt alligevel. Du kan ikke gemme andre steder; det er med vilje.
 
 ## Svaret fra `send_saved` og `send`
 
@@ -81,7 +81,7 @@ Et svar er ét JSON-objekt, også ved 4xx og 5xx:
 
 `body` er tekst. Er den JSON, skal den parses en gang til. Med `out` står `file` med filens fulde sti i stedet for `body`. `headers` har både svarets og indholdets headers, én pr. værdi.
 
-**Kæd kald sammen.** Log ind med den gemte login-request, som brugeren har sat op (`send_saved`), læs tokenet i `body`, og giv det i næste kald som en variabel: `send` med `headers` `["Authorization: Bearer {{token}}"]` og `variables` `{"token": "…"}`. Historikken gemmer headeren, som den er skrevet, med `{{token}}`, så tokenet står ikke dér. Gentag ikke tokenet til brugeren.
+**Kæd kald sammen.** Log ind med den gemte login-request, som brugeren har sat op (`send_saved`), læs tokenet i `body`, og giv det i næste kald som en variabel: `send` med `headers` `["Authorization: Bearer {{token}}"]` og `variables` `{"token": "…"}`. Historikken gemmer headeren, som den er skrevet, med `{{token}}`, så tokenet står ikke dér. Skriver du tokenet direkte i headeren, står det i klartekst i historikken. Gentag ikke tokenet til brugeren.
 
 ## Workflows
 
@@ -99,7 +99,7 @@ Et workflow er en række trin, der hver sender sin egen request, kører et scrip
 
 | `type` | Indhold |
 |---|---|
-| `run.started` | Første linje. `runId`, `workflowId`, `workflow`, `environment`, `runFile` (stien til kørslens log; læs den med `log`, ikke direkte) og `parameters` |
+| `run.started` | Første linje. `runId`, `workflowId`, `workflow`, `environment` og `parameters` |
 | `step.started` | `index` (første trin er 0), `name` (trinnets navn), `method`, `address` |
 | `step.finished` | `index`, `outcome` (`Succeeded`/`Failed`), `status`, `reason`, `elapsedMs`, `size`, `attempts` (ved `retry`), `error` (ved fejl), `saved` (gemte værdier). `headers` og `body` kun fra `log` med `step` |
 | `step.retrying` | Et trin med `retry` fik et svar, der ikke var klar, og prøves igen: `index`, `attempt`, `status`, `value` eller `error`. Vent på `step.finished` |
@@ -115,20 +115,22 @@ Et workflow er en række trin, der hver sender sin egen request, kører et scrip
 **Læs et resultat.** Læs `outcome` i `run.finished`:
 - `Succeeded`: alle trin lykkedes. Brug `variables` som resultat.
 - `Failed`: find `step.finished` med `"outcome":"Failed"`, og rapportér trinnets navn fra `step.started` med samme `index`, dets `status` og `error`. Har du brug for svaret, så hent det med `log` og `step`, og rapportér et uddrag af `body`.
-- `Cancelled`: kørslen blev afbrudt. Der er intet fejlet trin. Afbryder dit AI-program selv kaldet, får du intet svar fra `run`; se så udfaldet med `log` og `last`.
+- `Cancelled`: kørslen blev afbrudt. Der er intet fejlet trin. Afbryder dit AI-program selv kaldet, stoppes kørslen, og du får intet svar fra `run`; se så udfaldet med `log` og `last`.
 
 Startede kørslen ikke, giver `run` en fejl, og intet er sendt.
 
 **Kørsler, også dem startet i appen.**
 - `log` med kun `workflow` giver én linje pr. kørsel, de nyeste 20 eller `count`, nyeste først: `runId<tab>start<tab>outcome`, hvor `start` er UTC, og `outcome` er `-`, hvis kørslen stadig kører eller blev stoppet uden `run.finished`. Det gælder også kørsler startet i appen.
 - `log` med `run` eller `last` giver den kørsels events, så langt den er nået, uden trinnenes `headers` og `body` ligesom `run`. Med `step` giver den det trins fulde `step.finished`. Kører kørslen stadig, så spørg igen senere.
-- Et ukendt workflow-navn giver `Workflow could not be found.`, men et ukendt id giver en tom liste, for et id slås ikke op, så kørsler kan læses, selv om workflowets fil ikke kan. Appen kan være sat til at slette kald og kørsler efter et antal dage.
+- Et ukendt workflow giver `Workflow could not be found.` Kørsler af et workflow, hvis fil ikke kan læses, kan stadig læses med dets id. Kører en kørsel stadig, så sig det til brugeren, og spørg igen, når brugeren vil vide det. Appen kan være sat til at slette kald og kørsler efter et antal dage.
 
 ## Byg og ret (kun når brugeren beder om det)
 
 - Opret et workflow med `new_workflow` og en request med `new_request`. Ret dem med `show` og `update`: tag JSON'en fra `show`, ret i den, og giv hele objektet som `content` til `update`. `update` tager imod præcis den form, `show` gav, og erstatter indholdet. Id, navn og mappe bliver, og dermed hemmeligheder, historik og kørsler.
 - Ret aldrig `id`, `name` eller `folderId`; `update` afviser det. Brug `rename` og `move`.
-- Skal du lave noget nyt, så opret det, og byg det ud fra `show` af det nye eller af et eksisterende, der ligner. `show` viser altid det præcise format.
+- Skal du lave noget nyt, så opret det med `new_request`, `new_workflow` eller `new_environment`, og byg det med `update` ud fra `show` af det nye eller af et eksisterende, der ligner. `show` viser altid det præcise format. En mappe kan vises, men ikke rettes.
+- Et trins `bodyKind` er `Json`, når det udelades. Giv `Xml` eller `Text` for andet. Ved `None` sendes bodyen ikke, og en tom body sendes aldrig.
+- Kræver et trin et password eller en client secret i bodyen, fordi API'et ikke bruger Basic eller OAuth, så skriv det aldrig selv: bed brugeren skrive det i trinnet i appen. Kopierer du et trin ud fra en gemt request, følger requestens hemmeligheder ikke med; brugeren udfylder dem på trinnet.
 - Hvert navn, et trin gemmer i, skal stå i `variables`. Et lille eksempel på `content` til `update`, hvor `id` er workflowets eget fra `show`. Kræver API'et login, så giv workflowet `auth`, og trinnene `"auth": { "kind": "Inherit" }`; brugeren skriver hemmeligheden i appen:
 
   ```json
@@ -154,6 +156,12 @@ Startede kørslen ikke, giver `run` en fejl, og intet er sendt.
 
 - Behold `id` i trinnets `request` på de trin, der allerede har et; trinnets hemmeligheder hører til det. Et nyt trin skal ikke have noget `id`; `update` giver det et. Kopiér aldrig et id fra et andet workflow eller en request. Fjernes et trin, glemmes dets hemmeligheder.
 - Scripts står i `scripts` med filnavnet som nøgle, fx `"byg-kurv.js"`. Scripts, du ikke giver, bliver liggende, og et script givet som `null` slettes, fx `"gammel.js": null`. Et script, et trin bruger, kan ikke slettes. Skal et trin have auth med et password eller en client secret, så bed brugeren udfylde den under Auth i appen og gemme. Auth kan også gives som en header med et token fra et tidligere trin, fx `Authorization: Bearer {{token}}`.
+- Workflowets fælles auth og et trin, der bruger den, ser sådan ud; brugeren skriver tokenet under Auth på workflowet i appen:
+
+  ```json
+  "auth": { "kind": "Bearer" },
+  "steps": [ { "name": "Hent", "request": { "url": "{{baseUrl}}/me", "auth": { "kind": "Inherit" } } } ]
+  ```
 - Et script læser `vars.navn`, som ikke kan ændres, og returnerer det, trinnet gemmer fra med `saves`, fx `"from": "$.cart"`. Det returnerede bliver JSON. Skal scriptet lave HTML, XML eller tekst, så giv trinnet `"output": "Html"`, `"Xml"` eller `"Text"` og returnér en tekst. Den bliver outputtet, som den er, og `"from": "$"` gemmer den. Det kører som strict JavaScript uden filer, netværk, .NET og `eval` og stoppes efter 5 sekunder.
 - Appen viser workflowet med det samme. Kan workflowet ikke læses, står det under **Workflows** som **Kan ikke læses (xxxxxxxx…)**. Når brugeren gemmer, skriver appen `variables` ud fra trinnenes `saves`.
 - Tjek workflowet med `check`. Vil du køre det, så spørg først: `run` sender med det samme.
@@ -171,7 +179,7 @@ Felterne skrives i camelCase og enums som tekst, fx `"Json"`, `"Inherit"`, `"OAu
 | `method` | Fx `GET`, `POST`, `PUT`, `PATCH`, `DELETE` eller en anden metode |
 | `url` | Adressen, fx `{{baseUrl}}/orders/{{id}}`. Påkrævet |
 | `query`, `headers` | Lister af `{"name", "value", "enabled"}`. `enabled` er `true`, når det udelades |
-| `bodyKind` | `None`, `Json`, `Xml` eller `Text`. Standard er `Json` for gemte requests. Ved `None` sendes bodyen ikke |
+| `bodyKind` | `None`, `Json`, `Xml` eller `Text`. Standard er `Json`. Ved `None` sendes bodyen ikke, og en tom body sendes aldrig |
 | `body` | Bodyen som tekst. En JSON-body skrives som en tekst med JSON i |
 | `useEnvironmentVariablesInBody` | `true` udfylder `{{navne}}` i bodyen. Standard er `false` for gemte requests |
 | `base64` | `{"encode": [stier], "decode": [stier]}`: JSON-stier, der sendes som Base64 eller vises decodet i appen. `body` i svaret til dig er ikke decodet. `$` er hele bodyen |
@@ -201,7 +209,7 @@ Skifter du `kind`, mangler hemmeligheden, indtil brugeren har skrevet den i appe
 | `scripts` | `{"navn.js": "kode"}`. Givne scripts skrives, `null` sletter, og andre bliver liggende |
 
 Et trin har `name` (valgfrit) og præcis én af:
-- `request`: som en request, men uden `name` og `folderId`. `id` er trinnets egen og hører til dets hemmeligheder; behold det på eksisterende trin, og udelad det på nye. `useEnvironmentVariablesInBody` er `true`, når det udelades. `bodyKind` er `None`, når det udelades, og så sendes bodyen ikke. Uden `auth` sender trinnet ingen auth.
+- `request`: som en request, men uden `name` og `folderId`. `id` er trinnets egen og hører til dets hemmeligheder; behold det på eksisterende trin, og udelad det på nye. `useEnvironmentVariablesInBody` er `true`, når det udelades. `bodyKind` er `Json`, når det udelades. Uden `auth` sender trinnet ingen auth.
 - `script`: navnet på et script i `scripts`. Trinnet kan have `output` (`Json` som standard, `Html`, `Xml` eller `Text`).
 - `delaySeconds`: 1-300 sekunder. Et ventetrin kan ikke have `saves`.
 
@@ -221,7 +229,7 @@ Ved `run` står de samme tekster som `error` i et trins `step.finished`, fx når
 
 | Fejl (`error`) | Gør |
 |---|---|
-| `Invalid tool arguments: …` | Parametrene passer ikke sammen eller har en ukendt værdi, fx både `name` og `count`, både `run` og `last`, både `json` og `text`, `step` uden `run` eller `last`, `count` sammen med `run` eller `last`, eller en header, der er `null`. Resten af teksten siger hvad. Ret dem |
+| `Invalid tool arguments: …` | Parametrene passer ikke sammen eller har en ugyldig værdi, fx både `name` og `count`, både `run` og `last`, både `json` og `text`, `step` uden `run` eller `last`, `count` under 1 eller sammen med `run` eller `last`, en header, der er `null`, eller `update` uden `content`. Resten af teksten siger hvad. Ret dem |
 | `An error occurred invoking '<værktøj>'.` | Tekst uden JSON fra MCP-serveren selv: et påkrævet parameter mangler, et parameter har forkert type, eller en værdi findes ikke, fx en ukendt `kind`. Tjek parametrene |
 | `Step could not be found.` | `log` med `step`: kørslen har intet afsluttet trin med det `index`. Se `steps` i `run.finished` |
 | `Saved request could not be loaded.` | Id'et eller stien findes ikke. Brug `list`, og brug et id derfra |
@@ -233,12 +241,11 @@ Ved `run` står de samme tekster som `error` i et trins `step.finished`, fx når
 | `Required authentication secret is missing.` | Bed brugeren udfylde auth på requesten, mappen, workflowet eller workflow-trinnet i Hoboman og gemme |
 | `Network request failed.` / `Request timed out.` | Serveren kunne ikke nås eller svarede ikke inden for 100 sekunder. Fortæl det, og prøv højst én gang til efter aftale |
 | `Invalid request URL.` / `Invalid request input.` | Tjek URL, metode, headers og variabler. En header skal være `Navn: Værdi`. Et ukendt `{{navn}}` bliver stående i URL'en |
-| `Invalid variable input.` / `Invalid parameter input.` | `variables` og `parameters` skal være et JSON-objekt |
 | `Input could not be read.` | En af Hobomans egne filer kunne ikke læses. Fortæl brugeren det |
 | `Request body could not be encoded.` | Bodyen kunne ikke Base64-encodes, fx fordi den ikke er gyldig JSON eller mangler et markeret felt. Bed brugeren rette requesten eller trinnet i Hoboman |
 | `Request was cancelled.` | Kaldet blev afbrudt. Afbryder dit AI-program selv kaldet, får du intet svar, og kaldet gemmes ikke i historikken |
 | `Request failed.` | En anden fejl. Fortæl brugeren det |
-| `Output file must be a full path.` | Giv `out` som en fuld sti. Intet er sendt |
+| `Output file must be a plain file name.` | Giv `out` som et filnavn alene, fx `faktura.pdf`. Intet er sendt |
 | `Output file already exists.` | Filen i `out` findes. Intet er sendt. Vælg et andet navn |
 | `Output file could not be written.` | Filen i `out` kunne ikke skrives. Tjek stien; mappen skal findes. Kaldet er sendt |
 | `Hoboman's own files cannot be used.` | `out` peger ind i Hobomans mappe. Det må du ikke; se reglen øverst |
@@ -248,7 +255,7 @@ Ved `run` står de samme tekster som `error` i et trins `step.finished`, fx når
 | `Target could not be found.` / `Folder could not be found.` | Ret målet. Find id'er med `list` |
 | `Target is ambiguous. Use its id.` / `Folder is ambiguous. Use its id.` | Flere har stien eller navnet. Brug id'et |
 | `A folder cannot be moved into itself.` / `A workflow cannot be moved.` / `An environment cannot be moved.` | Flytningen er ikke mulig. Fortæl brugeren det |
-| `Deleting needs confirmation.` | `delete` uden `confirm`. Fortæl brugeren, hvad der ville blive slettet (`path`, `folders` med mappen selv, `requests`), og brug kun `confirm`, hvis brugeren siger ja |
+| `Deleting needs confirmation.` | Den forventede forhåndsvisning fra `delete` uden `confirm`. Fortæl brugeren, hvad der ville blive slettet (`path`, `folders` med mappen selv, `requests`), og brug kun `confirm`, hvis brugeren siger ja |
 | `File is not valid.` | Filen er ugyldig JSON. `file`, `path` og `line` viser hvor. Fortæl brugeren det, og åbn ikke filen |
 | `The change could not be saved.` | En fil er låst eller kunne ikke skrives. Prøv igen senere, eller fortæl brugeren det |
 | `Workflow file is not valid.` | Workflowets fil er ugyldig. `file`, `path` og `line` viser hvor. Fortæl brugeren det, og åbn ikke filen |
@@ -262,7 +269,7 @@ Ved `run` står de samme tekster som `error` i et trins `step.finished`, fx når
 | `A script a step uses cannot be deleted.` | Fjern først trinnet, eller giv det et andet script |
 | `Call could not be found.` | Navnet er ikke i historikken. Brug et navn fra `history` |
 | `Target could not be read.` | Det, `show` skulle vise, kunne ikke læses, fx fordi det lige er slettet. Fortæl brugeren det |
-| `Workflow could not be found.` / `Run could not be found.` / `Run could not be read.` | `log` fandt intet workflow med det navn, eller kørslen. Et ukendt id giver i stedet en tom liste. Brug id'er fra `list` og `log` |
+| `Workflow could not be found.` / `Run could not be found.` / `Run could not be read.` | `log` fandt ikke workflowet eller kørslen. Brug id'er fra `list` og `log` |
 
 **`problems` ved `Workflow cannot run.`** Hvert problem har `kind`, `step` (trinnets index, hvis det hører til et trin) og `detail` (et navn, en sti eller et id, aldrig en værdi).
 
