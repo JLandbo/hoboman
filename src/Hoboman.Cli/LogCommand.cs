@@ -21,7 +21,7 @@ sealed class LogCommand(AppFolder folder, Targets targets, CliOutput output)
         var runs = RunLog.RunsOf(folder, id);
         if (input.Run is null && !input.Last)
         {
-            await output.WriteNamesAsync(runs.Select(run => $"{run}\t{StartOf(run)}\t{OutcomeOf(RunLog.PathOf(folder, id, run))}"), cancellationToken);
+            await output.WriteNamesAsync(runs.Take(input.Count ?? HistoryInput.DefaultCount).Select(run => $"{run}\t{StartOf(run)}\t{OutcomeOf(RunLog.PathOf(folder, id, run))}"), cancellationToken);
             return 0;
         }
         // Only a run in the list is read, so a run id cannot lead to another file.

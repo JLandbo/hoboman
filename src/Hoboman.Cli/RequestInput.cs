@@ -1,4 +1,3 @@
-using System.Text;
 using Hoboman.Core.Auth;
 using Hoboman.Core.Requests;
 
@@ -7,18 +6,25 @@ namespace Hoboman.Cli;
 static class RequestInput
 {
     // A direct request belongs to no folder, so its only auth is what its headers carry.
-    public static async Task<ApiRequest> CreateAsync(SendInput input, CancellationToken cancellationToken) =>
-        await CreateAsync(input.Target[0], input.Target[1], input.Headers, input.JsonBody, input.TextBody, cancellationToken) with { Auth = AuthSettings.None };
+    public static async Task<ApiRequest> CreateAsync(SendInput input, OwnFiles files, CancellationToken cancellationToken) =>
+        await CreateAsync(input.Target[0], input.Target[1], input.Headers, input.JsonBody, input.TextBody, files, cancellationToken) with { Auth = AuthSettings.None };
 
     // A saved request inherits the auth of its folder, as one made in the app does.
-    public static async Task<ApiRequest> CreateAsync(string method, string url, IReadOnlyList<string> headers, string? jsonBody, string? textBody, CancellationToken cancellationToken) => ApiRequest.New() with
+    public static async Task<ApiRequest> CreateAsync(string method, string url, IReadOnlyList<string> headers, string? jsonBody, string? textBody, OwnFiles files,
+        CancellationToken cancellationToken) => ApiRequest.New() with
     {
         Method = method,
         Url = url,
         Headers = [.. headers.Select(HeaderOf)],
         BodyKind = jsonBody is not null ? BodyKind.Json : textBody is not null ? BodyKind.Text : BodyKind.None,
-        Body = (jsonBody ?? textBody) is { } body ? await BodyOfAsync(body, cancellationToken) : "",
+        Body = (jsonBody ?? textBody) is { } body ? await BodyOfAsync(body, files, cancellationToken) : "",
     };
+
+    // A body is JSON or text, not both.
+    public static bool IsValidBody(string? jsonBody, string? textBody) => jsonBody is null || textBody is null;
+
+    // A body that should never be read from a file, as from MCP, keeps a starting @ by doubling it.
+    public static string? Literal(string? body) => body is ['@', ..] ? $"@{body}" : body;
 
     // Split at the first colon, as a value such as a time can hold more, and a line break would start a header of its own.
     static KeyValue HeaderOf(string header)
@@ -32,10 +38,10 @@ static class RequestInput
     }
 
     // @file reads the body from a file, and @@ starts a body that begins with @.
-    static Task<string> BodyOfAsync(string body, CancellationToken cancellationToken) => body switch
+    static Task<string> BodyOfAsync(string body, OwnFiles files, CancellationToken cancellationToken) => body switch
     {
         ['@', '@', ..] => Task.FromResult(body[1..]),
-        ['@', ..] => File.ReadAllTextAsync(body[1..], Encoding.UTF8, cancellationToken),
+        ['@', ..] => files.ReadAsync(body[1..], cancellationToken),
         _ => Task.FromResult(body),
     };
 }

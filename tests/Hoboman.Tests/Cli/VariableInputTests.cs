@@ -6,12 +6,15 @@ namespace Hoboman.Tests.Cli;
 
 public sealed class VariableInputTests
 {
+    // Hoboman's folder is one that is never there, so no file a test reads is in it.
+    static readonly OwnFiles Files = new(new AppFolder(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}")));
+
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
     static SendInput Command(string[] variables, string? file = null) => new(["GET", "https://localhost/"], null, [], null, null, null, variables, file);
 
     static Task<IReadOnlyList<KeyValue>> ReadAsync(string[] variables, string? json = null) =>
-        new VariableInput(new StringReader(json ?? ""), json is not null).ReadAsync(Command(variables, json is null ? null : "-"), TestContext.Current.CancellationToken);
+        new VariableInput(new StringReader(json ?? ""), json is not null, Files).ReadAsync(Command(variables, json is null ? null : "-"), TestContext.Current.CancellationToken);
 
     [Fact]
     public async Task ReadAsync_WhenANameIsGivenTwice_ThenTheLastWins()
@@ -62,7 +65,7 @@ public sealed class VariableInputTests
     public async Task ReadAsync_WhenReadingParameters_ThenTheOptionWinsAsTextAndTheJsonKeepsItsTypes()
     {
         // Act
-        var parameters = await new VariableInput(new StringReader("""{"a":"json","b":42}"""), true).ReadAsync(new RunInput("Flow", null, ["a=1"], "-"), Cancellation);
+        var parameters = await new VariableInput(new StringReader("""{"a":"json","b":42}"""), true, Files).ReadAsync(new RunInput("Flow", null, ["a=1"], "-"), Cancellation);
 
         // Assert
         Assert.Equal("""{"a":"1","b":42}""", JsonSerializer.Serialize(parameters));
@@ -78,7 +81,7 @@ public sealed class VariableInputTests
         await File.WriteAllTextAsync(path, """{"city":"Ærø 🚀"}""", new UTF8Encoding(true), Cancellation);
 
         // Act
-        var variables = await new VariableInput(TextReader.Null, false).ReadAsync(Command([], path), Cancellation);
+        var variables = await new VariableInput(TextReader.Null, false, Files).ReadAsync(Command([], path), Cancellation);
 
         // Assert
         Assert.Equal("Ærø 🚀", Assert.Single(variables).Value);
@@ -125,7 +128,7 @@ public sealed class VariableInputTests
     public async Task ReadAsync_WhenTheInputIsNotRedirected_ThenThrowsWithoutWaitingForIt()
     {
         // Act
-        var reading = new VariableInput(new PendingReader(), false).ReadAsync(Command([], "-"), Cancellation);
+        var reading = new VariableInput(new PendingReader(), false, Files).ReadAsync(Command([], "-"), Cancellation);
 
         // Assert
         await Assert.ThrowsAsync<FormatException>(() => reading);
@@ -137,7 +140,7 @@ public sealed class VariableInputTests
         // Arrange
         var input = new PendingReader();
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(Cancellation);
-        var reading = new VariableInput(input, true).ReadAsync(Command([], "-"), cancellation.Token);
+        var reading = new VariableInput(input, true, Files).ReadAsync(Command([], "-"), cancellation.Token);
         await input.Started.Task.WaitAsync(Cancellation);
 
         // Act

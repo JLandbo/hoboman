@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Hoboman.Cli;
 using Hoboman.Tests.Requests;
 using Hoboman.Tests.Sending;
 using Hoboman.Tests.Workflows;
@@ -41,6 +42,38 @@ public sealed class CliProcessTests(CliTestServer server) : IClassFixture<CliTes
 
         // Assert
         Assert.Equal($"{saved.Id}\tÆrø{Environment.NewLine}", result.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenServingMcp_ThenAnswersACallWithItsOutputOnly()
+    {
+        // Arrange
+        var saved = await Library.SaveAtAsync("Ærø", Request, Cancellation);
+        string[] messages =
+        [
+            """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}""",
+            """{"jsonrpc":"2.0","method":"notifications/initialized"}""",
+            """{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list","arguments":{}}}""",
+        ];
+
+        // Act
+        var answer = await _process.ServeMcpAsync(messages, answerId: 2);
+
+        // Assert
+        Assert.Equal($"{saved.Id}\tÆrø", answer.GetProperty("result").GetProperty("content")[0].GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenServingMcp_ThenSendsTheInstructionsOnConnecting()
+    {
+        // Arrange
+        string[] messages = ["""{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}"""];
+
+        // Act
+        var answer = await _process.ServeMcpAsync(messages, answerId: 1);
+
+        // Assert
+        Assert.Equal(McpTools.Instructions, answer.GetProperty("result").GetProperty("instructions").GetString());
     }
 
     [Fact]

@@ -29,4 +29,12 @@ public sealed class AppFolder(string root)
     public string RequestOrder => Path.Combine(root, "request-order.json");
 
     public string PendingSecretCleanup => Path.Combine(root, "pending-secret-cleanup.json");
+
+    // The path is compared as it is written once made full, so a link or a short 8.3 name that leads in is not caught.
+    public bool Holds(string path)
+    {
+        var full = Path.GetFullPath(path);
+        var own = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
+        return full.Equals(own, StringComparison.OrdinalIgnoreCase) || full.StartsWith(own + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
 }

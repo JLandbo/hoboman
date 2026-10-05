@@ -21,6 +21,7 @@ sealed class CommandLine
     readonly Command _updateCommand = new("update", "Replace what a saved request, workflow or environment holds with JSON as show writes it.");
     readonly Command _logCommand = new("log", "List the runs of a workflow, or write the events of one, given by its run id or --last.");
     readonly Command _historyCommand = new("history", "List the newest calls in the history, or write one, given by its name, as JSON.");
+    readonly Command _mcpCommand = new("mcp", "Serve the commands as tools to an AI over MCP on stdin and stdout.");
     readonly Argument<string[]> _targetArgument = new("request-or-method-url") { Arity = new(1, 2) };
     readonly Argument<string> _workflowArgument = new("workflow");
     readonly Argument<string> _listArgument = new("workflows|folders|environments") { Arity = ArgumentArity.ZeroOrOne };
@@ -44,7 +45,8 @@ sealed class CommandLine
     readonly Option<string> _fileOption = new("--file") { Description = "Read the JSON from a file or redirected stdin (-).", Required = true };
     readonly Option<bool> _lastOption = new("--last") { Description = "The newest run." };
     readonly Option<bool> _followOption = new("--follow") { Description = "Wait for new events until the run has finished." };
-    readonly Option<int> _countOption = new("--count") { Description = "How many calls to list. 20 when not given.", DefaultValueFactory = _ => 20 };
+    readonly Option<int> _countOption = new("--count") { Description = "How many calls to list. 20 when not given.", DefaultValueFactory = _ => HistoryInput.DefaultCount };
+    readonly Option<int?> _runCountOption = new("--count") { Description = "How many runs to list. 20 when not given." };
 
     public CommandLine()
     {
@@ -103,9 +105,11 @@ sealed class CommandLine
         _logCommand.Arguments.Add(_runArgument);
         _logCommand.Options.Add(_lastOption);
         _logCommand.Options.Add(_followOption);
+        _logCommand.Options.Add(_runCountOption);
         _rootCommand.Subcommands.Add(_historyCommand);
         _historyCommand.Arguments.Add(_callArgument);
         _historyCommand.Options.Add(_countOption);
+        _rootCommand.Subcommands.Add(_mcpCommand);
     }
 
     public CommandInput Parse(string[] arguments)
@@ -140,27 +144,27 @@ sealed class CommandLine
         {
             return new(Update: new(result.GetValue(_changedArgument)!, result.GetValue(_fileOption)!));
         }
-        // A call is given by its name, or the newest are listed, as many as asked for.
         if (command == _historyCommand)
         {
             var call = result.GetValue(_callArgument);
             var count = result.GetValue(_countOption);
-            return count < 1 || call is not null && result.GetResult(_countOption) is { Implicit: false } ? Invalid() : new(History: new(call, count));
+            return HistoryInput.IsValid(call, count, result.GetResult(_countOption) is { Implicit: false }) ? new(History: new(call, count)) : Invalid();
         }
-        // A run is given by its id or as the newest, not both, and only one run can be followed.
         if (command == _logCommand)
         {
-            var run = result.GetValue(_runArgument);
-            var last = result.GetValue(_lastOption);
-            var follow = result.GetValue(_followOption);
-            return run is not null && last || follow && run is null && !last ? Invalid() : new(Log: new(result.GetValue(_workflowArgument)!, run, last, follow));
+            var log = new LogInput(result.GetValue(_workflowArgument)!, result.GetValue(_runArgument), result.GetValue(_lastOption), result.GetValue(_followOption), result.GetValue(_runCountOption));
+            return log.IsValid ? new(Log: log) : Invalid();
+        }
+        if (command == _mcpCommand)
+        {
+            return new(IsMcp: true);
         }
         if (command == _newRequestCommand || command == _newFolderCommand || command == _newWorkflowCommand || command == _newEnvironmentCommand)
         {
             var json = result.GetValue(_jsonOption);
             var text = result.GetValue(_textOption);
             var kind = command == _newRequestCommand ? SavedKind.Request : command == _newFolderCommand ? SavedKind.Folder : command == _newWorkflowCommand ? SavedKind.Workflow : SavedKind.Environment;
-            return json is not null && text is not null ? Invalid() : new(New: new(kind, kind is SavedKind.Request or SavedKind.Folder ? result.GetValue(_folderArgument) : null, result.GetValue(_nameArgument)!,
+            return !RequestInput.IsValidBody(json, text) ? Invalid() : new(New: new(kind, kind is SavedKind.Request or SavedKind.Folder ? result.GetValue(_folderArgument) : null, result.GetValue(_nameArgument)!,
                 result.GetValue(_methodOption) ?? "GET", result.GetValue(_urlOption) ?? "", result.GetValue(_headersOption) ?? [], json, text));
         }
         if (command == _renameCommand || command == _moveCommand || command == _deleteCommand)
@@ -174,7 +178,7 @@ sealed class CommandLine
         var targets = result.GetValue(_targetArgument)!;
         var jsonBody = result.GetValue(_jsonOption);
         var textBody = result.GetValue(_textOption);
-        if (jsonBody is not null && textBody is not null)
+        if (!RequestInput.IsValidBody(jsonBody, textBody))
         {
             return Invalid();
         }

@@ -1,14 +1,10 @@
 using System.Text;
 using Hoboman.Cli;
 using Hoboman.Core.Auth;
-using Hoboman.Core.Environments;
-using Hoboman.Core.History;
 using Hoboman.Core.Languages;
-using Hoboman.Core.Requests;
 using Hoboman.Core.Sending;
 using Hoboman.Core.Settings;
 using Hoboman.Core.Storage;
-using Hoboman.Core.Workflows;
 using Microsoft.Extensions.Logging.Abstractions;
 
 Console.OutputEncoding = new UTF8Encoding(false);
@@ -24,30 +20,19 @@ try
 {
     // The data lies next to the program, as for the app, so both use the same requests, environments and secrets.
     var folder = new AppFolder(AppContext.BaseDirectory);
-    var settings = new SettingsStore(folder, NullLogger<SettingsStore>.Instance);
     var secrets = new SecretStore(folder, NullLogger<SecretStore>.Instance);
-    var environments = new EnvironmentStore(folder, NullLogger<EnvironmentStore>.Instance);
-    var library = new RequestLibrary(folder, NullLogger<RequestLibrary>.Instance);
-    var history = new HistoryStore(folder, NullLogger<HistoryStore>.Instance);
-    using var clients = new HttpClients(settings);
-    var sender = new HttpRequestSender(secrets, clients, TimeProvider.System, NullLogger<HttpRequestSender>.Instance);
-    var runner = new RequestRunner(sender, library, history, NullLogger<RequestRunner>.Instance);
-    var workflows = new WorkflowLibrary(folder, NullLogger<WorkflowLibrary>.Instance);
-    var check = new WorkflowCheck(workflows, secrets, NullLogger<WorkflowCheck>.Instance);
-    var workflowRunner = new WorkflowRunner(sender, folder, TimeProvider.System, NullLogger<WorkflowRunner>.Instance);
-    var oauth = new OAuthClient(clients, new NoBrowser(), new Translator(Translation.English), TimeProvider.System, NullLogger<OAuthClient>.Instance);
-    var tokens = new UnaskedTokens(oauth, secrets, NullLogger<UnaskedTokens>.Instance);
-    var output = new CliOutput(Console.OpenStandardOutput(), Console.OpenStandardError());
+    using var clients = new HttpClients(new SettingsStore(folder, NullLogger<SettingsStore>.Instance));
+    var factory = new CliFactory(folder, secrets, new HttpRequestSender(secrets, clients, TimeProvider.System, NullLogger<HttpRequestSender>.Instance),
+        new OAuthClient(clients, new NoBrowser(), new Translator(Translation.English), TimeProvider.System, NullLogger<OAuthClient>.Instance));
+    var command = new CommandLine().Parse(args);
+    // MCP talks over stdin and stdout itself, so each call gets its own output and input instead of the console's.
+    if (command.IsMcp)
+    {
+        await new McpTools((output, error, input) => factory.Create(output, error, input, inputRedirected: true)).ServeAsync(cancellation.Token);
+        return 0;
+    }
     using var input = new StreamReader(Console.OpenStandardInput(), Encoding.UTF8);
-    var deletion = new RequestDeletion(library, secrets, folder, NullLogger<RequestDeletion>.Instance);
-    var workflowDeletion = new WorkflowDeletion(workflows, secrets, NullLogger<WorkflowDeletion>.Instance);
-    var variables = new VariableInput(input, Console.IsInputRedirected);
-    var targets = new Targets(workflows, environments);
-    var environmentChanges = new EnvironmentChanges(environments, secrets, new(folder, secrets, NullLogger<CredentialStore>.Instance));
-    return await new CliApplication(library, settings, environments, runner, workflows, check, workflowRunner, tokens, output, variables, deletion, workflowDeletion, targets,
-            new(library, workflows, environments, targets, output), new(library, workflows, workflowDeletion, environments, environmentChanges, targets, variables, output), new(folder, targets, output),
-            environmentChanges, new(history, output))
-        .RunAsync(args, cancellation.Token);
+    return await factory.Create(Console.OpenStandardOutput(), Console.OpenStandardError(), input, Console.IsInputRedirected).RunAsync(command, cancellation.Token);
 }
 finally
 {

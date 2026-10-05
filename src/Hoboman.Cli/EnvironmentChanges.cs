@@ -1,13 +1,14 @@
 using Hoboman.Core.Auth;
 using Hoboman.Core.Environments;
 using Hoboman.Core.Requests;
+using Hoboman.Core.Settings;
 using Hoboman.Core.Storage;
 
 namespace Hoboman.Cli;
 
 // Makes, renames, replaces and deletes environments by the app's rules, and forgets what a deleted one had, as the app does.
 // The app's environment window finds a change made while it is open and does not save over it.
-sealed class EnvironmentChanges(EnvironmentStore store, SecretStore secrets, CredentialStore credentials)
+sealed class EnvironmentChanges(EnvironmentStore store, SecretStore secrets, CredentialStore credentials, SettingsStore settings)
 {
     // A name that another environment has, in any case, cannot be taken, as environments are chosen by their names.
     public async Task<bool> IsTakenAsync(string name, Guid? by, CancellationToken cancellationToken) =>
@@ -28,6 +29,7 @@ sealed class EnvironmentChanges(EnvironmentStore store, SecretStore secrets, Cre
 
     // Its tokens and the credentials saved for it go with it, as nothing else can use them. The environment is gone once its file is saved,
     // and its id is never used again, so what it leaves behind when they cannot be cleared does no harm, as in the app.
+    // A choice of it is cleared, so send and run without --env use no environment, as the app shows nothing chosen.
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken)
     {
         await store.SaveAsync([.. (await store.AllAsync(cancellationToken)).Where(environment => environment.Id != id)], cancellationToken);
@@ -35,6 +37,10 @@ sealed class EnvironmentChanges(EnvironmentStore store, SecretStore secrets, Cre
         {
             await secrets.ForgetEnvironmentsAsync(new HashSet<Guid> { id }, cancellationToken);
             await credentials.ForgetEnvironmentsAsync(new HashSet<Guid> { id }, cancellationToken);
+            if ((await settings.LoadAsync(cancellationToken)).EnvironmentId == id)
+            {
+                await settings.UpdateAsync(saved => saved with { EnvironmentId = null }, cancellationToken);
+            }
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {

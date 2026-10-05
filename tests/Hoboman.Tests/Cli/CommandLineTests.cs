@@ -5,6 +5,38 @@ namespace Hoboman.Tests.Cli;
 public sealed class CommandLineTests
 {
     [Fact]
+    public void Parse_WhenRunsAreCounted_ThenListsThatMany()
+    {
+        // Act
+        var input = new CommandLine().Parse(["log", "Flow", "--count", "2"]);
+
+        // Assert
+        Assert.Equal(2, input.Log?.Count);
+    }
+
+    [Theory]
+    [InlineData("--last", "--count", "2")]
+    [InlineData("--count", "0")]
+    public void Parse_WhenACountGoesWithARunOrIsBelowOne_ThenIsInvalid(params string[] options)
+    {
+        // Act
+        var input = new CommandLine().Parse(["log", "Flow", .. options]);
+
+        // Assert
+        Assert.NotNull(input.Problem);
+    }
+
+    [Fact]
+    public void Parse_WhenMcp_ThenServesMcp()
+    {
+        // Act
+        var input = new CommandLine().Parse(["mcp"]);
+
+        // Assert
+        Assert.True(input.IsMcp);
+    }
+
+    [Fact]
     public void Parse_WhenListing_ThenSelectsList()
     {
         // Act

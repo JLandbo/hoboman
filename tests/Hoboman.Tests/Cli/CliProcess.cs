@@ -69,6 +69,49 @@ sealed class CliProcess : IDisposable
         }
     }
 
+    // A client keeps stdin open while it waits, as the server stops answering once it closes, so the answer to the last message is read first.
+    public async Task<JsonElement> ServeMcpAsync(string[] messages, int answerId)
+    {
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(30));
+        var start = new ProcessStartInfo(Path.Combine(Folder.Root, "hoboman-cli.exe"), "mcp")
+        {
+            WorkingDirectory = WorkingDirectory,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            StandardInputEncoding = new UTF8Encoding(false),
+            StandardOutputEncoding = Encoding.UTF8,
+        };
+        using var process = Process.Start(start)!;
+        try
+        {
+            foreach (var message in messages)
+            {
+                await process.StandardInput.WriteLineAsync(message.AsMemory(), cancellation.Token);
+            }
+            await process.StandardInput.FlushAsync(cancellation.Token);
+            while (await process.StandardOutput.ReadLineAsync(cancellation.Token) is { } line)
+            {
+                var answer = JsonDocument.Parse(line).RootElement;
+                if (answer.TryGetProperty("id", out var id) && id.GetInt32() == answerId)
+                {
+                    return answer;
+                }
+            }
+            throw new InvalidOperationException("The server stopped without an answer.");
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            if (!await process.WaitForExitAsync(cancellation.Token).ContinueWith(task => task.IsCompletedSuccessfully, TaskScheduler.Default))
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+    }
+
     // The history and the runs are what the CLI writes, so they are left out unless asked for.
     public IReadOnlyDictionary<string, byte[]> Snapshot(bool includeOutput = false) =>
         Directory.EnumerateFileSystemEntries(Folder.Root, "*", SearchOption.AllDirectories)

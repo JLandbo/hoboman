@@ -19,7 +19,8 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     readonly MemoryStream _error = new();
     HttpClients? _clients;
 
-    AppFolder Folder => new(_temporary.Path);
+    // Below the temporary folder, so a test can keep files of its own outside Hoboman's.
+    AppFolder Folder => new(Path.Combine(_temporary.Path, "data"));
 
     CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
@@ -36,8 +37,6 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     WorkflowLibrary Workflows => new(Folder, NullLogger<WorkflowLibrary>.Instance);
 
     CredentialStore Credentials => new(Folder, Secrets, NullLogger<CredentialStore>.Instance);
-
-    EnvironmentChanges EnvironmentChanges => new(Environments, Secrets, Credentials);
 
     ApiRequest Request => ApiRequest.New() with { Url = $"{server.Http}", Auth = AuthSettings.None };
 
@@ -74,23 +73,11 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     }
 
     // Without a token client, a token cannot be fetched, as when the server refuses.
-    Task<int> RunAsync(string[] arguments, IRequestSender? sender = null, FakeOAuthClient? oauth = null, TextReader? input = null, CancellationToken? cancellationToken = null)
-    {
-        sender ??= new HttpRequestSender(Secrets, _clients ??= new(Settings), TimeProvider.System, NullLogger<HttpRequestSender>.Instance);
-        var runner = new RequestRunner(sender, Library, History, NullLogger<RequestRunner>.Instance);
-        var check = new WorkflowCheck(Workflows, Secrets, NullLogger<WorkflowCheck>.Instance);
-        var workflowRunner = new WorkflowRunner(sender, Folder, TimeProvider.System, NullLogger<WorkflowRunner>.Instance);
-        var tokens = new UnaskedTokens(oauth ?? new(_ => throw new OAuthException(OAuthProblem.Denied, "access_denied")), Secrets, NullLogger<UnaskedTokens>.Instance);
-        var output = new CliOutput(_output, _error);
-        var variables = new VariableInput(input ?? TextReader.Null, input is not null);
-        var targets = new Targets(Workflows, Environments);
-        var workflowDeletion = new WorkflowDeletion(Workflows, Secrets, NullLogger<WorkflowDeletion>.Instance);
-        return new CliApplication(Library, Settings, Environments, runner, Workflows, check, workflowRunner, tokens, output, variables,
-            new(Library, Secrets, Folder, NullLogger<RequestDeletion>.Instance), workflowDeletion, targets,
-            new(Library, Workflows, Environments, targets, output), new(Library, Workflows, workflowDeletion, Environments, EnvironmentChanges, targets, variables, output), new(Folder, targets, output),
-            EnvironmentChanges, new(History, output))
+    Task<int> RunAsync(string[] arguments, IRequestSender? sender = null, FakeOAuthClient? oauth = null, TextReader? input = null, CancellationToken? cancellationToken = null) =>
+        new CliFactory(Folder, Secrets, sender ?? new HttpRequestSender(Secrets, _clients ??= new(Settings), TimeProvider.System, NullLogger<HttpRequestSender>.Instance),
+                oauth ?? new(_ => throw new OAuthException(OAuthProblem.Denied, "access_denied")))
+            .Create(_output, _error, input ?? TextReader.Null, input is not null)
             .RunAsync(arguments, cancellationToken ?? Cancellation);
-    }
 
     async Task<IReadOnlyList<HistoryFile>> CallsAsync() => await History.ReadAsync(await History.LatestAsync(10, Cancellation), Cancellation);
 
@@ -242,6 +229,53 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     }
 
     [Fact]
+    public async Task RunAsync_WhenTheOutFileExists_ThenSendsNothingAndKeepsTheFile()
+    {
+        // Arrange
+        Directory.CreateDirectory(_temporary.Path);
+        var file = Path.Combine(_temporary.Path, "svar.pdf");
+        await File.WriteAllTextAsync(file, "keep", Cancellation);
+        var sender = Answering();
+
+        // Act
+        var exitCode = await RunAsync(["send", "GET", "https://localhost/", "--out", file], sender);
+
+        // Assert
+        Assert.Equal((2, "Output file already exists.", true, "keep"), (exitCode, Problem, sender.Request is null, await File.ReadAllTextAsync(file, Cancellation)));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheOutFileIsInHobomansFolder_ThenSendsNothing()
+    {
+        // Arrange
+        var sender = Answering();
+
+        // Act
+        var exitCode = await RunAsync(["send", "GET", "https://localhost/", "--out", Path.Combine(Folder.Root, "requests", "x.json")], sender);
+
+        // Assert
+        Assert.Equal((2, "Hoboman's own files cannot be used.", true), (exitCode, Problem, sender.Request is null));
+    }
+
+    [Theory]
+    [InlineData("send", "POST", "https://localhost/", "--text", "@{0}")]
+    [InlineData("send", "GET", "https://localhost/", "--vars", "{0}")]
+    [InlineData("run", "Flow", "--params", "{0}")]
+    [InlineData("new", "request", ".", "Ping", "--json", "@{0}")]
+    [InlineData("update", "Dev", "--file", "{0}")]
+    public async Task RunAsync_WhenAnInputFileIsInHobomansFolder_ThenRefusesToReadIt(params string[] arguments)
+    {
+        // Arrange
+        await Environments.SaveAsync([new("Dev", [])], Cancellation);
+
+        // Act
+        var exitCode = await RunAsync([.. arguments.Select(argument => string.Format(argument, Folder.Environments))]);
+
+        // Assert
+        Assert.Equal((2, "Hoboman's own files cannot be used."), (exitCode, Problem));
+    }
+
+    [Fact]
     public async Task RunAsync_WhenTheOutFileCannotBeWritten_ThenSaysSo()
     {
         // Act
@@ -366,8 +400,8 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     public async Task RunAsync_WhenTheBodyIsAFile_ThenSendsItsTextAsItIs()
     {
         // Arrange
-        Directory.CreateDirectory(Folder.Root);
-        var path = Path.Combine(Folder.Root, "body.txt");
+        Directory.CreateDirectory(_temporary.Path);
+        var path = Path.Combine(_temporary.Path, "body.txt");
         await File.WriteAllTextAsync(path, "@Ærø 🚀", new UTF8Encoding(true), Cancellation);
 
         // Act
@@ -494,8 +528,8 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     {
         // Arrange
         await Environments.SaveAsync([new("Dev", [new("a", "saved"), new("b", "saved"), new("c", "saved")])], Cancellation);
-        Directory.CreateDirectory(Folder.Root);
-        var path = Path.Combine(Folder.Root, "variables.json");
+        Directory.CreateDirectory(_temporary.Path);
+        var path = Path.Combine(_temporary.Path, "variables.json");
         await File.WriteAllTextAsync(path, """{"a":"file","b":"file"}""", Cancellation);
         string[] options = fileFirst ? ["--vars", path, "--var", "a=option"] : ["--var", "a=option", "--vars", path];
 
@@ -1073,6 +1107,20 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     }
 
     [Fact]
+    public async Task RunAsync_WhenDeletingARequestWithoutYes_ThenTellsThatOneRequestWouldGo()
+    {
+        // Arrange
+        await Library.SaveAtAsync("Shop/Ping", Request, Cancellation);
+
+        // Act
+        await RunAsync(["delete", "Shop/Ping"]);
+
+        // Assert
+        using var error = JsonDocument.Parse(Error);
+        Assert.Equal((0, 1), (error.RootElement.GetProperty("folders").GetInt32(), error.RootElement.GetProperty("requests").GetInt32()));
+    }
+
+    [Fact]
     public async Task RunAsync_WhenAFolderIsDeletedWithYes_ThenDeletesItsRequestsAndTheirSecrets()
     {
         // Arrange
@@ -1181,8 +1229,7 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     {
         // Arrange
         await Library.CreateAsync(Request with { Id = Guid.NewGuid(), Name = "Ping" }, Cancellation);
-        Directory.CreateDirectory(_temporary.Path);
-        await File.WriteAllTextAsync(Path.Combine(_temporary.Path, "environments.json"), "[", Cancellation);
+        await File.WriteAllTextAsync(Folder.Environments, "[", Cancellation);
 
         // Act
         var exitCode = await RunAsync(["show", "Ping"]);
@@ -1195,8 +1242,8 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     public async Task RunAsync_WhenTheSettingsCannotBeRead_ThenListingEnvironmentsTellsIt()
     {
         // Arrange
-        Directory.CreateDirectory(_temporary.Path);
-        await File.WriteAllTextAsync(Path.Combine(_temporary.Path, "settings.json"), "{", Cancellation);
+        Directory.CreateDirectory(Folder.Root);
+        await File.WriteAllTextAsync(Folder.Settings, "{", Cancellation);
 
         // Act
         var exitCode = await RunAsync(["list", "environments"]);
@@ -1310,6 +1357,23 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     }
 
     [Fact]
+    public async Task RunAsync_WhenTheSelectedEnvironmentIsDeleted_ThenSendUsesNoEnvironment()
+    {
+        // Arrange
+        var environment = new ApiEnvironment("Dev", []) { Id = Guid.NewGuid() };
+        await Environments.SaveAsync([environment], Cancellation);
+        await Settings.UpdateAsync(_ => new(EnvironmentId: environment.Id), Cancellation);
+        await RunAsync(["delete", "Dev", "--yes"]);
+        var sender = Answering();
+
+        // Act
+        await RunAsync(["send", "GET", "https://localhost/"], sender);
+
+        // Assert
+        Assert.Same(ApiEnvironment.None, sender.Environment);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenAnEnvironmentHasTheNameOfARequest_ThenTheNameIsAmbiguousAndNothingIsDeleted()
     {
         // Arrange
@@ -1327,8 +1391,8 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
     public async Task RunAsync_WhenTheEnvironmentsCannotBeReadAndNothingElseHasTheTarget_ThenTellsWhereTheyAreWrong()
     {
         // Arrange
-        Directory.CreateDirectory(_temporary.Path);
-        await File.WriteAllTextAsync(Path.Combine(_temporary.Path, "environments.json"), "[", Cancellation);
+        Directory.CreateDirectory(Folder.Root);
+        await File.WriteAllTextAsync(Folder.Environments, "[", Cancellation);
 
         // Act
         var exitCode = await RunAsync(["delete", "Dev", "--yes"]);
@@ -1422,7 +1486,7 @@ public sealed class CliApplicationTests(EchoServer server) : IClassFixture<EchoS
         // Arrange
         await RunAsync(["send", "GET", $"{server.Http}"]);
         var call = Directory.EnumerateFiles(Folder.History).Single();
-        File.Copy(call, Path.Combine(_temporary.Path, "outside.json"));
+        File.Copy(call, Path.Combine(Folder.Root, "outside.json"));
 
         // Act
         var exitCode = await RunAsync(["history", "../outside"]);

@@ -12,13 +12,15 @@ namespace Hoboman.Cli;
 
 sealed class CliApplication(RequestLibrary library, SettingsStore settings, EnvironmentStore environments, RequestRunner runner, WorkflowLibrary workflows, WorkflowCheck check,
     WorkflowRunner workflowRunner, UnaskedTokens tokens, CliOutput output, VariableInput variables, RequestDeletion deletion, WorkflowDeletion workflowDeletion,
-    Targets targets, ShowCommand show, UpdateCommand update, LogCommand log, EnvironmentChanges environmentChanges, HistoryCommand history)
+    Targets targets, ShowCommand show, UpdateCommand update, LogCommand log, EnvironmentChanges environmentChanges, HistoryCommand history, OwnFiles files)
 {
-    public async Task<int> RunAsync(string[] arguments, CancellationToken cancellationToken)
+    public Task<int> RunAsync(string[] arguments, CancellationToken cancellationToken) => RunAsync(new CommandLine().Parse(arguments), cancellationToken);
+
+    // MCP gives the input as it is, so no value can be read as an option. mcp itself is served by the program, not run here.
+    public async Task<int> RunAsync(CommandInput input, CancellationToken cancellationToken)
     {
         try
         {
-            var input = new CommandLine().Parse(arguments);
             if (input.Problem is not null)
             {
                 return await output.WriteErrorAsync(input.Problem);
@@ -56,6 +58,10 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
                 return await history.RunAsync(input.History, cancellationToken);
             }
             return input.IsList ? await ListAsync(input, cancellationToken) : await SendAsync(input.Send!, cancellationToken);
+        }
+        catch (OwnFileException exception)
+        {
+            return await output.WriteErrorAsync(exception.Message);
         }
         catch (Exception exception)
         {
@@ -126,7 +132,7 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         {
             if (input.IsDirect)
             {
-                request = await RequestInput.CreateAsync(input, cancellationToken);
+                request = await RequestInput.CreateAsync(input, files, cancellationToken);
             }
             else
             {
@@ -158,17 +164,22 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         {
             return await output.WriteErrorAsync(problem!);
         }
+        // Checked before the call, so a file that cannot be written to is told before anything is sent.
+        var file = input.OutFile is null ? null : files.Outside(input.OutFile);
+        if (File.Exists(file))
+        {
+            return await output.WriteErrorAsync("Output file already exists.");
+        }
         // The temporary values only live in this call, and a token is saved for the environment, so it is fetched without them.
         var used = overrides.Count > 0 ? environment.WithVariables(overrides) : environment;
         var response = await runner.RunAsync(request, used, HistorySource.Cli, auth => tokens.FetchAsync(auth, environment, cancellationToken), cancellationToken);
-        if (input.OutFile is null)
+        if (file is null)
         {
             return await output.WriteResponseAsync(response, cancellationToken);
         }
-        var file = Path.GetFullPath(input.OutFile);
         try
         {
-            await File.WriteAllBytesAsync(file, response.Bytes ?? [], cancellationToken);
+            await OwnFiles.WriteNewAsync(file, response.Bytes ?? [], cancellationToken);
         }
         catch (Exception exception) when (FileProblem.Is(exception))
         {
@@ -255,7 +266,7 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         {
             return await output.WriteErrorAsync(problem);
         }
-        var request = input.Kind == SavedKind.Request ? await RequestInput.CreateAsync(input.Method, input.Url, input.Headers, input.JsonBody, input.TextBody, cancellationToken) : null;
+        var request = input.Kind == SavedKind.Request ? await RequestInput.CreateAsync(input.Method, input.Url, input.Headers, input.JsonBody, input.TextBody, files, cancellationToken) : null;
         return await SavedAsync(async () =>
         {
             var id = Guid.NewGuid();
@@ -349,8 +360,8 @@ sealed class CliApplication(RequestLibrary library, SettingsStore settings, Envi
         {
             // What would go is told, so the caller can ask the user before it adds --yes.
             var folders = found.Kind == SavedKind.Folder ? collection.FoldersIn(found.Id) : new HashSet<Guid>();
-            return await output.WriteErrorAsync(new { error = "Deleting needs --yes.", path = found.Path, folders = folders.Count,
-                requests = collection.Requests.Count(request => request.FolderId is { } inside && folders.Contains(inside)) });
+            return await output.WriteErrorAsync(new { error = "Deleting needs confirmation.", path = found.Path, folders = folders.Count,
+                requests = found.Kind == SavedKind.Request ? 1 : collection.Requests.Count(request => request.FolderId is { } inside && folders.Contains(inside)) });
         }
         return await SavedAsync(async () =>
         {

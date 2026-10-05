@@ -95,6 +95,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <Border Grid.Row="0" Style="{StaticResource Keys}">
                         <TextBlock Text="{DynamicResource Shortcuts.SendKeys}" FontFamily="{StaticResource CodeFont}" FontSize="12" />
@@ -105,21 +106,25 @@
                     </Border>
                     <TextBlock Grid.Row="1" Grid.Column="1" Text="{DynamicResource Shortcuts.Save}" Style="{StaticResource What}" />
                     <Border Grid.Row="2" Style="{StaticResource Keys}">
+                        <TextBlock Text="{DynamicResource Shortcuts.SearchKeys}" FontFamily="{StaticResource CodeFont}" FontSize="12" />
+                    </Border>
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{DynamicResource Shortcuts.Search}" Style="{StaticResource What}" />
+                    <Border Grid.Row="3" Style="{StaticResource Keys}">
                         <TextBlock Text="{DynamicResource Shortcuts.FormatKeys}" FontFamily="{StaticResource CodeFont}" FontSize="12" />
                     </Border>
-                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{DynamicResource Shortcuts.Format}" Style="{StaticResource What}" />
-                    <Border Grid.Row="3" Style="{StaticResource Keys}">
+                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{DynamicResource Shortcuts.Format}" Style="{StaticResource What}" />
+                    <Border Grid.Row="4" Style="{StaticResource Keys}">
                         <TextBlock Text="{DynamicResource Shortcuts.UndoKeys}" FontFamily="{StaticResource CodeFont}" FontSize="12" />
                     </Border>
-                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{DynamicResource Shortcuts.Undo}" Style="{StaticResource What}" />
-                    <Border Grid.Row="4" Style="{StaticResource Keys}">
+                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{DynamicResource Shortcuts.Undo}" Style="{StaticResource What}" />
+                    <Border Grid.Row="5" Style="{StaticResource Keys}">
                         <TextBlock Text="{DynamicResource Shortcuts.OpenKeys}" FontFamily="{StaticResource CodeFont}" FontSize="12" />
                     </Border>
-                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{DynamicResource Shortcuts.Open}" Style="{StaticResource What}" />
-                    <Border Grid.Row="5" Style="{StaticResource Keys}">
+                    <TextBlock Grid.Row="5" Grid.Column="1" Text="{DynamicResource Shortcuts.Open}" Style="{StaticResource What}" />
+                    <Border Grid.Row="6" Style="{StaticResource Keys}">
                         <TextBlock Text="{DynamicResource Shortcuts.CloseKeys}" FontFamily="{StaticResource CodeFont}" FontSize="12" />
                     </Border>
-                    <TextBlock Grid.Row="5" Grid.Column="1" Text="{DynamicResource Shortcuts.Close}" Style="{StaticResource What}" />
+                    <TextBlock Grid.Row="6" Grid.Column="1" Text="{DynamicResource Shortcuts.Close}" Style="{StaticResource What}" />
                 </Grid>
             </StackPanel>
         </Border>

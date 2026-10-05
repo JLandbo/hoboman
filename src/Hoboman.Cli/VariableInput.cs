@@ -1,11 +1,10 @@
-using System.Text;
 using System.Text.Json;
 using Hoboman.Core.Requests;
 
 namespace Hoboman.Cli;
 
 // A --var wins over --vars wherever they stand, and the last of a name wins. --param and --params follow the same rule.
-sealed class VariableInput(TextReader input, bool inputRedirected)
+sealed class VariableInput(TextReader input, bool inputRedirected, OwnFiles files)
 {
     // A value that is not text, such as a number from a response, is put in as its JSON.
     public async Task<IReadOnlyList<KeyValue>> ReadAsync(SendInput command, CancellationToken cancellationToken) =>
@@ -25,7 +24,7 @@ sealed class VariableInput(TextReader input, bool inputRedirected)
             throw new FormatException();
         }
         // Reading the console's input does not stop when it is cancelled, so the wait does.
-        return path == "-" ? await input.ReadToEndAsync(cancellationToken).WaitAsync(cancellationToken) : await File.ReadAllTextAsync(path, Encoding.UTF8, cancellationToken);
+        return path == "-" ? await input.ReadToEndAsync(cancellationToken).WaitAsync(cancellationToken) : await files.ReadAsync(path, cancellationToken);
     }
 
     async Task<IReadOnlyDictionary<string, JsonElement>> ReadAsync(string[] options, string? file, CancellationToken cancellationToken)
