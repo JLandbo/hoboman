@@ -72,7 +72,7 @@ static class Ui
 
     public static async Task<MainWindow> ShowAsync(Harness harness, MainViewModel main)
     {
-        var window = new MainWindow(main, harness.SettingsStore, NullLogger<MainWindow>.Instance);
+        var window = new MainWindow(main, harness.SettingsStore, harness.Folder, NullLogger<MainWindow>.Instance);
         Application.Current.MainWindow = window;
         Show(window);
         await IdleAsync();

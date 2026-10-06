@@ -88,8 +88,14 @@
         <DockPanel>
             <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
                 <Border Style="{StaticResource ToolGroup}" Margin="0,0,0,5">
-                    <Button Content="&#xE713;" ToolTip="{DynamicResource Settings.Title}" Click="Settings_Click"
-                            Style="{StaticResource IconButton}" Foreground="{DynamicResource Muted}" Padding="8,3" Margin="3" HorizontalAlignment="Left" />
+                    <WrapPanel>
+                        <Button Content="&#xE713;" ToolTip="{DynamicResource Settings.Title}" Click="Settings_Click"
+                                Style="{StaticResource IconButton}" Foreground="{DynamicResource Muted}" Padding="8,3" Margin="3" />
+                        <Button Content="&#xE8B7;" ToolTip="{DynamicResource Sidebar.OpenDataFolder}" AutomationProperties.Name="{DynamicResource Sidebar.OpenDataFolder}" Click="OpenDataFolder_Click"
+                                Style="{StaticResource IconButton}" Foreground="{DynamicResource Muted}" Padding="8,3" Margin="3" />
+                        <Button Content="&#xE838;" ToolTip="{DynamicResource Sidebar.OpenProgramFolder}" AutomationProperties.Name="{DynamicResource Sidebar.OpenProgramFolder}" Click="OpenProgramFolder_Click"
+                                Style="{StaticResource IconButton}" Foreground="{DynamicResource Muted}" Padding="8,3" Margin="3" />
+                    </WrapPanel>
                 </Border>
                 <Border Style="{StaticResource ToolGroup}" Margin="0,0,0,5">
                     <WrapPanel>

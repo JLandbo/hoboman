@@ -213,6 +213,8 @@
     "Shortcuts.CloseKeys": "Esc",
     "Shortcuts.Close": "Lukker et vindue eller en menu, eller rydder søgningen, når du står i feltet",
     "Sidebar.Collections": "Samlinger",
+    "Sidebar.OpenDataFolder": "Åbn datamappen (runs og historik)",
+    "Sidebar.OpenProgramFolder": "Åbn programmets mappe",
     "Sidebar.History": "Historik",
     "Sidebar.NewRequest": "Ny request",
     "Sidebar.NewFolder": "Ny mappe",

@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -15,14 +16,16 @@ public partial class MainWindow : Window
 {
     readonly MainViewModel _viewModel;
     readonly SettingsStore _settings;
+    readonly AppFolder _folder;
     readonly ILogger<MainWindow> _logger;
     readonly Dictionary<string, double> _splits = [];
 
-    public MainWindow(MainViewModel viewModel, SettingsStore settings, ILogger<MainWindow> logger)
+    public MainWindow(MainViewModel viewModel, SettingsStore settings, AppFolder folder, ILogger<MainWindow> logger)
     {
         InitializeComponent();
         DataContext = _viewModel = viewModel;
         _settings = settings;
+        _folder = folder;
         _logger = logger;
         SplitMemory.SetSplits(this, _splits);
     }
@@ -53,6 +56,10 @@ public partial class MainWindow : Window
     }
 
     async void Settings_Click(object sender, RoutedEventArgs e) => await _viewModel.EditSettingsAsync();
+
+    void OpenDataFolder_Click(object sender, RoutedEventArgs e) => Process.Start(new ProcessStartInfo(_folder.Root) { UseShellExecute = true });
+
+    void OpenProgramFolder_Click(object sender, RoutedEventArgs e) => Process.Start(new ProcessStartInfo(AppContext.BaseDirectory) { UseShellExecute = true });
 
     async void Stringify_Click(object sender, RoutedEventArgs e) => await ChangeClipboardAsync((Button)sender, _viewModel.Clipboard.StringifyAsync);
 

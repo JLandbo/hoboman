@@ -26,7 +26,7 @@ public sealed class MainWindowTests
             // Arrange
             var main = harness.Main();
             await main.LoadAsync();
-            var window = new MainWindow(main, harness.SettingsStore, NullLogger<MainWindow>.Instance);
+            var window = new MainWindow(main, harness.SettingsStore, harness.Folder, NullLogger<MainWindow>.Instance);
 
             // Act
             await window.RestoreLayoutAsync();

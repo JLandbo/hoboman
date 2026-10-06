@@ -213,6 +213,8 @@
     "Shortcuts.CloseKeys": "Esc",
     "Shortcuts.Close": "Closes a window or a menu, or clears the search while you are in it",
     "Sidebar.Collections": "Collections",
+    "Sidebar.OpenDataFolder": "Open data folder (runs and history)",
+    "Sidebar.OpenProgramFolder": "Open program folder",
     "Sidebar.History": "History",
     "Sidebar.NewRequest": "New request",
     "Sidebar.NewFolder": "New folder",
