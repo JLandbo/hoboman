@@ -147,7 +147,7 @@ public sealed class WorkflowRunnerTests : IDisposable
     public async Task RunAsync_WhenTheValueIsNotReadyYet_ThenTriesAgainAndSavesFromTheReadyAnswer()
     {
         // Arrange
-        var workflow = Retrying(new() { Until = "$.status", Value = "Succeeded", Times = 5, WaitSeconds = 0 }, new WorkflowSave("token", "$.token"));
+        var workflow = Retrying(new() { Until = "$.status", Value = "Succeeded", Times = 5, WaitMilliseconds = 0 }, new WorkflowSave("token", "$.token"));
 
         // Act
         var outcome = await RunAsync(workflow, Answering(Ok("""{"status":"processing","token":"old"}"""), Ok("""{"status":"succeeded","token":"new"}""")));
@@ -164,7 +164,7 @@ public sealed class WorkflowRunnerTests : IDisposable
         var answer = Ok("\"done\"", new ResponseHeader("Content-Type", "text/plain"));
 
         // Act
-        var outcome = await RunAsync(Retrying(new() { Until = "$", Value = "\"done\"", Times = 2, WaitSeconds = 0 }), Answering(answer, answer));
+        var outcome = await RunAsync(Retrying(new() { Until = "$", Value = "\"done\"", Times = 2, WaitMilliseconds = 0 }), Answering(answer, answer));
 
         // Assert
         Assert.Equal((RunOutcome.Succeeded, 1), (outcome, Single<StepFinished>().Attempts));
@@ -174,7 +174,7 @@ public sealed class WorkflowRunnerTests : IDisposable
     public async Task RunAsync_WhenTheAnswerIsNotASuccessYet_ThenTriesAgainUntilItIs()
     {
         // Act
-        var outcome = await RunAsync(Retrying(new() { Times = 3, WaitSeconds = 0 }), Answering(Status(403), Status(403), Ok("{}")));
+        var outcome = await RunAsync(Retrying(new() { Times = 3, WaitMilliseconds = 0 }), Answering(Status(403), Status(403), Ok("{}")));
 
         // Assert
         Assert.Equal((RunOutcome.Succeeded, 3, "403 403"), (outcome, Single<StepFinished>().Attempts, string.Join(" ", _events.OfType<StepRetrying>().Select(retrying => retrying.Status))));
@@ -184,7 +184,7 @@ public sealed class WorkflowRunnerTests : IDisposable
     public async Task RunAsync_WhenTheAnswerIsNeverReady_ThenFailsAfterTheLastAttempt()
     {
         // Act
-        var outcome = await RunAsync(Retrying(new() { Until = "$.status", Value = "succeeded", Times = 3, WaitSeconds = 0 }),
+        var outcome = await RunAsync(Retrying(new() { Until = "$.status", Value = "succeeded", Times = 3, WaitMilliseconds = 0 }),
             Answering(Ok("""{"status":"processing"}"""), Ok("""{"status":"processing"}"""), Ok("""{"status":"processing"}""")));
 
         // Assert
@@ -197,7 +197,7 @@ public sealed class WorkflowRunnerTests : IDisposable
     public async Task RunAsync_WhenTheAnswerTellsItFailed_ThenStopsAtOnce(int status)
     {
         // Arrange
-        var retry = new WorkflowRetry { Until = "$.status", Value = "succeeded", StopIf = "$.status", StopEquals = "failed", Times = 5, WaitSeconds = 0 };
+        var retry = new WorkflowRetry { Until = "$.status", Value = "succeeded", StopIf = "$.status", StopEquals = "failed", Times = 5, WaitMilliseconds = 0 };
         var failed = new ApiResponse(status, "", 1, 0, [], """{"status":"Failed"}""");
 
         // Act
@@ -211,7 +211,7 @@ public sealed class WorkflowRunnerTests : IDisposable
     public async Task RunAsync_WhenASaveIsNotThereYet_ThenTriesAgainUntilItIs()
     {
         // Act
-        var outcome = await RunAsync(Retrying(new() { Times = 3, WaitSeconds = 0 }, new WorkflowSave("url", "$.url")), Answering(Ok("{}"), Ok("""{"url":"https://s3.local/a.pdf"}""")));
+        var outcome = await RunAsync(Retrying(new() { Times = 3, WaitMilliseconds = 0 }, new WorkflowSave("url", "$.url")), Answering(Ok("{}"), Ok("""{"url":"https://s3.local/a.pdf"}""")));
 
         // Assert
         Assert.Equal((RunOutcome.Succeeded, "https://s3.local/a.pdf"), (outcome, Single<RunFinished>().Variables["url"].GetString()));
@@ -228,7 +228,7 @@ public sealed class WorkflowRunnerTests : IDisposable
         var sender = new FakeSender(() => calls++ == 0 ? Task.FromException<ApiResponse>(failure) : Task.FromResult(Ok("{}")));
 
         // Act
-        var outcome = await RunAsync(Retrying(new() { Times = 3, WaitSeconds = 0 }), sender);
+        var outcome = await RunAsync(Retrying(new() { Times = 3, WaitMilliseconds = 0 }), sender);
 
         // Assert
         Assert.Equal((expected, retries), (outcome, _events.OfType<StepRetrying>().Count()));
@@ -238,10 +238,28 @@ public sealed class WorkflowRunnerTests : IDisposable
     public async Task RunAsync_WhenTheLastAttemptFails_ThenTellsHowManyAttemptsWereMade()
     {
         // Act
-        await RunAsync(Retrying(new() { Times = 2, WaitSeconds = 0 }), new FakeSender(() => Task.FromException<ApiResponse>(new HttpRequestException("down"))));
+        await RunAsync(Retrying(new() { Times = 2, WaitMilliseconds = 0 }), new FakeSender(() => Task.FromException<ApiResponse>(new HttpRequestException("down"))));
 
         // Assert
         Assert.Equal((2, RequestProblem.TextOf(RequestProblemKind.NetworkFailed)), (Single<StepFinished>().Attempts, Single<StepFinished>().Error));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenARetryWaitsAHundredMilliseconds_ThenTriesAgainOnlyWhenTheyHavePassed()
+    {
+        // Arrange
+        var calls = 0;
+        var running = RunAsync(Retrying(new() { Times = 2, WaitMilliseconds = 100 }), new FakeSender(() => Task.FromResult(calls++ == 0 ? Status(403) : Ok("{}"))));
+        await _clock.Waiting.Task.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+        _clock.Advance(TimeSpan.FromMilliseconds(99));
+        var callsBefore = calls;
+
+        // Act
+        _clock.Advance(TimeSpan.FromMilliseconds(1));
+        var outcome = await running.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+
+        // Assert
+        Assert.Equal((1, RunOutcome.Succeeded, 2), (callsBefore, outcome, calls));
     }
 
     [Fact]
@@ -249,7 +267,7 @@ public sealed class WorkflowRunnerTests : IDisposable
     {
         // Arrange
         using var cancellation = new CancellationTokenSource();
-        var running = RunAsync(Retrying(new() { Times = 5, WaitSeconds = 300 }), new FakeSender(() => Task.FromResult(Status(403))), cancellationToken: cancellation.Token);
+        var running = RunAsync(Retrying(new() { Times = 5, WaitMilliseconds = 300000 }), new FakeSender(() => Task.FromResult(Status(403))), cancellationToken: cancellation.Token);
         await _clock.Waiting.Task.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
 
         // Act

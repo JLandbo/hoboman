@@ -274,7 +274,7 @@
     "Workflow.Stopped": "Stopped, as {0} was {1}.",
     "Workflow.RetryTimes": "At most",
     "Workflow.RetryWait": "attempts, with",
-    "Workflow.RetrySeconds": "seconds between",
+    "Workflow.RetryMilliseconds": "milliseconds between",
     "Workflow.Attempt": "Attempt {0}/{1}",
     "Workflow.Attempts": "{0} attempts",
     "Workflow.Summary": "{0}/{1} steps · {2:0.0} seconds",
@@ -331,7 +331,7 @@
     "WorkflowProblem.InvalidScript": "Syntax error in the script: {0}",
     "WorkflowProblem.MixedStep": "The step has more than one of a request, a script and a wait. A step can only be one of them.",
     "WorkflowProblem.InvalidDelay": "A wait step must wait between 1 and {0} seconds and cannot save anything.",
-    "WorkflowProblem.InvalidRetry": "Retry works only on a request and needs paths and values in pairs, valid paths, 1-{0} attempts and 0-{1} seconds between.",
+    "WorkflowProblem.InvalidRetry": "Retry works only on a request and needs paths and values in pairs, valid paths, 1-{0} attempts and 0-{1} milliseconds between.",
     "WorkflowProblem.InvalidOutput": "Only a script step can have an output."
   }
 }

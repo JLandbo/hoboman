@@ -47,7 +47,7 @@ public sealed class WorkflowStepViewModel : ObservableObject
         RetryStopEquals = step.Retry?.StopEquals ?? "";
         var retry = step.Retry ?? new();
         RetryTimes = retry.Times;
-        RetryWaitSeconds = retry.WaitSeconds;
+        RetryWaitMilliseconds = retry.WaitMilliseconds;
         Name = step.Name ?? "";
         if (Kind == StepKind.Request)
         {
@@ -191,7 +191,7 @@ public sealed class WorkflowStepViewModel : ObservableObject
 
     public int RetryTimes { get; set => Edit(ref field, value); }
 
-    public int RetryWaitSeconds { get; set => Edit(ref field, value); }
+    public int RetryWaitMilliseconds { get; set => Edit(ref field, value); }
 
     // All steps share one view, so each step keeps which section it shows, as a tab does.
     public StepSection Section { get; set => Set(ref field, value); }
@@ -292,7 +292,7 @@ public sealed class WorkflowStepViewModel : ObservableObject
                 StopIf = Blank(RetryStopIf),
                 StopEquals = Blank(RetryStopEquals),
                 Times = RetryTimes,
-                WaitSeconds = RetryWaitSeconds,
+                WaitMilliseconds = RetryWaitMilliseconds,
             }
             : null,
         Saves = [.. Saves.ToList().Select(save => new WorkflowSave(save.Name, save.Value))],

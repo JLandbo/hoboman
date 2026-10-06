@@ -215,7 +215,7 @@ Et trin har `name` (valgfrit) og præcis én af:
 
 Et trin kan desuden have:
 - `saves`: `[{"variable", "from"}]`. `from` er `$` for hele bodyen, en sti som `$.data.items[0].id`, `header:Navn`, `status` eller en fast JSON-værdi som `"1"` eller `"\"ja\""`. Der gemmes kun efter et 2xx-svar.
-- `retry` (kun request-trin): `{"until": "$.status", "equals": "done", "stopIf": "$.status", "stopEquals": "failed", "times": 30, "waitSeconds": 5}`. Trinnet sendes igen, indtil svaret er 2xx, alt i `saves` findes, og `until` er `equals`. Det stopper med det samme, når `stopIf` er `stopEquals`. Sammenligningen ser bort fra store og små bogstaver. `until` og `equals` gives sammen eller slet ikke, og det samme gælder `stopIf` og `stopEquals`. `times` er 1-100 og `waitSeconds` 0-300. Gentag ikke en request, der opretter noget, medmindre API'et tåler det.
+- `retry` (kun request-trin): `{"until": "$.status", "equals": "done", "stopIf": "$.status", "stopEquals": "failed", "times": 30, "waitMilliseconds": 5000}`. Trinnet sendes igen, indtil svaret er 2xx, alt i `saves` findes, og `until` er `equals`. Det stopper med det samme, når `stopIf` er `stopEquals`. Sammenligningen ser bort fra store og små bogstaver. `until` og `equals` gives sammen eller slet ikke, og det samme gælder `stopIf` og `stopEquals`. `times` er 1-100 og `waitMilliseconds` 0-300000. Gentag ikke en request, der opretter noget, medmindre API'et tåler det.
 
 `{{navn}}` udfyldes i URL, query, headers, Basic og Bearer og i bodyen, når `useEnvironmentVariablesInBody` er `true`. Værdien kommer fra workflowets parametre og variabler, og ellers fra miljøet. OAuth-felterne udfyldes kun fra miljøet. Et script læser alle værdier i `vars`.
 

@@ -117,7 +117,7 @@ public sealed partial class WorkflowCheck(WorkflowLibrary workflows, SecretStore
     static bool IsValid(WorkflowRetry retry, StepKind kind) =>
         kind == StepKind.Request && (retry.Until is null) == (retry.Value is null) && (retry.Until is null || RunValues.IsSource(retry.Until))
         && (retry.StopIf is null) == (retry.StopEquals is null) && (retry.StopIf is null || RunValues.IsSource(retry.StopIf))
-        && retry.Times is >= 1 and <= MaxRetryTimes && retry.WaitSeconds is >= 0 and <= MaxDelaySeconds;
+        && retry.Times is >= 1 and <= MaxRetryTimes && retry.WaitMilliseconds is >= 0 and <= MaxDelaySeconds * 1000;
 
     public static bool IsValidName(string name) => name.Length > 0 && name.IndexOfAny(['{', '}']) < 0;
 

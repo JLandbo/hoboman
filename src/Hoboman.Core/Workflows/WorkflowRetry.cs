@@ -17,5 +17,5 @@ public sealed record WorkflowRetry
 
     public int Times { get; init; } = 30;
 
-    public int WaitSeconds { get; init; } = 5;
+    public int WaitMilliseconds { get; init; } = 5000;
 }

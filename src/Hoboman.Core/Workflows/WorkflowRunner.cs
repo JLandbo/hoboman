@@ -142,7 +142,7 @@ public sealed class WorkflowRunner(IRequestSender sender, AppFolder folder, Time
                     notReady = new(index, attempt, Error: RequestProblem.TextOf(problem));
                 }
                 await TellAsync(notReady);
-                await Task.Delay(TimeSpan.FromSeconds(retry.WaitSeconds), clock, cancellationToken);
+                await Task.Delay(TimeSpan.FromMilliseconds(retry.WaitMilliseconds), clock, cancellationToken);
             }
         }
 

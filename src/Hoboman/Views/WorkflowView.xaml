@@ -501,10 +501,10 @@
                                                 <TextBox Text="{Binding RetryTimes, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
                                             </Border>
                                             <TextBlock Text="{DynamicResource Workflow.RetryWait}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                            <Border CornerRadius="8" Background="{DynamicResource Input}" Width="60" Margin="0,0,8,0">
-                                                <TextBox Text="{Binding RetryWaitSeconds, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
+                                            <Border CornerRadius="8" Background="{DynamicResource Input}" Width="72" Margin="0,0,8,0">
+                                                <TextBox Text="{Binding RetryWaitMilliseconds, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
                                             </Border>
-                                            <TextBlock Text="{DynamicResource Workflow.RetrySeconds}" VerticalAlignment="Center" />
+                                            <TextBlock Text="{DynamicResource Workflow.RetryMilliseconds}" VerticalAlignment="Center" />
                                         </WrapPanel>
                                     </StackPanel>
                                 </StackPanel>

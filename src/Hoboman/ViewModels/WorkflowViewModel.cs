@@ -597,7 +597,7 @@ public sealed class WorkflowViewModel : ObservableObject
             WorkflowProblemKind.InvalidScript => translator.Format("WorkflowProblem.InvalidScript", problem.Detail),
             WorkflowProblemKind.MixedStep => translator.Of("WorkflowProblem.MixedStep"),
             WorkflowProblemKind.InvalidDelay => translator.Format("WorkflowProblem.InvalidDelay", WorkflowCheck.MaxDelaySeconds),
-            WorkflowProblemKind.InvalidRetry => translator.Format("WorkflowProblem.InvalidRetry", WorkflowCheck.MaxRetryTimes, WorkflowCheck.MaxDelaySeconds),
+            WorkflowProblemKind.InvalidRetry => translator.Format("WorkflowProblem.InvalidRetry", WorkflowCheck.MaxRetryTimes, WorkflowCheck.MaxDelaySeconds * 1000),
             WorkflowProblemKind.InvalidOutput => translator.Of("WorkflowProblem.InvalidOutput"),
             _ => translator.Format("WorkflowProblem.UnknownName", problem.Detail),
         };

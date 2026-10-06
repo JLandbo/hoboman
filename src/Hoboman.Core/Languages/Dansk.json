@@ -274,7 +274,7 @@
     "Workflow.Stopped": "Stoppede, fordi {0} var {1}.",
     "Workflow.RetryTimes": "Højst",
     "Workflow.RetryWait": "forsøg, med",
-    "Workflow.RetrySeconds": "sekunder imellem",
+    "Workflow.RetryMilliseconds": "millisekunder imellem",
     "Workflow.Attempt": "Forsøg {0}/{1}",
     "Workflow.Attempts": "{0} forsøg",
     "Workflow.Summary": "{0}/{1} trin · {2:0.0} sekunder",
@@ -331,7 +331,7 @@
     "WorkflowProblem.InvalidScript": "Syntaksfejl i scriptet: {0}",
     "WorkflowProblem.MixedStep": "Trinnet har mere end én af request, script og ventetid. Et trin kan kun være én af delene.",
     "WorkflowProblem.InvalidDelay": "Et vente-trin skal vente mellem 1 og {0} sekunder og kan ikke gemme noget.",
-    "WorkflowProblem.InvalidRetry": "Gentag virker kun på en request og skal have sti og værdi i par, gyldige stier, 1-{0} forsøg og 0-{1} sekunder imellem.",
+    "WorkflowProblem.InvalidRetry": "Gentag virker kun på en request og skal have sti og værdi i par, gyldige stier, 1-{0} forsøg og 0-{1} millisekunder imellem.",
     "WorkflowProblem.InvalidOutput": "Kun et script-trin kan have et output."
   }
 }

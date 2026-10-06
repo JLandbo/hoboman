@@ -120,15 +120,16 @@ public sealed class WorkflowCheckTests
     [InlineData("\"done\"", "done", 5, 0, false)]
     [InlineData(null, null, 0, 0, false)]
     [InlineData(null, null, 101, 0, false)]
-    [InlineData(null, null, 5, 301, false)]
+    [InlineData(null, null, 5, 300001, false)]
+    [InlineData(null, null, 5, -1, false)]
     [InlineData(null, null, 5, 0, true)]
-    public void Check_WhenARetryIsNotValid_ThenReportsIt(string? until, string? equals, int times, int waitSeconds, bool script)
+    public void Check_WhenARetryIsNotValid_ThenReportsIt(string? until, string? equals, int times, int waitMilliseconds, bool script)
     {
         // Arrange
         var step = script ? new WorkflowStep { Script = "token.js" } : new WorkflowStep { Request = Login };
 
         // Act
-        var checkedWorkflow = Check(OrderSync(step with { Retry = new() { Until = until, Value = equals, Times = times, WaitSeconds = waitSeconds } }), scripts: new() { ["token.js"] = "return 1;" });
+        var checkedWorkflow = Check(OrderSync(step with { Retry = new() { Until = until, Value = equals, Times = times, WaitMilliseconds = waitMilliseconds } }), scripts: new() { ["token.js"] = "return 1;" });
 
         // Assert
         Assert.Equal([new(WorkflowProblemKind.InvalidRetry, 0, until ?? "")], checkedWorkflow.Problems);

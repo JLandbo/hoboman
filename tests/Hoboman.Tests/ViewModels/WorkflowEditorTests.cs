@@ -213,7 +213,7 @@ public sealed class WorkflowEditorTests
         await workflow.RunAsync();
 
         // Assert
-        var invalid = harness.Translator.Format("Workflow.StepProblem", 2, harness.Translator.Format("WorkflowProblem.InvalidRetry", WorkflowCheck.MaxRetryTimes, WorkflowCheck.MaxDelaySeconds));
+        var invalid = harness.Translator.Format("Workflow.StepProblem", 2, harness.Translator.Format("WorkflowProblem.InvalidRetry", WorkflowCheck.MaxRetryTimes, WorkflowCheck.MaxDelaySeconds * 1000));
         Assert.Equal((true, false), (workflow.Problems.Contains(invalid), workflow.Steps[1].HasRetry));
     }
 
@@ -253,7 +253,7 @@ public sealed class WorkflowEditorTests
         var calls = 0;
         using var harness = new Harness(send: () => Task.FromResult(++calls == 1 ? new ApiResponse(403, "Forbidden", 1, 0, [], "") : Ok("{}")));
         harness.Translator.Use(Translation.Danish);
-        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request(), Retry = new() { Times = 3, WaitSeconds = 0 } }] }, harness);
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request(), Retry = new() { Times = 3, WaitMilliseconds = 0 } }] }, harness);
         await workflow.RunAsync();
         harness.Translator.Use(Translation.English);
         var changed = new List<string?>();
@@ -299,14 +299,14 @@ public sealed class WorkflowEditorTests
         using var harness = new Harness();
         var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request() }] }, harness);
         var step = workflow.Steps.Single();
-        (step.Retries, step.RetryUntil, step.RetryEquals, step.RetryTimes, step.RetryWaitSeconds) = (true, " $.result.status ", "succeeded", 60, 5);
+        (step.Retries, step.RetryUntil, step.RetryEquals, step.RetryTimes, step.RetryWaitMilliseconds) = (true, " $.result.status ", "succeeded", 60, 100);
         (step.RetryStopIf, step.RetryStopEquals) = (" $.result.status ", "failed");
 
         // Act
         await workflow.SaveAsync();
 
         // Assert
-        var expected = new WorkflowRetry { Until = "$.result.status", Value = "succeeded", StopIf = "$.result.status", StopEquals = "failed", Times = 60, WaitSeconds = 5 };
+        var expected = new WorkflowRetry { Until = "$.result.status", Value = "succeeded", StopIf = "$.result.status", StopEquals = "failed", Times = 60, WaitMilliseconds = 100 };
         Assert.Equal(expected, (await harness.WorkflowLibrary.LoadAsync("Flow", Cancellation))!.Steps.Single().Retry);
     }
 
@@ -326,7 +326,7 @@ public sealed class WorkflowEditorTests
             sending.TrySetResult();
             return answer.Task;
         });
-        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request(), Retry = new() { Times = 3, WaitSeconds = 0 } }] }, harness);
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request(), Retry = new() { Times = 3, WaitMilliseconds = 0 } }] }, harness);
 
         // Act
         var running = workflow.RunAsync();
@@ -345,7 +345,7 @@ public sealed class WorkflowEditorTests
         // Arrange
         using var harness = new Harness(send: () => Task.FromResult(Ok("""{"status":"processing"}""")));
         harness.Translator.Use(Translation.Danish);
-        var retry = new WorkflowRetry { Until = "$.status", Value = "done", Times = 2, WaitSeconds = 0 };
+        var retry = new WorkflowRetry { Until = "$.status", Value = "done", Times = 2, WaitMilliseconds = 0 };
         var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request(), Retry = retry }] }, harness);
 
         // Act
@@ -395,7 +395,7 @@ public sealed class WorkflowEditorTests
         // Arrange
         using var harness = new Harness(send: () => Task.FromResult(Ok("""{"status":"failed"}""")));
         harness.Translator.Use(Translation.Danish);
-        var retry = new WorkflowRetry { StopIf = "$.status", StopEquals = "failed", Times = 2, WaitSeconds = 0 };
+        var retry = new WorkflowRetry { StopIf = "$.status", StopEquals = "failed", Times = 2, WaitMilliseconds = 0 };
         var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { Request = Request(), Retry = retry }] }, harness);
 
         // Act
