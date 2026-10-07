@@ -358,9 +358,9 @@
                             </Grid>
                         </DockPanel>
                         <StackPanel DockPanel.Dock="Top" Visibility="{Binding IsDelay, Converter={StaticResource VisibleWhenTrue}}">
-                            <TextBlock Text="{DynamicResource Workflow.DelaySeconds}" Style="{StaticResource Heading}" Margin="0,0,0,6" />
+                            <TextBlock Text="{DynamicResource Workflow.DelayMilliseconds}" Style="{StaticResource Heading}" Margin="0,0,0,6" />
                             <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,12" Width="120" HorizontalAlignment="Left">
-                                <TextBox Text="{Binding DelaySeconds, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
+                                <TextBox Text="{Binding DelayMilliseconds, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Cell}" Padding="8,6" />
                             </Border>
                         </StackPanel>
                         <local:RequestLineEditor DockPanel.Dock="Top" DataContext="{Binding Request}" Margin="0,0,0,10" Visibility="{Binding DataContext.IsRequest, RelativeSource={RelativeSource AncestorType=DockPanel}, Converter={StaticResource VisibleWhenTrue}}" />

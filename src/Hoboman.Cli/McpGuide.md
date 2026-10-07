@@ -85,14 +85,14 @@ Et svar er ét JSON-objekt, også ved 4xx og 5xx:
 
 ## Workflows
 
-Et workflow er en række trin, der hver sender sin egen request, kører et script eller venter et antal sekunder. Værdier fra et svar, fx et token, gemmes i variabler, som de næste trin bruger.
+Et workflow er en række trin, der hver sender sin egen request, kører et script eller venter et antal millisekunder. Værdier fra et svar, fx et token, gemmes i variabler, som de næste trin bruger.
 
 **Find workflows og deres parametre.**
 - `list` med `kind` `workflows` giver id og navn på hvert workflow. Giv `run` id'et. Et workflow uden navn kan ikke læses eller mangler `name`. `show` med id'et fortæller, hvad der er galt med en fil, der ikke kan læses, og viser et workflow uden navn med `"name":""`; kør det ikke for at finde ud af det.
 - `show` giver `{"workflow": {…}, "scripts": {"navn.js": "kode"}}`. Se `parameters`: en parameter uden `default` er påkrævet og skal gives i `parameters`, fx `{"orderId": "o-17", "pageSize": 50}`. Værdierne beholder deres type.
 - `check` tjekker det som `run`, med de samme parametre og miljø, men sender intet. Det tjekker ikke, at hemmeligheder og tokens til auth findes; mangler en, fejler trinnet ved `run`.
 - Vil du vide, om et workflow ændrer data, før du spørger brugeren, så se trinnenes `method` med `show`.
-- Hvert trin har præcis én af `request` (metode, URL, query, headers, body og auth), `script` (et af workflowets scripts) og `delaySeconds`. Et trin med `"auth": { "kind": "Inherit" }` bruger workflowets fælles `auth`; uden `auth` sender trinnet ingen. Hemmeligheder til auth står aldrig i resultatet.
+- Hvert trin har præcis én af `request` (metode, URL, query, headers, body og auth), `script` (et af workflowets scripts) og `delayMilliseconds`. Et trin med `"auth": { "kind": "Inherit" }` bruger workflowets fælles `auth`; uden `auth` sender trinnet ingen. Hemmeligheder til auth står aldrig i resultatet.
 - `run` og `check` bruger workflowet, som det er gemt. Ugemte ændringer i appen ses ikke.
 
 **Events.** `run` giver én JSON-linje pr. event, når kørslen er færdig. Der er altid kun én kørsel pr. kald. Trinnenes `headers` og `body` er udeladt, så resultatet er lille, og `run.finished` altid er med. Ét trins fulde svar hentes med `log` med `run` (`runId` fra `run.started`) eller `last` og `step` (trinnets `index`).
@@ -145,7 +145,7 @@ Startede kørslen ikke, giver `run` en fejl, og intet er sendt.
           "request": { "method": "GET", "url": "{{baseUrl}}/users/{{userId}}" },
           "saves": [ { "variable": "firstName", "from": "$.firstName" } ] },
         { "name": "Byg ny kurv", "script": "byg-kurv.js", "saves": [ { "variable": "newCart", "from": "$.cart" } ] },
-        { "name": "Vent", "delaySeconds": 2 },
+        { "name": "Vent", "delayMilliseconds": 2000 },
         { "name": "Opret kurv",
           "request": { "method": "POST", "url": "{{baseUrl}}/carts/add", "bodyKind": "Json", "body": "{{newCart}}" } }
       ]
@@ -211,7 +211,7 @@ Skifter du `kind`, mangler hemmeligheden, indtil brugeren har skrevet den i appe
 Et trin har `name` (valgfrit) og præcis én af:
 - `request`: som en request, men uden `name` og `folderId`. `id` er trinnets egen og hører til dets hemmeligheder; behold det på eksisterende trin, og udelad det på nye. `useEnvironmentVariablesInBody` er `true`, når det udelades. `bodyKind` er `Json`, når det udelades. Uden `auth` sender trinnet ingen auth.
 - `script`: navnet på et script i `scripts`. Trinnet kan have `output` (`Json` som standard, `Html`, `Xml` eller `Text`).
-- `delaySeconds`: 1-300 sekunder. Et ventetrin kan ikke have `saves`.
+- `delayMilliseconds`: 0-300000 millisekunder. Et ventetrin kan ikke have `saves`.
 
 Et trin kan desuden have:
 - `saves`: `[{"variable", "from"}]`. `from` er `$` for hele bodyen, en sti som `$.data.items[0].id`, `header:Navn`, `status` eller en fast JSON-værdi som `"1"` eller `"\"ja\""`. Der gemmes kun efter et 2xx-svar.
@@ -286,7 +286,7 @@ Et trin, hvor en værdi i `saves` mangler i svaret, fejler med `error` = `Nothin
 
 Et trin med `retry`, hvis svar aldrig blev klar, fejler med det sidste svar, og `attempts` viser antallet af forsøg. Passede `until`-værdien ikke, er `error` `The answer was not ready after <n> attempts.`: det, API'et lavede, blev ikke færdigt i tide. Ellers er det sidste svars `status` eller `error` som ved et almindeligt trin. Fortæl brugeren, hvad det sidste svar sagde, fx en status. Er `error` `Stopped as <sti> was <værdi>.`, stoppede trinnet med det samme, fordi API'et svarede, at det, der ventes på, er fejlet. Det er ikke en timeout.
 
-Et script-trin har `JS` som `method`, `status` 200, en tom `address` og scriptets filnavn som `name`, hvis det intet navn har. Fejler det, er `error` fil, linje og scriptets fejltekst, fx `map.js:2: No order`. Returnerer det intet, mens trinnet har `saves`, er `error` `map.js returned nothing to save.` Returnerer det ikke en tekst, mens trinnet har et andet `output` end `Json`, er `error` fx `html.js must return text when its output is Html.` Et ventetrin har `WAIT` som `method`, en tom `address` og `Wait <n> seconds` som `name`, hvis det intet navn har. Et request-trin uden navn har metoden og adressen uden skema og query som `name`, fx `GET dummyjson.com/products/{{id}}`, med `{{navne}}` uudfyldt; `address` er udfyldt.
+Et script-trin har `JS` som `method`, `status` 200, en tom `address` og scriptets filnavn som `name`, hvis det intet navn har. Fejler det, er `error` fil, linje og scriptets fejltekst, fx `map.js:2: No order`. Returnerer det intet, mens trinnet har `saves`, er `error` `map.js returned nothing to save.` Returnerer det ikke en tekst, mens trinnet har et andet `output` end `Json`, er `error` fx `html.js must return text when its output is Html.` Et ventetrin har `WAIT` som `method`, en tom `address` og `Wait <n> milliseconds` som `name`, hvis det intet navn har. Et request-trin uden navn har metoden og adressen uden skema og query som `name`, fx `GET dummyjson.com/products/{{id}}`, med `{{navne}}` uudfyldt; `address` er udfyldt.
 
 ## Godt at vide
 

@@ -92,23 +92,33 @@ public sealed class WorkflowCheckTests
     }
 
     [Theory]
-    [InlineData(0, false)]
-    [InlineData(301, false)]
-    [InlineData(30, true)]
-    public void Check_WhenAWaitIsOutOfRangeOrSaves_ThenReportsIt(int seconds, bool saves)
+    [InlineData(-1, false)]
+    [InlineData(300001, false)]
+    [InlineData(30000, true)]
+    public void Check_WhenAWaitIsOutOfRangeOrSaves_ThenReportsIt(int milliseconds, bool saves)
     {
         // Act
-        var checkedWorkflow = Check(OrderSync(new WorkflowStep { DelaySeconds = seconds, Saves = saves ? [new("token", "$")] : [] }));
+        var checkedWorkflow = Check(OrderSync(new WorkflowStep { DelayMilliseconds = milliseconds, Saves = saves ? [new("token", "$")] : [] }));
 
         // Assert
-        Assert.Equal([new(WorkflowProblemKind.InvalidDelay, 0, $"{seconds}")], checkedWorkflow.Problems);
+        Assert.Equal([new(WorkflowProblemKind.InvalidDelay, 0, $"{milliseconds}")], checkedWorkflow.Problems);
+    }
+
+    [Fact]
+    public void Check_WhenAWaitIsZeroMilliseconds_ThenItCanRun()
+    {
+        // Act
+        var checkedWorkflow = Check(OrderSync(new WorkflowStep { DelayMilliseconds = 0 }));
+
+        // Assert
+        Assert.Empty(checkedWorkflow.Problems);
     }
 
     [Fact]
     public void Check_WhenAStepThatIsNoScriptHasAnOutput_ThenReportsIt()
     {
         // Act
-        var checkedWorkflow = Check(OrderSync(new WorkflowStep { DelaySeconds = 1, Output = ScriptOutput.Html }));
+        var checkedWorkflow = Check(OrderSync(new WorkflowStep { DelayMilliseconds = 1, Output = ScriptOutput.Html }));
 
         // Assert
         Assert.Equal([new(WorkflowProblemKind.InvalidOutput, 0, "Html")], checkedWorkflow.Problems);

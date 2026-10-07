@@ -63,7 +63,7 @@ public sealed class WorkflowRunnerTests : IDisposable
     public async Task RunAsync_WhenAStepWaits_ThenGoesOnOnlyWhenTheTimeHasPassed()
     {
         // Arrange
-        var workflow = new Workflow { Id = Guid.NewGuid(), Steps = [new() { DelaySeconds = 30 }, new() { Request = Request("https://dev.local/after") }] };
+        var workflow = new Workflow { Id = Guid.NewGuid(), Steps = [new() { DelayMilliseconds = 30000 }, new() { Request = Request("https://dev.local/after") }] };
         var running = RunAsync(workflow, Answering(Ok("{}")));
         await _clock.Waiting.Task.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
         var startedBefore = _events.OfType<StepStarted>().Count();
@@ -80,7 +80,7 @@ public sealed class WorkflowRunnerTests : IDisposable
     public async Task RunAsync_WhenAWaitHasNoName_ThenItIsNamedInWholeWords()
     {
         // Arrange
-        var running = RunAsync(new Workflow { Id = Guid.NewGuid(), Steps = [new() { DelaySeconds = 30 }] }, Answering());
+        var running = RunAsync(new Workflow { Id = Guid.NewGuid(), Steps = [new() { DelayMilliseconds = 30000 }] }, Answering());
         await _clock.Waiting.Task.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
 
         // Act
@@ -88,7 +88,24 @@ public sealed class WorkflowRunnerTests : IDisposable
         await running.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
 
         // Assert
-        Assert.Equal("Wait 30 seconds", Single<StepStarted>().Name);
+        Assert.Equal("Wait 30000 milliseconds", Single<StepStarted>().Name);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAStepWaitsAHundredMilliseconds_ThenGoesOnOnlyWhenTheyHavePassed()
+    {
+        // Arrange
+        var running = RunAsync(new Workflow { Id = Guid.NewGuid(), Steps = [new() { DelayMilliseconds = 100 }] }, Answering());
+        await _clock.Waiting.Task.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+        _clock.Advance(TimeSpan.FromMilliseconds(99));
+        var doneEarly = await Task.WhenAny(running, Task.Delay(TimeSpan.FromMilliseconds(500), Cancellation)) == running;
+
+        // Act
+        _clock.Advance(TimeSpan.FromMilliseconds(1));
+        var outcome = await running.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+
+        // Assert
+        Assert.Equal((false, RunOutcome.Succeeded), (doneEarly, outcome));
     }
 
     [Fact]
@@ -111,7 +128,7 @@ public sealed class WorkflowRunnerTests : IDisposable
     {
         // Arrange
         using var cancellation = new CancellationTokenSource();
-        var running = RunAsync(new Workflow { Id = Guid.NewGuid(), Steps = [new() { DelaySeconds = 300 }] }, Answering(), cancellationToken: cancellation.Token);
+        var running = RunAsync(new Workflow { Id = Guid.NewGuid(), Steps = [new() { DelayMilliseconds = 300000 }] }, Answering(), cancellationToken: cancellation.Token);
         await _clock.Waiting.Task.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
 
         // Act

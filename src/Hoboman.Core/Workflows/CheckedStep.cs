@@ -10,7 +10,7 @@ public sealed record CheckedStep(WorkflowStep Step, ApiRequest? Request, string?
     public string Title => Step.Name is { Length: > 0 } name ? name : Step.Kind switch
     {
         StepKind.Script => Step.Script!,
-        StepKind.Delay => $"Wait {Step.DelaySeconds} seconds",
+        StepKind.Delay => $"Wait {Step.DelayMilliseconds} milliseconds",
         _ => Request is { } request ? $"{request.Method} {RequestRunner.AddressOf(request, null)}" : "",
     };
 }

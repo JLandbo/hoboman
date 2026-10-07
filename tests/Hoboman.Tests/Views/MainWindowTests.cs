@@ -310,7 +310,7 @@ public sealed class MainWindowTests
     {
         // Arrange
         using var harness = new Harness();
-        await harness.WorkflowLibrary.SaveAsync("Flow", new() { Id = Guid.NewGuid(), Variables = [new("x")], Steps = [new() { DelaySeconds = 5, Saves = saves ? [new("x", "$.id")] : [] }] }, Cancellation);
+        await harness.WorkflowLibrary.SaveAsync("Flow", new() { Id = Guid.NewGuid(), Variables = [new("x")], Steps = [new() { DelayMilliseconds = 5000, Saves = saves ? [new("x", "$.id")] : [] }] }, Cancellation);
         await Ui.RunAsync(async () =>
         {
             var main = harness.Main();

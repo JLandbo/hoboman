@@ -250,7 +250,7 @@ public sealed class WorkflowViewModel : ObservableObject
     // A new step starts with a JSON body and the workflow's auth, as a new tab starts with its folder's.
     public void AddRequest() => Add(new() { Request = new() { BodyKind = BodyKind.Json, Auth = new(AuthKind.Inherit) } });
 
-    public void AddDelay() => Add(new() { DelaySeconds = 5 });
+    public void AddDelay() => Add(new() { DelayMilliseconds = 5000 });
 
     // The file is made at once with a small start, so it can be opened in an editor. A file that is already there is used as it is.
     public async Task AddScriptAsync()
@@ -596,8 +596,8 @@ public sealed class WorkflowViewModel : ObservableObject
             WorkflowProblemKind.ScriptNotFound => translator.Format("WorkflowProblem.ScriptNotFound", problem.Detail),
             WorkflowProblemKind.InvalidScript => translator.Format("WorkflowProblem.InvalidScript", problem.Detail),
             WorkflowProblemKind.MixedStep => translator.Of("WorkflowProblem.MixedStep"),
-            WorkflowProblemKind.InvalidDelay => translator.Format("WorkflowProblem.InvalidDelay", WorkflowCheck.MaxDelaySeconds),
-            WorkflowProblemKind.InvalidRetry => translator.Format("WorkflowProblem.InvalidRetry", WorkflowCheck.MaxRetryTimes, WorkflowCheck.MaxDelaySeconds * 1000),
+            WorkflowProblemKind.InvalidDelay => translator.Format("WorkflowProblem.InvalidDelay", WorkflowCheck.MaxDelayMilliseconds),
+            WorkflowProblemKind.InvalidRetry => translator.Format("WorkflowProblem.InvalidRetry", WorkflowCheck.MaxRetryTimes, WorkflowCheck.MaxDelayMilliseconds),
             WorkflowProblemKind.InvalidOutput => translator.Of("WorkflowProblem.InvalidOutput"),
             _ => translator.Format("WorkflowProblem.UnknownName", problem.Detail),
         };

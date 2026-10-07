@@ -65,7 +65,7 @@ public sealed class WorkflowRunner(IRequestSender sender, AppFolder folder, Time
             {
                 finished = step.Step.Kind switch
                 {
-                    StepKind.Delay => await WaitAsync(index, step.Step.DelaySeconds!.Value),
+                    StepKind.Delay => await WaitAsync(index, step.Step.DelayMilliseconds!.Value),
                     StepKind.Script => Finish(index, step, await RunScriptAsync(step)),
                     _ => await SendUntilReadyAsync(index, step, used),
                 };
@@ -96,10 +96,10 @@ public sealed class WorkflowRunner(IRequestSender sender, AppFolder folder, Time
         }
 
         // A wait has no answer, so it tells only how long it took.
-        async Task<StepFinished> WaitAsync(int index, int seconds)
+        async Task<StepFinished> WaitAsync(int index, int milliseconds)
         {
             var waitStarted = clock.GetTimestamp();
-            await Task.Delay(TimeSpan.FromSeconds(seconds), clock, cancellationToken);
+            await Task.Delay(TimeSpan.FromMilliseconds(milliseconds), clock, cancellationToken);
             return new(index, StepOutcome.Succeeded, ElapsedMs: (long)clock.GetElapsedTime(waitStarted).TotalMilliseconds);
         }
 

@@ -261,8 +261,8 @@
     "Workflow.AddScript": "Script",
     "Workflow.AddDelay": "Vent",
     "Workflow.DelayBadge": "VENT",
-    "Workflow.DelayTitle": "Vent {0} sekunder",
-    "Workflow.DelaySeconds": "Sekunder",
+    "Workflow.DelayTitle": "Vent {0} millisekunder",
+    "Workflow.DelayMilliseconds": "Millisekunder",
     "Workflow.AuthInherit": "Arv fra workflow",
     "Workflow.RetryTab": "Gentag",
     "Workflow.AuthInheritShort": "Arv",
@@ -330,7 +330,7 @@
     "WorkflowProblem.ScriptNotFound": "Scriptet {0} findes ikke i workflowets mappe.",
     "WorkflowProblem.InvalidScript": "Syntaksfejl i scriptet: {0}",
     "WorkflowProblem.MixedStep": "Trinnet har mere end én af request, script og ventetid. Et trin kan kun være én af delene.",
-    "WorkflowProblem.InvalidDelay": "Et vente-trin skal vente mellem 1 og {0} sekunder og kan ikke gemme noget.",
+    "WorkflowProblem.InvalidDelay": "Et vente-trin skal vente mellem 0 og {0} millisekunder og kan ikke gemme noget.",
     "WorkflowProblem.InvalidRetry": "Gentag virker kun på en request og skal have sti og værdi i par, gyldige stier, 1-{0} forsøg og 0-{1} millisekunder imellem.",
     "WorkflowProblem.InvalidOutput": "Kun et script-trin kan have et output."
   }

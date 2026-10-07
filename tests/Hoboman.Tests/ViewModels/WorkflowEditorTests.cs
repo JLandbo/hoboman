@@ -172,7 +172,7 @@ public sealed class WorkflowEditorTests
         using var harness = new Harness();
         var id = Guid.NewGuid();
         await harness.Secrets.SaveAsync(id, SecretKind.Token, "abc", Cancellation);
-        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { DelaySeconds = 5, Request = Request() with { Id = id, Auth = new(AuthKind.Bearer) } }] }, harness);
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { DelayMilliseconds = 5000, Request = Request() with { Id = id, Auth = new(AuthKind.Bearer) } }] }, harness);
 
         // Act
         await workflow.RunAsync().WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
@@ -191,7 +191,7 @@ public sealed class WorkflowEditorTests
         using var harness = new Harness();
         var id = Guid.NewGuid();
         await harness.Secrets.SaveAsync(id, SecretKind.Token, "abc", Cancellation);
-        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { DelaySeconds = 5, Request = Request() with { Id = id, Auth = new(AuthKind.Bearer) } }] }, harness);
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { DelayMilliseconds = 5000, Request = Request() with { Id = id, Auth = new(AuthKind.Bearer) } }] }, harness);
         await workflow.SaveAsync();
         workflow.RemoveStep(workflow.Steps.Single());
 
@@ -213,7 +213,7 @@ public sealed class WorkflowEditorTests
         await workflow.RunAsync();
 
         // Assert
-        var invalid = harness.Translator.Format("Workflow.StepProblem", 2, harness.Translator.Format("WorkflowProblem.InvalidRetry", WorkflowCheck.MaxRetryTimes, WorkflowCheck.MaxDelaySeconds * 1000));
+        var invalid = harness.Translator.Format("Workflow.StepProblem", 2, harness.Translator.Format("WorkflowProblem.InvalidRetry", WorkflowCheck.MaxRetryTimes, WorkflowCheck.MaxDelayMilliseconds));
         Assert.Equal((true, false), (workflow.Problems.Contains(invalid), workflow.Steps[1].HasRetry));
     }
 
@@ -240,7 +240,7 @@ public sealed class WorkflowEditorTests
         using var harness = new Harness();
 
         // Act
-        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Variables = [new("x")], Steps = [new() { DelaySeconds = 5, Saves = [new("x", "$.id")] }] }, harness);
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Variables = [new("x")], Steps = [new() { DelayMilliseconds = 5000, Saves = [new("x", "$.id")] }] }, harness);
 
         // Assert
         Assert.True(workflow.Steps.Single().HasSaves);
@@ -271,7 +271,7 @@ public sealed class WorkflowEditorTests
     {
         // Arrange
         using var harness = new Harness();
-        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { DelaySeconds = 5 }] }, harness);
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid(), Steps = [new() { DelayMilliseconds = 5000 }] }, harness);
         var step = workflow.Steps.Single();
 
         // Act
@@ -421,20 +421,34 @@ public sealed class WorkflowEditorTests
     }
 
     [Fact]
-    public async Task AddDelay_WhenSaved_ThenTheStepWaitsItsSeconds()
+    public async Task AddDelay_WhenAdded_ThenTheStepWaitsFiveThousandMilliseconds()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid() }, harness);
+
+        // Act
+        workflow.AddDelay();
+
+        // Assert
+        Assert.Equal(5000, workflow.Steps.Single().DelayMilliseconds);
+    }
+
+    [Fact]
+    public async Task AddDelay_WhenSaved_ThenTheStepWaitsItsMilliseconds()
     {
         // Arrange
         using var harness = new Harness();
         var workflow = await OpenAsync(harness.Main(), "Flow", new() { Id = Guid.NewGuid() }, harness);
         workflow.AddDelay();
-        workflow.Steps.Single().DelaySeconds = 30;
+        workflow.Steps.Single().DelayMilliseconds = 1500;
 
         // Act
         await workflow.SaveAsync();
 
         // Assert
         var saved = (await harness.WorkflowLibrary.LoadAsync("Flow", Cancellation))!.Steps.Single();
-        Assert.Equal((StepKind.Delay, 30, harness.Translator.Format("Workflow.DelayTitle", 30)), (saved.Kind, saved.DelaySeconds, workflow.Steps.Single().Title));
+        Assert.Equal((StepKind.Delay, 1500, harness.Translator.Format("Workflow.DelayTitle", 1500)), (saved.Kind, saved.DelayMilliseconds, workflow.Steps.Single().Title));
     }
 
     [Fact]

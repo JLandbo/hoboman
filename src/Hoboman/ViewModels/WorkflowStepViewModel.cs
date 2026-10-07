@@ -39,7 +39,7 @@ public sealed class WorkflowStepViewModel : ObservableObject
         };
         Script = step.Script;
         Output = step.Output ?? ScriptOutput.Json;
-        DelaySeconds = step.DelaySeconds ?? 0;
+        DelayMilliseconds = step.DelayMilliseconds ?? 0;
         Retries = step.Retry is not null;
         RetryUntil = step.Retry?.Until ?? "";
         RetryEquals = step.Retry?.Value ?? "";
@@ -147,7 +147,7 @@ public sealed class WorkflowStepViewModel : ObservableObject
 
     public ScriptOutput Output { get; set => Edit(ref field, value); }
 
-    public int DelaySeconds
+    public int DelayMilliseconds
     {
         get;
         set
@@ -227,7 +227,7 @@ public sealed class WorkflowStepViewModel : ObservableObject
     public string Title => Name.Trim() is { Length: > 0 } name ? name : Kind switch
     {
         StepKind.Script => Script!,
-        StepKind.Delay => _translator.Format("Workflow.DelayTitle", DelaySeconds),
+        StepKind.Delay => _translator.Format("Workflow.DelayTitle", DelayMilliseconds),
         _ => Request!.Url.Trim() is { Length: > 0 } url ? url : _translator.Of("Workflow.NoUrl"),
     };
 
@@ -283,7 +283,7 @@ public sealed class WorkflowStepViewModel : ObservableObject
         Request = Request is { } request ? WorkflowRequest.From(request.ToRequest() with { Id = _id, Auth = Auth!.ToSettings() }) : _step.Request,
         Script = Script,
         Output = !IsScript ? _step.Output : Output == ScriptOutput.Json ? null : Output,
-        DelaySeconds = IsDelay ? DelaySeconds : _step.DelaySeconds,
+        DelayMilliseconds = IsDelay ? DelayMilliseconds : _step.DelayMilliseconds,
         Retry = !IsRequest ? _step.Retry
             : Retries ? new()
             {

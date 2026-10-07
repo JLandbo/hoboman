@@ -173,7 +173,7 @@ Hvert trin i listen viser metoden (eller **JS** og **VENT**), navnet, status (**
 - **Brug environment-variabler i body** er slået til for nye trin, så `{{navn}}` også virker i bodyen.
 - **Gemmer** kan gemme fra `$.sti` i JSON-svaret, `$` for hele bodyen (som tekst, når svaret ikke er JSON), `header:Navn`, `status` eller en fast JSON-værdi som `"tekst"` eller `1`. Et trin gemmer alle sine værdier eller ingen.
 - **Gentag indtil svaret er klar** på et request-trin sender det igen, til svaret er 2xx og har det, trinnet gemmer, og, hvis du vil, til en værdi under **Klar når**, fx `$.result.status`, er den, du venter på. Med **Stop hvis** fejler trinnet med det samme, når en værdi betyder fejl, som `failed`. Du vælger 1-100 forsøg og 0-300000 millisekunder imellem.
-- **+ Vent** venter 1-300 sekunder, fx mens et API laver noget færdigt i baggrunden.
+- **+ Vent** venter 0-300000 millisekunder, fx mens et API laver noget færdigt i baggrunden.
 - **Kør** tjekker først, at alle `{{navne}}` har en værdi, og viser ellers **Workflowet kan ikke køre** med de trin, der er noget galt med. I en body bliver navne, som hverken workflowet eller miljøet har, stående som skrevet, så fx en Handlebars-template kan bruge sine egne `{{navne}}`. Workflowets egne navne vinder over miljøets.
 - Kørslen bruger det, der står i editoren, også ugemte ændringer. Fejler et trin, springes resten over.
 - Resultaterne vises i editoren og skrives i `runs\`, hvor `hoboman-cli log` kan læse og følge dem. Workflowet kan også køres med `hoboman-cli run`; se [CLI.md](CLI.md). Kald fra et workflow gemmes ikke i **Historik**.

@@ -88,8 +88,8 @@ public sealed partial class WorkflowCheck(WorkflowLibrary workflows, SecretStore
                     }
                     break;
                 // A wait has no answer to save from.
-                case StepKind.Delay when step.DelaySeconds is < 1 or > MaxDelaySeconds || step.Saves.Count > 0:
-                    problems.Add(new(WorkflowProblemKind.InvalidDelay, index, step.DelaySeconds!.Value.ToString(CultureInfo.InvariantCulture)));
+                case StepKind.Delay when step.DelayMilliseconds is < 0 or > MaxDelayMilliseconds || step.Saves.Count > 0:
+                    problems.Add(new(WorkflowProblemKind.InvalidDelay, index, step.DelayMilliseconds!.Value.ToString(CultureInfo.InvariantCulture)));
                     break;
                 case StepKind.Delay:
                     steps.Add(new(step, null));
@@ -109,7 +109,7 @@ public sealed partial class WorkflowCheck(WorkflowLibrary workflows, SecretStore
         return new(workflow, parameters, steps, problems);
     }
 
-    public const int MaxDelaySeconds = 300;
+    public const int MaxDelayMilliseconds = 300000;
 
     public const int MaxRetryTimes = 100;
 
@@ -117,7 +117,7 @@ public sealed partial class WorkflowCheck(WorkflowLibrary workflows, SecretStore
     static bool IsValid(WorkflowRetry retry, StepKind kind) =>
         kind == StepKind.Request && (retry.Until is null) == (retry.Value is null) && (retry.Until is null || RunValues.IsSource(retry.Until))
         && (retry.StopIf is null) == (retry.StopEquals is null) && (retry.StopIf is null || RunValues.IsSource(retry.StopIf))
-        && retry.Times is >= 1 and <= MaxRetryTimes && retry.WaitMilliseconds is >= 0 and <= MaxDelaySeconds * 1000;
+        && retry.Times is >= 1 and <= MaxRetryTimes && retry.WaitMilliseconds is >= 0 and <= MaxDelayMilliseconds;
 
     public static bool IsValidName(string name) => name.Length > 0 && name.IndexOfAny(['{', '}']) < 0;
 
