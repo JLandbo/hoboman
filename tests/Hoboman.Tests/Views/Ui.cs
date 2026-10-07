@@ -22,6 +22,7 @@ static class Ui
             try
             {
                 var application = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+                Hoboman.Controls.OneLinePaste.Register();
                 application.Resources.MergedDictionaries.Add(new() { Source = new("/Hoboman;component/Themes/Colors.xaml", UriKind.Relative) });
                 application.Resources.MergedDictionaries.Add(new() { Source = new("/Hoboman;component/Themes/Hamster.xaml", UriKind.Relative) });
                 UseLanguage(Translation.English);

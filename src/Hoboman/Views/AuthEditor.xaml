@@ -190,7 +190,7 @@
                             <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
                                 <DockPanel>
                                     <Button DockPanel.Dock="Right" Style="{StaticResource Copy}" Tag="{Binding Password}" />
-                                    <PasswordBox x:Name="PasswordBox" Style="{StaticResource PasswordCell}" PasswordChanged="PasswordBox_PasswordChanged" DataObject.Pasting="Secret_Pasting" />
+                                    <PasswordBox x:Name="PasswordBox" Style="{StaticResource PasswordCell}" PasswordChanged="PasswordBox_PasswordChanged" />
                                 </DockPanel>
                             </Border>
                         </StackPanel>
@@ -209,7 +209,7 @@
                             <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
                                 <DockPanel>
                                     <Button DockPanel.Dock="Right" Style="{StaticResource Copy}" Tag="{Binding Token}" />
-                                    <controls:VariableTextBox x:Name="TokenBox" Text="{Binding Token, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" DataObject.Pasting="Secret_Pasting" />
+                                    <controls:VariableTextBox Text="{Binding Token, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" />
                                 </DockPanel>
                             </Border>
                         </StackPanel>
@@ -278,7 +278,7 @@
                             <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
                                 <DockPanel>
                                     <Button DockPanel.Dock="Right" Style="{StaticResource Copy}" Tag="{Binding ClientSecret}" />
-                                    <PasswordBox x:Name="ClientSecretBox" Style="{StaticResource PasswordCell}" PasswordChanged="ClientSecretBox_PasswordChanged" DataObject.Pasting="Secret_Pasting" />
+                                    <PasswordBox x:Name="ClientSecretBox" Style="{StaticResource PasswordCell}" PasswordChanged="ClientSecretBox_PasswordChanged" />
                                 </DockPanel>
                             </Border>
                             <TextBlock Text="{DynamicResource OAuth.Scope}" Style="{StaticResource Label}" />

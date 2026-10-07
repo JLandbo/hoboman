@@ -33,6 +33,7 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        OneLinePaste.Register();
         _services = Services(new AppFolder(AppContext.BaseDirectory)).BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true });
         // The browser's cache and cookies are no data of the user's to keep next to the app, so they go with the user's own.
         BrowserView.DataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), typeof(App).Assembly.GetName().Name!, "WebView2");
