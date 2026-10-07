@@ -39,6 +39,49 @@ public sealed class MainWindowTests
     }
 
     [Fact]
+    public async Task RestoreLayoutAsync_WhenTheWindowWasMaximized_ThenKeepsTheContentOnScreenAndOffersRestore()
+    {
+        using var harness = new Harness();
+        await harness.SettingsStore.UpdateAsync(saved => saved with { Layout = new(1200, 800, true, 290, null) }, Cancellation);
+        await Ui.RunAsync(async () =>
+        {
+            // Arrange
+            var main = harness.Main();
+            await main.LoadAsync();
+            var window = new MainWindow(main, harness.SettingsStore, harness.Folder, NullLogger<MainWindow>.Instance);
+
+            // Act
+            await window.RestoreLayoutAsync();
+            var opened = (window.RootGrid.Margin, window.MaximizeButton.Content);
+            window.WindowState = WindowState.Normal;
+
+            // Assert
+            Assert.Equal((new Thickness(20), ""), opened);
+        });
+    }
+
+    [Fact]
+    public async Task WindowState_WhenMaximizedAndRestored_ThenKeepsTheContentOnScreenAndOffersTheOtherState()
+    {
+        using var harness = new Harness();
+        await Ui.RunAsync(async () =>
+        {
+            // Arrange
+            var main = harness.Main();
+            await main.LoadAsync();
+            var window = await Ui.ShowAsync(harness, main);
+
+            // Act
+            window.WindowState = WindowState.Maximized;
+            var maximized = (window.RootGrid.Margin, window.MaximizeButton.Content);
+            window.WindowState = WindowState.Normal;
+
+            // Assert
+            Assert.Equal(((new Thickness(20), ""), (new Thickness(12), "")), (maximized, (window.RootGrid.Margin, window.MaximizeButton.Content)));
+        });
+    }
+
+    [Fact]
     public async Task GridSplitter_WhenDragged_ThenTheViewBuiltAgainIsSplitTheSameAndTheSplitIsSaved()
     {
         using var harness = new Harness();

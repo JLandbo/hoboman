@@ -15,6 +15,10 @@
     <Window.CommandBindings>
         <CommandBinding Command="Find" Executed="Find_Executed" />
     </Window.CommandBindings>
+    <!-- The top row is the title bar, so the window draws its own caption buttons. -->
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="48" ResizeBorderThickness="6" GlassFrameThickness="0,0,0,1" UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
     <Window.Resources>
         <Style x:Key="MenuCheck" TargetType="TextBlock">
             <Setter Property="DockPanel.Dock" Value="Left" />
@@ -78,7 +82,7 @@
             </Style.Triggers>
         </Style>
     </Window.Resources>
-    <Grid Margin="12">
+    <Grid x:Name="RootGrid" Margin="12">
         <Grid.ColumnDefinitions>
             <ColumnDefinition x:Name="SidebarColumn" Width="290" MinWidth="200" />
             <ColumnDefinition Width="12" />
@@ -116,7 +120,7 @@
             </StackPanel>
             <Border Style="{StaticResource Panel}">
                 <DockPanel>
-                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6" WindowChrome.IsHitTestVisibleInChrome="True">
                         <Button DockPanel.Dock="Right" Content="&#xE710;" ToolTip="{DynamicResource Sidebar.NewWorkflow}" Click="NewWorkflow_Click" Style="{StaticResource SmallIconButton}" FontSize="13"
                                 Visibility="{Binding IsChecked, ElementName=WorkflowsSection, Converter={StaticResource VisibleWhenTrue}}" />
                         <Button DockPanel.Dock="Right" Content="&#xE710;" ToolTip="{DynamicResource Sidebar.NewRequest}" Click="NewRequest_Click" Style="{StaticResource CollectionButton}" FontSize="13" />
@@ -154,7 +158,15 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition />
             </Grid.RowDefinitions>
-            <DockPanel Margin="0,0,0,6">
+            <DockPanel Margin="0,0,0,6" WindowChrome.IsHitTestVisibleInChrome="True">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
+                    <Button Content="&#xE921;" ToolTip="{DynamicResource Window.Minimize}" AutomationProperties.Name="{DynamicResource Window.Minimize}" Click="Minimize_Click"
+                            Style="{StaticResource IconButton}" Foreground="{DynamicResource Muted}" FontSize="10" Padding="10,8" />
+                    <Button x:Name="MaximizeButton" Content="&#xE922;" ToolTip="{DynamicResource Window.Maximize}" AutomationProperties.Name="{DynamicResource Window.Maximize}" Click="Maximize_Click"
+                            Style="{StaticResource IconButton}" Foreground="{DynamicResource Muted}" FontSize="10" Padding="10,8" />
+                    <Button Content="&#xE8BB;" ToolTip="{DynamicResource Common.Close}" AutomationProperties.Name="{DynamicResource Common.Close}" Click="Close_Click"
+                            Style="{StaticResource IconButton}" Foreground="{DynamicResource Muted}" FontSize="10" Padding="10,8" />
+                </StackPanel>
                 <ToggleButton x:Name="EnvironmentToggle" DockPanel.Dock="Right" Style="{StaticResource PillToggle}" Background="{DynamicResource Surface}" VerticalAlignment="Center"
                               IsHitTestVisible="{Binding IsOpen, ElementName=EnvironmentPopup, Converter={StaticResource Not}}">
                     <StackPanel Orientation="Horizontal">

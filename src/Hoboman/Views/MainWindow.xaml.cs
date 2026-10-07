@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -47,6 +48,7 @@ public partial class MainWindow : Window
                 _splits[place] = share;
             }
             WindowState = layout.IsMaximized ? WindowState.Maximized : WindowState.Normal;
+            FitState();
         }
         // WPF refuses sizes like a negative one, which a hand-edited file can hold.
         catch (Exception exception) when (FileProblem.Is(exception) || exception is ArgumentException)
@@ -54,6 +56,47 @@ public partial class MainWindow : Window
             _logger.LogWarning(exception, "Could not read the saved layout");
         }
     }
+
+    protected override void OnStateChanged(EventArgs e)
+    {
+        base.OnStateChanged(e);
+        FitState();
+    }
+
+    // A maximized window reaches past the screen by its resize frame, which the caption no longer covers.
+    // A window that opens maximized is not told of it, so the layout fits it too.
+    void FitState()
+    {
+        var maximized = WindowState == WindowState.Maximized;
+        RootGrid.Margin = new Thickness(maximized ? 20 : 12);
+        MaximizeButton.Content = maximized ? "" : "";
+        if (maximized)
+        {
+            MaximizeButton.SetResourceReference(ToolTipProperty, "Window.Restore");
+            MaximizeButton.SetResourceReference(AutomationProperties.NameProperty, "Window.Restore");
+        }
+        else
+        {
+            MaximizeButton.SetResourceReference(ToolTipProperty, "Window.Maximize");
+            MaximizeButton.SetResourceReference(AutomationProperties.NameProperty, "Window.Maximize");
+        }
+    }
+
+    void Minimize_Click(object sender, RoutedEventArgs e) => SystemCommands.MinimizeWindow(this);
+
+    void Maximize_Click(object sender, RoutedEventArgs e)
+    {
+        if (WindowState == WindowState.Maximized)
+        {
+            SystemCommands.RestoreWindow(this);
+        }
+        else
+        {
+            SystemCommands.MaximizeWindow(this);
+        }
+    }
+
+    void Close_Click(object sender, RoutedEventArgs e) => SystemCommands.CloseWindow(this);
 
     async void Settings_Click(object sender, RoutedEventArgs e) => await _viewModel.EditSettingsAsync();
 
