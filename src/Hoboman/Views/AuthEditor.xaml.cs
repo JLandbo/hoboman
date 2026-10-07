@@ -130,6 +130,16 @@ public partial class AuthEditor : UserControl
 
     void ClientSecretBox_PasswordChanged(object sender, RoutedEventArgs e) => _auth?.ClientSecret = ClientSecretBox.Password;
 
+    // A secret is one line, but a one-line box keeps only the first line of what is pasted, so a secret copied with line breaks would be cut short.
+    void Secret_Pasting(object sender, DataObjectPastingEventArgs e)
+    {
+        if (e.DataObject.GetData(DataFormats.UnicodeText) is string text && text.ReplaceLineEndings("") is var line && line != text)
+        {
+            e.DataObject = new DataObject(DataFormats.UnicodeText, line);
+            e.FormatToApply = DataFormats.UnicodeText;
+        }
+    }
+
     void CancelFetch_Click(object sender, RoutedEventArgs e) => _auth?.CancelFetch();
 
     void Copy_Click(object sender, RoutedEventArgs e)
