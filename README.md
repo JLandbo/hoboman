@@ -19,7 +19,7 @@ Hoboman er et skrivebordsværktøj til at bygge, sende og undersøge API-kald. R
 - **Miljøer og variabler** – brug `{{variabel}}` i URL, parametre, headers og auth-felter. Appen husker det senest valgte miljø.
 - **Auth med nedarvning** – ingen auth, Basic, Bearer og OAuth 2.0. En undermappe kan overtage eller tilsidesætte auth fra sin overmappe.
 - **Gemte credentials** – gem en hel auth-opsætning (Basic, Bearer token eller OAuth 2.0) pr. miljø under **Credentials** ved siden af miljøvælgeren, og vælg dem i Auth i stedet for at skrive dem igen.
-- **OAuth uden omveje** – client credentials eller authorization code med PKCE og browser-login. Hent et nyt token med refresh-knappen ved Auth; ved client credentials hentes det automatisk, når det mangler eller er udløbet. Tokens holdes adskilt pr. miljø og følger miljøet, også når det omdøbes.
+- **OAuth uden omveje** – client credentials, authorization code med PKCE og browser-login eller implicit med login i et vindue i appen. Hent et nyt token med refresh-knappen ved Auth; ved client credentials hentes det automatisk, når det mangler eller er udløbet. Tokens holdes adskilt pr. miljø og følger miljøet, også når det omdøbes.
 - **Base64 efter dit valg** – markér bestemte JSON-felter til encoding ved afsendelse eller decoding i svaret. Hele bodyen kan også vælges.
 - **Workflows** – kæd requests, scripts og ventetider sammen, giv værdier fra ét svar videre til de næste trin, og kør det hele under **Workflows** i appen eller med `hoboman-cli run`. Hver kørsel skrives som JSON-linjer, som et script kan følge med `hoboman-cli log`, og en AI kan læse gennem MCP.
 - **Kommandolinje og AI** – scripts bruger `hoboman-cli.exe` til at sende requests, køre workflows og vise og ændre det gemte. AI-agenter bruger det samme gennem MCP-serveren `hoboman-cli.exe mcp`. Se [CLI.md](CLI.md) og [AI-PROMPT.md](AI-PROMPT.md).
@@ -33,7 +33,7 @@ Hoboman er et skrivebordsværktøj til at bygge, sende og undersøge API-kald. R
 - Windows – appen bruger WPF og Windows' beskyttelse af hemmeligheder.
 - [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) til at bygge, teste og køre fra kildekoden.
 - En standardbrowser, hvis du bruger OAuth authorization code.
-- Microsoft Edge WebView2 Runtime til at vise svar i browseren. Den følger med Windows 11.
+- Microsoft Edge WebView2 Runtime til at vise svar i browseren og til login med OAuth implicit. Den følger med Windows 11.
 
 Appen publiceres som én self-contained exe med .NET-runtime inkluderet, så den færdige app kræver ikke en separat installation af .NET. SDK'et kræves stadig til at bygge appen, også via `install.ps1`. Programmet skal ligge i en mappe, hvor din bruger kan skrive, fordi det gemmer data ved siden af sig selv.
 
@@ -113,7 +113,7 @@ Auth sættes på en request, en mappe, et workflow eller et workflow-trin, alle 
 
    ![Listen over det valgte miljøs gemte credentials](docs/images/auth-picker.png)
 
-3. **Ved OAuth** vælger du **Client credentials** eller **Authorization code** og udfylder **Token-URL**, **Client ID**, **Client secret** og **Scope**, ved authorization code også **Auth-URL** og **Redirect-port**, og vælger, om client ID og secret sendes som Basic-header eller i body. **Hent token** henter et token og viser, hvor længe det er gyldigt. Refresh-knappen ved **Auth (OAuth)** gør det samme, også mens Params, Headers eller Body er valgt.
+3. **Ved OAuth** vælger du **Client credentials** eller **Authorization code** og udfylder **Token-URL**, **Client ID**, **Client secret** og **Scope**, ved authorization code også **Auth-URL** og **Redirect-port**, og vælger, om client ID og secret sendes som Basic-header eller i body. Vælger du **Implicit**, udfylder du kun **Auth-URL**, **Callback-URL**, **Client ID** og **Scope**. **Hent token** henter et token og viser, hvor længe det er gyldigt. Refresh-knappen ved **Auth (OAuth)** gør det samme, også mens Params, Headers eller Body er valgt.
 
    ![OAuth udfyldt fra credentialen Demo API med et hentet token](docs/images/auth.png)
 
@@ -127,8 +127,10 @@ Auth-fanen viser den effektive type, fx **Auth (OAuth)**, og ↳ med mappen i to
 
 ### OAuth
 
-- Ved client credentials henter Hoboman selv et nyt token og sender igen, når tokenet mangler, er udløbet, eller serveren svarer 401. Ved authorization code skal tokenet hentes med **Hent token** eller refresh-knappen.
+- Ved client credentials henter Hoboman selv et nyt token og sender igen, når tokenet mangler, er udløbet, eller serveren svarer 401. Ved authorization code og implicit skal tokenet hentes med **Hent token** eller refresh-knappen.
 - Authorization code åbner login i din browser og venter højst 5 minutter. Registrér `http://127.0.0.1` som redirect URI hos udbyderen, med porten, hvis du angiver en.
+- Implicit åbner login i et vindue i appen, ikke i browseren, og venter højst 5 minutter. Vinduet lukker, når login sender det til **Callback-URL**, og tokenet læses fra adressen. **Callback-URL** sendes som skrevet, efter `{{variabler}}` er udfyldt, og skal være præcis den redirect URI, der er registreret hos udbyderen. Lukker du vinduet, hentes der intet, og et tidligere token bevares. Vinduet husker dit login mellem kørsler, så et nyt token kræver ikke et nyt password, mens udbyderens login-session gælder.
+- Vælger du en gemt credential med implicit i **Saved credentials…**, åbner login-vinduet med det samme, fordi tokenet hentes, så snart credentialen er valgt.
 - Adresser skal bruge https, medmindre de peger på denne computer, og kun Bearer-tokens understøttes.
 - Et token gemmes pr. miljø, så hent det med det miljø valgt, som du vil bruge det i. I en fane gemmes det med det samme; i **Auth for &lt;mappe&gt;** først med **Gem**.
 - `{{variabler}}` virker i alle OAuth-felter og får deres værdi fra det valgte miljø.

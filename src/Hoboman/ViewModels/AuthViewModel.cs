@@ -36,6 +36,8 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
 
     public string AuthorizeUrl { get; set => Change(ref field, value); } = "";
 
+    public string CallbackUrl { get; set => Change(ref field, value); } = "";
+
     public string TokenUrl { get; set => Change(ref field, value); } = "";
 
     public string ClientId { get; set => Change(ref field, value); } = "";
@@ -99,6 +101,7 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
         UserName = settings.UserName;
         Grant = oauth.Grant;
         AuthorizeUrl = oauth.AuthorizeUrl;
+        CallbackUrl = oauth.CallbackUrl;
         TokenUrl = oauth.TokenUrl;
         ClientId = oauth.ClientId;
         Scope = oauth.Scope;
@@ -147,6 +150,7 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
         var loaded = settings.OAuth ?? new();
         Grant = loaded.Grant;
         AuthorizeUrl = loaded.AuthorizeUrl;
+        CallbackUrl = loaded.CallbackUrl;
         TokenUrl = loaded.TokenUrl;
         ClientId = loaded.ClientId;
         Scope = loaded.Scope;
@@ -353,6 +357,7 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
     {
         Grant = Grant,
         AuthorizeUrl = AuthorizeUrl,
+        CallbackUrl = CallbackUrl,
         TokenUrl = TokenUrl,
         ClientId = ClientId,
         Scope = Scope,
@@ -364,6 +369,7 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
     {
         OAuthException { Problem: OAuthProblem.MissingTokenUrl } => translator.Of("OAuth.MissingTokenUrl"),
         OAuthException { Problem: OAuthProblem.MissingAuthorizeUrl } => translator.Of("OAuth.MissingAuthorizeUrl"),
+        OAuthException { Problem: OAuthProblem.MissingCallbackUrl } => translator.Of("OAuth.MissingCallbackUrl"),
         OAuthException { Problem: OAuthProblem.MissingClientId } => translator.Of("OAuth.MissingClientId"),
         OAuthException { Problem: OAuthProblem.MissingClientSecret } => translator.Of("OAuth.MissingClientSecret"),
         OAuthException { Problem: OAuthProblem.InvalidAddress } failure => translator.Format("OAuth.InvalidAddress", failure.Detail),

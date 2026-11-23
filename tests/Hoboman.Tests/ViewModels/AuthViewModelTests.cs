@@ -1,8 +1,13 @@
 using System.Net.Http;
+using System.Windows;
+using System.Windows.Controls;
 using Hoboman.Tests.Auth;
+using Hoboman.Tests.Views;
 
 namespace Hoboman.Tests.ViewModels;
 
+// In the UI collection, because the editor's fields are checked in the shared WPF thread too.
+[Collection("Ui")]
 public sealed class AuthViewModelTests
 {
     static readonly ApiEnvironment _dev = new("Dev", []) { Id = Guid.NewGuid() };
@@ -323,33 +328,120 @@ public sealed class AuthViewModelTests
     }
 
     [Fact]
-    public void ToSettings_WhenOAuthIsFilledIn_ThenKeepsIt()
+    public void ToSettings_WhenOAuthIsFilledInAndLoadedAgain_ThenKeepsIt()
     {
         // Arrange
         using var harness = new Harness();
         var auth = harness.Tab().Auth;
-
-        // Act
-        auth.Grant = OAuthGrant.AuthorizationCode;
+        auth.Grant = OAuthGrant.Implicit;
         auth.AuthorizeUrl = "https://login.local/authorize";
+        auth.CallbackUrl = "https://{{site}}/";
         auth.TokenUrl = "https://login.local/token";
         auth.ClientId = "hoboman";
         auth.Scope = "read";
         auth.ClientAuthentication = OAuthClientAuthentication.RequestBody;
         auth.RedirectPort = 5000;
+        var reloaded = harness.Tab().Auth;
+
+        // Act
+        reloaded.Load(auth.ToSettings());
 
         // Assert
         Assert.Equal(
             new OAuthSettings
             {
-                Grant = OAuthGrant.AuthorizationCode,
+                Grant = OAuthGrant.Implicit,
                 AuthorizeUrl = "https://login.local/authorize",
+                CallbackUrl = "https://{{site}}/",
                 TokenUrl = "https://login.local/token",
                 ClientId = "hoboman",
                 Scope = "read",
                 ClientAuthentication = OAuthClientAuthentication.RequestBody,
                 RedirectPort = 5000,
             },
-            auth.ToSettings().OAuth);
+            reloaded.ToSettings().OAuth);
+    }
+
+    [Fact]
+    public async Task UseAsync_WhenAnImplicitClientIsPicked_ThenFillsInItsCallbackUrl()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var choice = await SaveImplicitClientAsync(harness);
+        var auth = harness.Tab().Auth;
+
+        // Act
+        await auth.UseAsync(choice);
+
+        // Assert
+        Assert.Equal((OAuthGrant.Implicit, "https://{{site}}/"), (auth.Grant, auth.CallbackUrl));
+    }
+
+    [Fact]
+    public async Task CredentialName_WhenTheCallbackUrlIsChangedAfterPicking_ThenIsNone()
+    {
+        // Arrange
+        using var harness = new Harness();
+        var choice = await SaveImplicitClientAsync(harness);
+        var auth = harness.Tab().Auth;
+        await auth.UseAsync(choice);
+        var picked = auth.CredentialName;
+
+        // Act
+        auth.CallbackUrl = "https://other.local/";
+
+        // Assert
+        Assert.Equal(("Acies Core", null), (picked, auth.CredentialName));
+    }
+
+    [Theory]
+    [InlineData("English", "The token could not be fetched: fill in the callback URL.")]
+    [InlineData("Dansk", "Tokenet kunne ikke hentes: udfyld callback-URL'en.")]
+    public async Task FetchTokenAsync_WhenTheCallbackUrlIsMissing_ThenSaysSoInTheLanguage(string language, string expected)
+    {
+        // Arrange
+        using var harness = new Harness(oauth: new FakeOAuthClient(_ => throw new OAuthException(OAuthProblem.MissingCallbackUrl)));
+        harness.Translator.Use(Translation.Find(language));
+        var auth = harness.Tab().Auth;
+
+        // Act
+        await auth.FetchTokenAsync();
+
+        // Assert
+        Assert.Equal(expected, auth.TokenProblem);
+    }
+
+    [Theory]
+    [InlineData(OAuthGrant.Implicit, new[] { "Auth URL", "Callback URL", "Client ID", "Scope" })]
+    [InlineData(OAuthGrant.ClientCredentials, new[] { "Token URL", "Client ID", "Client secret", "Scope", "Send the client ID and secret" })]
+    [InlineData(OAuthGrant.AuthorizationCode, new[] { "Auth URL", "Token URL", "Client ID", "Client secret", "Scope", "Send the client ID and secret", "Redirect port" })]
+    public async Task AuthEditor_WhenTheGrantIsChosen_ThenShowsOnlyItsFields(OAuthGrant grant, string[] expected)
+    {
+        using var harness = new Harness();
+        await Ui.RunAsync(async () =>
+        {
+            // Arrange
+            var auth = harness.Tab().Auth;
+            auth.Kind = AuthKind.OAuth2;
+            var editor = new AuthEditor { DataContext = auth, Width = 900 };
+            Ui.Show(new Window { Content = editor, SizeToContent = SizeToContent.WidthAndHeight });
+
+            // Act
+            auth.Grant = grant;
+            await Ui.IdleAsync();
+
+            // Assert
+            var label = editor.FindResource("Label");
+            Assert.Equal(expected, Ui.Descendants<TextBlock>(editor).Where(text => text.IsVisible && text.Style == label).Select(text => text.Text));
+        });
+    }
+
+    static async Task<CredentialChoice> SaveImplicitClientAsync(Harness harness)
+    {
+        Credential client = new(Guid.NewGuid(), ApiEnvironment.None.Id, "Acies Core",
+            new(AuthKind.OAuth2, OAuth: new() { Grant = OAuthGrant.Implicit, AuthorizeUrl = "https://auth.{{site}}/login", CallbackUrl = "https://{{site}}/", ClientId = "core-client" }));
+        await harness.CredentialStore.SaveAsync([client], TestContext.Current.CancellationToken);
+        await harness.Credentials.LoadAsync(TestContext.Current.CancellationToken);
+        return harness.Credentials.All.Single();
     }
 }

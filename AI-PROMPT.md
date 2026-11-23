@@ -23,7 +23,7 @@ Det gør du selv i appen:
 
 - **Passwords og client secrets.** De skrives under Auth i appen og gemmes krypteret for din Windows-bruger, ligesom tokens til Bearer-auth. En AI kan hverken læse eller skrive dem og må aldrig sende eller gemme dem som tekst. Alle andre værdier, også et token fra et svar, må den gerne give som variabler.
 - **Login med password.** Kræver et API et login med password, så lav en gemt login-request med auth eller body, som AI'en kan sende med `send_saved`.
-- **Login med authorization code.** Hent tokenet med refresh-knappen ved Auth, **Hent token** eller **Saved credentials…**, med det miljø valgt, som AI'en bruger. Client-credentials-tokens henter Hoboman selv.
+- **Login med authorization code eller implicit.** Hent tokenet med refresh-knappen ved Auth, **Hent token** eller **Saved credentials…**, med det miljø valgt, som AI'en bruger. Ved implicit logger du ind i et vindue i appen, som lukker ved callback-adressen. Client-credentials-tokens henter Hoboman selv.
 - **Mappers auth.** AI'en kan se den, men ikke rette den.
 - **Filer, der ikke kan læses.** AI'en får at vide hvor, men kan ikke rette dem.
 

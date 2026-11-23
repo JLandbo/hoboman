@@ -6,11 +6,38 @@
              xmlns:auth="clr-namespace:Hoboman.Core.Auth;assembly=Hoboman.Core"
              xmlns:viewModels="clr-namespace:Hoboman.ViewModels">
     <UserControl.Resources>
+        <Style x:Key="OnlyForLogin" TargetType="FrameworkElement">
+            <Setter Property="Visibility" Value="Collapsed" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Grant}" Value="{x:Static auth:OAuthGrant.AuthorizationCode}">
+                    <Setter Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Grant}" Value="{x:Static auth:OAuthGrant.Implicit}">
+                    <Setter Property="Visibility" Value="Visible" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="OnlyForImplicit" TargetType="FrameworkElement">
+            <Setter Property="Visibility" Value="Collapsed" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Grant}" Value="{x:Static auth:OAuthGrant.Implicit}">
+                    <Setter Property="Visibility" Value="Visible" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
         <Style x:Key="OnlyForAuthorizationCode" TargetType="FrameworkElement">
             <Setter Property="Visibility" Value="Collapsed" />
             <Style.Triggers>
                 <DataTrigger Binding="{Binding Grant}" Value="{x:Static auth:OAuthGrant.AuthorizationCode}">
                     <Setter Property="Visibility" Value="Visible" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <!-- The implicit grant gets the token from the login itself and never asks the token endpoint. -->
+        <Style x:Key="NotForImplicit" TargetType="FrameworkElement">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Grant}" Value="{x:Static auth:OAuthGrant.Implicit}">
+                    <Setter Property="Visibility" Value="Collapsed" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -230,6 +257,8 @@
                                                  IsChecked="{Binding Grant, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:OAuthGrant.ClientCredentials}}" />
                                     <RadioButton Content="{DynamicResource OAuth.AuthorizationCode}" Style="{StaticResource Segment}"
                                                  IsChecked="{Binding Grant, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:OAuthGrant.AuthorizationCode}}" />
+                                    <RadioButton Content="{DynamicResource OAuth.Implicit}" Style="{StaticResource Segment}"
+                                                 IsChecked="{Binding Grant, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:OAuthGrant.Implicit}}" />
                                 </StackPanel>
                             </Border>
                             <!-- The fetch comes first, because the fields below it can be taller than the space the auth gets. -->
@@ -257,16 +286,24 @@
                                     </TextBlock.Style>
                                 </TextBlock>
                             </DockPanel>
-                            <StackPanel Style="{StaticResource OnlyForAuthorizationCode}">
+                            <StackPanel Style="{StaticResource OnlyForLogin}">
                                 <TextBlock Text="{DynamicResource OAuth.AuthorizeUrl}" Style="{StaticResource Label}" />
                                 <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
                                     <controls:VariableTextBox Text="{Binding AuthorizeUrl, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" />
                                 </Border>
                             </StackPanel>
-                            <TextBlock Text="{DynamicResource OAuth.TokenUrl}" Style="{StaticResource Label}" />
-                            <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
-                                <controls:VariableTextBox Text="{Binding TokenUrl, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" />
-                            </Border>
+                            <StackPanel Style="{StaticResource OnlyForImplicit}">
+                                <TextBlock Text="{DynamicResource OAuth.CallbackUrl}" Style="{StaticResource Label}" />
+                                <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
+                                    <controls:VariableTextBox Text="{Binding CallbackUrl, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" />
+                                </Border>
+                            </StackPanel>
+                            <StackPanel Style="{StaticResource NotForImplicit}">
+                                <TextBlock Text="{DynamicResource OAuth.TokenUrl}" Style="{StaticResource Label}" />
+                                <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
+                                    <controls:VariableTextBox Text="{Binding TokenUrl, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" />
+                                </Border>
+                            </StackPanel>
                             <TextBlock Text="{DynamicResource OAuth.ClientId}" Style="{StaticResource Label}" />
                             <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
                                 <DockPanel>
@@ -274,26 +311,30 @@
                                     <controls:VariableTextBox Text="{Binding ClientId, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" />
                                 </DockPanel>
                             </Border>
-                            <TextBlock Text="{DynamicResource OAuth.ClientSecret}" Style="{StaticResource Label}" />
-                            <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
-                                <DockPanel>
-                                    <Button DockPanel.Dock="Right" Style="{StaticResource Copy}" Tag="{Binding ClientSecret}" />
-                                    <PasswordBox x:Name="ClientSecretBox" Style="{StaticResource PasswordCell}" PasswordChanged="ClientSecretBox_PasswordChanged" />
-                                </DockPanel>
-                            </Border>
+                            <StackPanel Style="{StaticResource NotForImplicit}">
+                                <TextBlock Text="{DynamicResource OAuth.ClientSecret}" Style="{StaticResource Label}" />
+                                <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Right" Style="{StaticResource Copy}" Tag="{Binding ClientSecret}" />
+                                        <PasswordBox x:Name="ClientSecretBox" Style="{StaticResource PasswordCell}" PasswordChanged="ClientSecretBox_PasswordChanged" />
+                                    </DockPanel>
+                                </Border>
+                            </StackPanel>
                             <TextBlock Text="{DynamicResource OAuth.Scope}" Style="{StaticResource Label}" />
                             <Border CornerRadius="8" Background="{DynamicResource Input}" Margin="0,0,0,10">
                                 <controls:VariableTextBox Text="{Binding Scope, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" />
                             </Border>
-                            <TextBlock Text="{DynamicResource OAuth.ClientAuthentication}" Style="{StaticResource Label}" />
-                            <Border Style="{StaticResource SegmentGroup}" HorizontalAlignment="Left" Margin="0,0,0,10">
-                                <StackPanel Orientation="Horizontal">
-                                    <RadioButton Content="{DynamicResource OAuth.BasicHeader}" Style="{StaticResource Segment}"
-                                                 IsChecked="{Binding ClientAuthentication, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:OAuthClientAuthentication.BasicHeader}}" />
-                                    <RadioButton Content="{DynamicResource OAuth.RequestBody}" Style="{StaticResource Segment}"
-                                                 IsChecked="{Binding ClientAuthentication, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:OAuthClientAuthentication.RequestBody}}" />
-                                </StackPanel>
-                            </Border>
+                            <StackPanel Style="{StaticResource NotForImplicit}">
+                                <TextBlock Text="{DynamicResource OAuth.ClientAuthentication}" Style="{StaticResource Label}" />
+                                <Border Style="{StaticResource SegmentGroup}" HorizontalAlignment="Left" Margin="0,0,0,10">
+                                    <StackPanel Orientation="Horizontal">
+                                        <RadioButton Content="{DynamicResource OAuth.BasicHeader}" Style="{StaticResource Segment}"
+                                                     IsChecked="{Binding ClientAuthentication, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:OAuthClientAuthentication.BasicHeader}}" />
+                                        <RadioButton Content="{DynamicResource OAuth.RequestBody}" Style="{StaticResource Segment}"
+                                                     IsChecked="{Binding ClientAuthentication, Converter={StaticResource IsEqual}, ConverterParameter={x:Static auth:OAuthClientAuthentication.RequestBody}}" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
                             <StackPanel Style="{StaticResource OnlyForAuthorizationCode}">
                                 <TextBlock Text="{DynamicResource OAuth.RedirectPort}" Style="{StaticResource Label}" />
                                 <Border CornerRadius="8" Background="{DynamicResource Input}" Width="120" HorizontalAlignment="Left">

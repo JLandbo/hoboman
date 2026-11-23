@@ -24,7 +24,7 @@ Det kan:
 
 Det kan ikke:
 
-- logge ind med authorization code. Det kræver en browser, så tokenet hentes i appen
+- logge ind med authorization code eller implicit. Det kræver et login i en browser eller i appens login-vindue, så tokenet hentes i appen
 - skifte det valgte miljø, ændre indstillinger eller bruge `credentials.json`
 - ændre en mappes auth; `show` viser den, men den rettes i appen
 - rette en request eller et workflow, hvis fil ikke kan læses; `show` fortæller hvor, men det rettes i appen eller af brugeren
@@ -443,7 +443,7 @@ En færdig instruktion til AI-agenter, og hvordan AI'en låses til kun MCP, stå
 - OAuth bruger det token, der er gemt for requesten eller mappen i det miljø, kaldet bruger. Tokens gemmes under miljøets id, så de følger miljøet, også når det omdøbes. Hent derfor tokenet i appen med det samme miljø valgt, som CLI'et bruger.
 - Et token, der udløber inden for 30 sekunder, regnes som udløbet.
 - Ved client credentials henter CLI'et selv et nyt token med den gemte client secret, når tokenet mangler, er udløbet, eller serveren svarer 401. Tokenet gemmes i `secrets.json` ligesom fra appen, og kaldet sendes én gang til. Kan tokenet ikke hentes efter en 401, er svaret den 401.
-- Ved authorization code åbner CLI'et aldrig en browser. Et token hentet i appen bruges, til det udløber, og så fejler kaldet med `Fetch a new OAuth token in Hoboman before sending this request.`
+- Ved authorization code og implicit åbner CLI'et aldrig en browser eller et login-vindue. Et token hentet i appen bruges, til det udløber, og så fejler kaldet med `Fetch a new OAuth token in Hoboman before sending this request.`
 - OAuth-felterne udfyldes kun fra miljøet, aldrig fra `--var` eller et workflows værdier.
 - CLI'et læser ikke `credentials.json`. En credential, der er valgt i appen, er kopieret ind i auth'en på requesten, mappen, workflowet eller trinnet og virker, når den er gemt dér.
 

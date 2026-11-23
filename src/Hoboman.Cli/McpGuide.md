@@ -193,7 +193,7 @@ Felterne skrives i camelCase og enums som tekst, fx `"Json"`, `"Inherit"`, `"OAu
 | `None` | Ingen | – |
 | `Basic` | `userName` | Password |
 | `Bearer` | Ingen | Token |
-| `OAuth2` | `oAuth`: `grant` (`ClientCredentials` eller `AuthorizationCode`), `tokenUrl`, `authorizeUrl` (kun authorization code), `clientId`, `scope`, `clientAuthentication` (`BasicHeader` eller `RequestBody`), `redirectPort` (valgfri) | Client secret. Ved authorization code også login i appen |
+| `OAuth2` | `oAuth`: `grant` (`ClientCredentials`, `AuthorizationCode` eller `Implicit`), `tokenUrl` (ikke implicit), `authorizeUrl` (authorization code og implicit), `callbackUrl` (kun implicit: den redirect URI, der er registreret hos udbyderen), `clientId`, `scope`, `clientAuthentication` (`BasicHeader` eller `RequestBody`, ikke implicit), `redirectPort` (valgfri, kun authorization code) | Client secret, undtagen ved implicit. Ved authorization code og implicit også login i appen |
 
 Skifter du `kind`, mangler hemmeligheden, indtil brugeren har skrevet den i appen.
 
@@ -237,7 +237,7 @@ Ved `run` står de samme tekster som `error` i et trins `step.finished`, fx når
 | `Saved request file is not valid.` | Den gemte request er ugyldig JSON. `file`, `path` og `line` viser hvor. Fortæl brugeren det, og åbn ikke filen |
 | `Selected environment was not found.` | Miljøet findes ikke. Spørg brugeren om det rigtige navn |
 | `Environment settings could not be read.` | Bed brugeren åbne Hoboman og tjekke miljøerne |
-| `Fetch a new OAuth token in Hoboman before sending this request.` | Tokenet kunne ikke hentes. Tokens gemmes pr. miljø, så bed brugeren vælge det miljø, du bruger, i appen og hente et token med refresh-knappen ved Auth, **Hent token** eller **Saved credentials…** på requesten, mappen, workflowet eller trinnet. **Hent token** i Credentials-vinduet gemmer ikke et token til requests. Ved client credentials mangler client secret typisk: bed brugeren udfylde den under Auth og gemme |
+| `Fetch a new OAuth token in Hoboman before sending this request.` | Tokenet kunne ikke hentes. Tokens gemmes pr. miljø, så bed brugeren vælge det miljø, du bruger, i appen og hente et token med refresh-knappen ved Auth, **Hent token** eller **Saved credentials…** på requesten, mappen, workflowet eller trinnet. **Hent token** i Credentials-vinduet gemmer ikke et token til requests. Ved authorization code og implicit logger brugeren ind i appen, og et udløbet token skal hentes dér igen. Ved client credentials mangler client secret typisk: bed brugeren udfylde den under Auth og gemme |
 | `Required authentication secret is missing.` | Bed brugeren udfylde auth på requesten, mappen, workflowet eller workflow-trinnet i Hoboman og gemme |
 | `Network request failed.` / `Request timed out.` | Serveren kunne ikke nås eller svarede ikke inden for 100 sekunder. Fortæl det, og prøv højst én gang til efter aftale |
 | `Invalid request URL.` / `Invalid request input.` | Tjek URL, metode, headers og variabler. En header skal være `Navn: Værdi`. Et ukendt `{{navn}}` bliver stående i URL'en |
