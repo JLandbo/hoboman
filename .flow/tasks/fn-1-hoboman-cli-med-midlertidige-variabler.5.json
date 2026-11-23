@@ -1,0 +1,16 @@
+{
+  "assignee": null,
+  "claim_note": "",
+  "claimed_at": null,
+  "created_at": "2026-10-02T19:19:07.582725Z",
+  "depends_on": [
+    "fn-1-hoboman-cli-med-midlertidige-variabler.4"
+  ],
+  "id": "fn-1-hoboman-cli-med-midlertidige-variabler.5",
+  "priority": null,
+  "spec": "fn-1-hoboman-cli-med-midlertidige-variabler",
+  "spec_path": ".flow/tasks/fn-1-hoboman-cli-med-midlertidige-variabler.5.md",
+  "status": "todo",
+  "title": "Proces- og sikkerhedsregressioner for CLI",
+  "updated_at": "2026-10-02T19:47:15.175540Z"
+}

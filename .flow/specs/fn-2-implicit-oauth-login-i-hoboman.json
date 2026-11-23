@@ -1,0 +1,234 @@
+{
+  "branch_name": "fn-2-implicit-oauth-login-i-hoboman",
+  "completion_review_status": "ship",
+  "completion_reviewed_at": "2026-11-23T14:04:06.968471Z",
+  "created_at": "2026-11-04T07:24:56.358607Z",
+  "default_impl": null,
+  "default_review": null,
+  "default_sync": null,
+  "depends_on_epics": [],
+  "id": "fn-2-implicit-oauth-login-i-hoboman",
+  "impl_review_rounds": {
+    "fn-2-implicit-oauth-login-i-hoboman.1": 1,
+    "fn-2-implicit-oauth-login-i-hoboman.2": 0,
+    "fn-2-implicit-oauth-login-i-hoboman.3": 0
+  },
+  "next_task": 1,
+  "plan_review_rounds": 0,
+  "plan_review_status": "ship",
+  "plan_reviewed_at": "2026-11-04T07:46:51.396006Z",
+  "review_attempts": [
+    {
+      "artifact_sha256": "f70e39dc8a1613395e475e8574bf5c004def6797606bd56c4f5bb9bbffe69920",
+      "backend": "claude",
+      "base_sha": "9cfc6beaf609fdcabde0df535445fa8baaec8403",
+      "counter_kind": "plan",
+      "effort": "high",
+      "failure_class": null,
+      "finalized": {
+        "digest": "complete",
+        "receipt": "complete",
+        "status": "complete"
+      },
+      "forced": false,
+      "hash_epoch": 0,
+      "head_sha": "9cfc6beaf609fdcabde0df535445fa8baaec8403",
+      "head_sha_observed": true,
+      "kind": "plan",
+      "model": "claude-fable-5-1",
+      "outcome": "verdict",
+      "output_bytes": 7567,
+      "output_sha256": "29c0c8f4bd67807a419801ba3247b174ae0f73aaf46de5f0c11ec22a9f13e137",
+      "reservation_id": "83910f0cdda043b0bc16d0099b0d02ac",
+      "round_consumed": true,
+      "scope": "plan",
+      "superseded_by": null,
+      "task": null,
+      "timestamp": "2026-11-04T07:44:13.838721Z",
+      "verdict": "NEEDS_WORK"
+    },
+    {
+      "artifact_sha256": "9e7f91a88c885668d02e2e0e7aa2d24cd31896b5e532c56d56ab412d75e3451b",
+      "backend": "claude",
+      "base_sha": "9cfc6beaf609fdcabde0df535445fa8baaec8403",
+      "counter_kind": "plan",
+      "effort": "high",
+      "failure_class": null,
+      "finalized": {
+        "digest": "complete",
+        "receipt": "complete",
+        "status": "complete"
+      },
+      "forced": false,
+      "hash_epoch": 0,
+      "head_sha": "9cfc6beaf609fdcabde0df535445fa8baaec8403",
+      "head_sha_observed": true,
+      "kind": "plan",
+      "model": "claude-fable-5-1",
+      "outcome": "verdict",
+      "output_bytes": 2969,
+      "output_sha256": "d7031c31df54ef19e959ff6b2332a90de7dc0a019adb9428e5b5b699908de206",
+      "reservation_id": "6e02f38c48204a759e27a34be4263879",
+      "round_consumed": true,
+      "scope": "plan",
+      "superseded_by": null,
+      "task": null,
+      "timestamp": "2026-11-04T07:46:51.336338Z",
+      "verdict": "SHIP"
+    },
+    {
+      "artifact_sha256": "93f1e9ead291a836fec0b72a8166140a008220ca3c48451fa5ffde293a12ee4e",
+      "backend": "claude",
+      "base_sha": "e40a4820e67739671643b970db07f1bfb672110b",
+      "counter_kind": "impl",
+      "effort": "high",
+      "failure_class": null,
+      "finalized": {
+        "digest": "complete",
+        "receipt": "complete",
+        "status": "not_applicable"
+      },
+      "findings_digest": {
+        "backend": "claude",
+        "digest_truncated": false,
+        "items": [
+          {
+            "chainRoot": "finding-b4e53997d796393cde536370a2fd0df1",
+            "classification": "introduced",
+            "findingId": "finding-b4e53997d796393cde536370a2fd0df1",
+            "firstSeenThisRound": true,
+            "severity": "P3",
+            "status": "open"
+          }
+        ],
+        "reviewKind": "implementation"
+      },
+      "forced": false,
+      "hash_epoch": 0,
+      "head_sha": "eb665d2f09bb64a98a1651b43206fb9643c14d7e",
+      "head_sha_observed": true,
+      "kind": "impl",
+      "model": "claude-opus-5-5",
+      "outcome": "verdict",
+      "output_bytes": 463,
+      "output_sha256": "195772d9c9191f26a4df409ccdba1a5169612984cca47fe4bb425985e51b87b1",
+      "reservation_id": "325e941c031c440daf5fe761ffca5f44",
+      "round_consumed": true,
+      "scope": "impl:fn-2-implicit-oauth-login-i-hoboman.2",
+      "superseded_by": null,
+      "task": "fn-2-implicit-oauth-login-i-hoboman.2",
+      "timestamp": "2026-11-23T13:52:58.284528Z",
+      "verdict": "SHIP"
+    },
+    {
+      "artifact_sha256": "365d6b3c3ff5dfa8d36f13e45e68073ad37f18f7ee897363bc64b48a46ea425a",
+      "backend": "claude",
+      "base_sha": "9cfc6beaf609fdcabde0df535445fa8baaec8403",
+      "counter_kind": "plan",
+      "effort": "high",
+      "failure_class": null,
+      "finalized": {
+        "digest": "complete",
+        "receipt": "complete",
+        "status": "complete"
+      },
+      "findings_digest": {
+        "backend": "claude",
+        "digest_truncated": false,
+        "items": [],
+        "reviewKind": "completion"
+      },
+      "forced": false,
+      "hash_epoch": 0,
+      "head_sha": "4e99192f958336036f0c2cedd9c9291da2e1a178",
+      "head_sha_observed": true,
+      "kind": "completion",
+      "model": "claude-opus-5-5",
+      "outcome": "verdict",
+      "output_bytes": 7582,
+      "output_sha256": "4f48b2dc64b6f87423255b0e38d883dcc742a1ccd3f9cf71dffc9c70124fb803",
+      "reservation_id": "9f6d426a66be4924b5f5a6e6c3a8401e",
+      "round_consumed": true,
+      "scope": "completion",
+      "superseded_by": null,
+      "task": null,
+      "timestamp": "2026-11-23T14:04:06.863402Z",
+      "verdict": "SHIP"
+    },
+    {
+      "artifact_sha256": "a8766d5c7ab5a8892195fbfc3a035204a01625b5a83440e19e0de28be8ead54c",
+      "backend": "claude",
+      "base_sha": "eb665d2f09bb64a98a1651b43206fb9643c14d7e",
+      "counter_kind": "impl",
+      "effort": "high",
+      "failure_class": null,
+      "finalized": {
+        "digest": "complete",
+        "receipt": "complete",
+        "status": "not_applicable"
+      },
+      "findings_digest": {
+        "backend": "claude",
+        "digest_truncated": false,
+        "items": [],
+        "reviewKind": "implementation"
+      },
+      "forced": false,
+      "hash_epoch": 0,
+      "head_sha": "4e99192f958336036f0c2cedd9c9291da2e1a178",
+      "head_sha_observed": true,
+      "kind": "impl",
+      "model": "claude-opus-5-5",
+      "outcome": "verdict",
+      "output_bytes": 158,
+      "output_sha256": "6ff70da3d83706800ca3cabc6ba62603ba0485fcf5259d27f1be54ce68686975",
+      "reservation_id": "3b711061dbdb41e6a80efcf05f40e151",
+      "round_consumed": true,
+      "scope": "impl:fn-2-implicit-oauth-login-i-hoboman.3",
+      "superseded_by": null,
+      "task": "fn-2-implicit-oauth-login-i-hoboman.3",
+      "timestamp": "2026-11-23T14:04:34.665130Z",
+      "verdict": "SHIP"
+    }
+  ],
+  "review_hash_epoch": {
+    "impl:fn-2-implicit-oauth-login-i-hoboman.2": 1,
+    "impl:fn-2-implicit-oauth-login-i-hoboman.3": 1,
+    "plan": 1,
+    "plan#completion": 1
+  },
+  "review_pending_rounds": {
+    "impl:fn-2-implicit-oauth-login-i-hoboman.1": 1
+  },
+  "review_reservations": {
+    "a34af897a0634a8aafe0846377c12913": {
+      "artifact_sha256": "aafdceb036d4355dc6f5af5f23d5254b73e2e909fed9c92a44a112278b385720",
+      "counter_scope": "impl:fn-2-implicit-oauth-login-i-hoboman.1",
+      "epoch": 0,
+      "exclusive": true,
+      "forced": false,
+      "review_type": "impl"
+    }
+  },
+  "review_transport_failures": {
+    "completion": 0,
+    "impl:fn-2-implicit-oauth-login-i-hoboman.2": 0,
+    "impl:fn-2-implicit-oauth-login-i-hoboman.3": 0,
+    "plan": 0
+  },
+  "spec_path": ".flow/specs/fn-2-implicit-oauth-login-i-hoboman.md",
+  "status": "open",
+  "title": "Implicit OAuth-login i Hoboman",
+  "tracker": {
+    "baseHashFlow": null,
+    "baseHashTracker": null,
+    "depRelations": [],
+    "id": null,
+    "identifier": null,
+    "lastSyncedAt": null,
+    "mergeBaseFlow": null,
+    "mergeBaseTracker": null,
+    "url": null
+  },
+  "updated_at": "2026-11-23T14:04:34.711358Z"
+}

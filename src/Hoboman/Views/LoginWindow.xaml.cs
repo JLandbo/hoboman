@@ -8,8 +8,8 @@ namespace Hoboman.Views;
 // The window is not transparent like other dialogs, as the browser is a window of its own, which a transparent window does not show.
 public partial class LoginWindow : DialogWindow
 {
-    // One environment for the app, as each starts browser processes of its own.
-    static readonly Lazy<Task<CoreWebView2Environment>> _environment = new(() => CoreWebView2Environment.CreateAsync(null, DataFolder));
+    // One environment for the app, as each starts browser processes of its own. A failed start is not kept, so the next login tries again, such as after the runtime is installed.
+    static Task<CoreWebView2Environment>? _environment;
 
     readonly TaskCompletionSource<Uri?> _redirect = new();
     readonly Uri _callback;
@@ -36,16 +36,12 @@ public partial class LoginWindow : DialogWindow
         CoreWebView2Environment environment;
         try
         {
-            environment = await _environment.Value;
-        }
-        catch (WebView2RuntimeNotFoundException)
-        {
-            // No detail tells the missing runtime from other failures, so it can be told of in the user's language.
-            throw new OAuthException(OAuthProblem.LoginUnavailable);
+            environment = await (_environment ??= CoreWebView2Environment.CreateAsync(null, DataFolder));
         }
         catch (Exception exception)
         {
-            throw new OAuthException(OAuthProblem.LoginUnavailable, exception.Message);
+            _environment = null;
+            throw UnavailableOf(exception);
         }
         if (cancellationToken.IsCancellationRequested)
         {
@@ -91,8 +87,12 @@ public partial class LoginWindow : DialogWindow
         // A browser that cannot start, such as when its folder cannot be written, ends the login with the reason instead of stopping the app.
         catch (Exception exception)
         {
-            _redirect.TrySetException(new OAuthException(OAuthProblem.LoginUnavailable, exception.Message));
+            _redirect.TrySetException(UnavailableOf(exception));
             Close();
         }
     }
+
+    // No detail tells the missing runtime from other failures, so it can be told of in the user's language.
+    internal static OAuthException UnavailableOf(Exception exception) =>
+        exception is WebView2RuntimeNotFoundException ? new(OAuthProblem.LoginUnavailable) : new(OAuthProblem.LoginUnavailable, exception.Message);
 }

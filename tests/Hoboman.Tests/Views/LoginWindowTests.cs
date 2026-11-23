@@ -138,6 +138,26 @@ public sealed class LoginWindowTests(LoginWindowTests.LoginServer server) : ICla
         Assert.Equal((problem, null), (auth.TokenProblem, auth.AccessToken));
     }
 
+    [Fact]
+    public void UnavailableOf_WhenTheRuntimeIsMissing_ThenGivesLoginUnavailableWithoutDetail()
+    {
+        // Act
+        var failure = LoginWindow.UnavailableOf(new WebView2RuntimeNotFoundException());
+
+        // Assert
+        Assert.Equal((OAuthProblem.LoginUnavailable, null), (failure.Problem, failure.Detail));
+    }
+
+    [Fact]
+    public void UnavailableOf_WhenTheBrowserFailsToStart_ThenGivesLoginUnavailableWithTheReason()
+    {
+        // Act
+        var failure = LoginWindow.UnavailableOf(new UnauthorizedAccessException("Access is denied."));
+
+        // Assert
+        Assert.Equal((OAuthProblem.LoginUnavailable, "Access is denied."), (failure.Problem, failure.Detail));
+    }
+
     // The login window lies on top of the app's own window.
     static void ShowMainWindow()
     {

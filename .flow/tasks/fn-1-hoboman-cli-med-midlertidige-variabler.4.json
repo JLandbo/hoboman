@@ -1,0 +1,16 @@
+{
+  "assignee": null,
+  "claim_note": "",
+  "claimed_at": null,
+  "created_at": "2026-10-02T19:19:06.399522Z",
+  "depends_on": [
+    "fn-1-hoboman-cli-med-midlertidige-variabler.3"
+  ],
+  "id": "fn-1-hoboman-cli-med-midlertidige-variabler.4",
+  "priority": null,
+  "spec": "fn-1-hoboman-cli-med-midlertidige-variabler",
+  "spec_path": ".flow/tasks/fn-1-hoboman-cli-med-midlertidige-variabler.4.md",
+  "status": "todo",
+  "title": "Variabelinput og eksplicit body-substitution",
+  "updated_at": "2026-10-02T19:47:12.801344Z"
+}

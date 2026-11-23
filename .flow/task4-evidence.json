@@ -1,0 +1,12 @@
+{
+  "commits": [],
+  "tests": [
+    "dotnet test --project tests/Hoboman.Tests/Hoboman.Tests.csproj --filter-namespace Hoboman.Tests.Cli (baseline 80 passed; final 136 passed)",
+    "dotnet test --project tests/Hoboman.Tests/Hoboman.Tests.csproj --filter-namespace Hoboman.Tests.Sending --filter-namespace Hoboman.Tests.Environments --no-build (68 passed)",
+    "dotnet build Hoboman.slnx --no-restore --verbosity quiet (0 warnings/errors)",
+    "git diff --check"
+  ],
+  "prs": [],
+  "review": { "verdict": "SHIP", "backend": "codex:gpt-5.5:high", "receipt": ".flow/task4-impl-review.json", "session_id": "01a10063-d63f-7d93-998d-4a2bfcfafc2b", "scope": "Exact task4 working-tree source, tests and relevant Core/spec context embedded in standalone focus; read-only review; no real request data or secrets." },
+  "note": "User explicitly forbids staging/committing; all preceding unstaged changes preserved. Memory enabled but not initialized; clean first-pass SHIP requires no auto-capture. No Core changes in this task. Process regression coverage remains task5."
+}

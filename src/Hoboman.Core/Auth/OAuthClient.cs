@@ -119,15 +119,7 @@ public sealed class OAuthClient(HttpClients clients, IBrowser browser, ILoginWin
         using var timeout = new CancellationTokenSource(_loginTimeout, clock);
         using var waiting = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
         logger.LogInformation("Opening the login window at {Url}", SafeAddress.Of(authorizeUrl));
-        Uri? redirect;
-        try
-        {
-            redirect = await loginWindow.GetRedirectAsync(LoginAddressOf(authorizeUrl, login), callbackUrl, waiting.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
-        {
-            throw TimedOut();
-        }
+        var redirect = await loginWindow.GetRedirectAsync(LoginAddressOf(authorizeUrl, login), callbackUrl, waiting.Token).ConfigureAwait(false);
         // The window gives null both when the user closes it and when the wait closes it, so the wait's own ends are told first.
         if (timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {

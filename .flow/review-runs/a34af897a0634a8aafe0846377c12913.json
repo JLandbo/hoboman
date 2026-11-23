@@ -1,0 +1,29 @@
+{
+  "backend": "claude",
+  "counter_scope": "impl:fn-2-implicit-oauth-login-i-hoboman.1",
+  "failure_class": "fanout_abandoned",
+  "finalized": {
+    "digest": "not_applicable",
+    "receipt": "not_applicable",
+    "status": "not_applicable"
+  },
+  "metadata": null,
+  "outcome": "transport_failure",
+  "receipt_payload": null,
+  "receipt_target": null,
+  "reservation_id": "a34af897a0634a8aafe0846377c12913",
+  "reset_rounds_on_ship": false,
+  "response": "fan-out dispatched; no finalize landed before this refund-intent journal was replayed",
+  "response_sha256": "6ea4de7239adcef700fcf360528c3918564fc4300515f3a62b9a089c94e74f20",
+  "review_kind": "impl",
+  "review_type": "impl",
+  "reviewed_base_sha": "9cfc6beaf609fdcabde0df535445fa8baaec8403",
+  "reviewed_head_sha": "e40a4820e67739671643b970db07f1bfb672110b",
+  "scope": "impl:fn-2-implicit-oauth-login-i-hoboman.1",
+  "spec_id": "fn-2-implicit-oauth-login-i-hoboman",
+  "status_target": null,
+  "superseded_by": null,
+  "task_id": "fn-2-implicit-oauth-login-i-hoboman.1",
+  "timestamp": "2026-11-23T13:39:03.738050Z",
+  "verdict": null
+}
