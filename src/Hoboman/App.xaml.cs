@@ -130,6 +130,7 @@ public partial class App : Application
         services.AddSingleton<WorkflowCheck>();
         services.AddSingleton<WorkflowRunner>();
         services.AddSingleton<IBrowser, ShellBrowser>();
+        services.AddSingleton<ILoginWindow, LoginWindowOpener>();
         services.AddSingleton<IOAuthClient, OAuthClient>();
         services.AddSingleton<AuthRefreshService>();
         services.AddSingleton<IDialogs, Dialogs>();

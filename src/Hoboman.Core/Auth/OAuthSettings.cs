@@ -7,8 +7,11 @@ public sealed record OAuthSettings
 
     public string TokenUrl { get; init; } = "";
 
-    // Only the authorization code grant logs in through the browser.
+    // Only the grants that log the user in use it.
     public string AuthorizeUrl { get; init; } = "";
+
+    // Only the implicit grant uses it. It is sent as written, because providers such as Cognito demand an exact match.
+    public string CallbackUrl { get; init; } = "";
 
     public string ClientId { get; init; } = "";
 

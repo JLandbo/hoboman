@@ -12,6 +12,8 @@ namespace Hoboman.Tests.Auth;
 
 public sealed class OAuthClientTests(TokenServer server) : IClassFixture<TokenServer>, IDisposable
 {
+    const string _granted = "#access_token=implicit&token_type=Bearer&expires_in=3600&state={state}";
+
     readonly TemporaryFolder _temporary = new();
     readonly FakeTimeProvider _clock = new(new DateTimeOffset(2026, 9, 30, 12, 0, 0, TimeSpan.Zero));
     HttpClients? _clients;
@@ -24,9 +26,10 @@ public sealed class OAuthClientTests(TokenServer server) : IClassFixture<TokenSe
         _temporary.Dispose();
     }
 
-    OAuthClient Client(IBrowser? browser = null) => new(
+    OAuthClient Client(IBrowser? browser = null, ILoginWindow? loginWindow = null) => new(
         _clients ??= new(new SettingsStore(new AppFolder(_temporary.Path), NullLogger<SettingsStore>.Instance)),
         browser ?? new FakeBrowser(_ => throw new InvalidOperationException("Only the authorization code grant opens a browser.")),
+        loginWindow ?? new FakeLoginWindow((_, _) => throw new InvalidOperationException("Only the implicit grant opens a login window.")),
         new Translator(Translation.English),
         _clock,
         NullLogger<OAuthClient>.Instance);
@@ -35,7 +38,15 @@ public sealed class OAuthClientTests(TokenServer server) : IClassFixture<TokenSe
 
     OAuthSettings AuthorizationCode() => new() { Grant = OAuthGrant.AuthorizationCode, TokenUrl = new Uri(server.Address, "/token").ToString(), AuthorizeUrl = "https://login.example/authorize", ClientId = "hoboman" };
 
+    static OAuthSettings Implicit() => new() { Grant = OAuthGrant.Implicit, AuthorizeUrl = "https://auth.site.example/login", CallbackUrl = "https://site.example", ClientId = "hoboman", Scope = "aciescore/apis" };
+
     static NameValueCollection LoginOf(FakeBrowser browser) => HttpUtility.ParseQueryString(browser.Opened!.Query);
+
+    static NameValueCollection LoginOf(FakeLoginWindow window) => HttpUtility.ParseQueryString(window.Opened!.Value.Login.Query);
+
+    // Plays the provider: after the login, it sends the window to the callback with the answer, in which {state} is the login's state.
+    static FakeLoginWindow Answering(string answer) => new((login, _) =>
+        new Uri($"https://site.example/{answer.Replace("{state}", Uri.EscapeDataString(HttpUtility.ParseQueryString(login.Query)["state"]!), StringComparison.Ordinal)}"));
 
     static string Approved(NameValueCollection login) => $"code=abc&state={Uri.EscapeDataString(login["state"]!)}";
 
@@ -395,5 +406,128 @@ public sealed class OAuthClientTests(TokenServer server) : IClassFixture<TokenSe
 
         // Assert
         Assert.DoesNotContain("key=secret", (await Assert.ThrowsAsync<OAuthException>(() => getting)).Message);
+    }
+
+    [Fact]
+    public async Task GetTokenAsync_WhenTheImplicitLoginStarts_ThenOpensTheLoginWithTheCallbackAsWritten()
+    {
+        // Arrange
+        var window = Answering(_granted);
+
+        // Act
+        await Client(loginWindow: window).GetTokenAsync(Implicit(), "", null, Cancellation);
+
+        // Assert
+        var login = LoginOf(window);
+        Assert.Equal(["response_type", "client_id", "redirect_uri", "state", "scope"], login.AllKeys);
+        Assert.Equal(("https://auth.site.example/login", "token", "hoboman", "https://site.example", "aciescore/apis"),
+            (window.Opened!.Value.Login.GetLeftPart(UriPartial.Path), login["response_type"], login["client_id"], login["redirect_uri"], login["scope"]));
+    }
+
+    [Fact]
+    public async Task GetTokenAsync_WhenTheImplicitFieldsHaveVariables_ThenLogsInWithTheEnvironmentsValues()
+    {
+        // Arrange
+        var environment = new ApiEnvironment("Dev", [new("site-url", "site.example"), new("client-id", "hoboman-dev")]);
+        var settings = Implicit() with { AuthorizeUrl = "https://auth.{{site-url}}/login", CallbackUrl = "https://{{site-url}}/", ClientId = "{{client-id}}" };
+        var window = Answering(_granted);
+
+        // Act
+        await Client(loginWindow: window).GetTokenAsync(settings, "", environment, Cancellation);
+
+        // Assert
+        Assert.Equal(("https://auth.site.example/login", "hoboman-dev", "https://site.example/", new Uri("https://site.example/")),
+            (window.Opened!.Value.Login.GetLeftPart(UriPartial.Path), LoginOf(window)["client_id"], LoginOf(window)["redirect_uri"], window.Opened.Value.Callback));
+    }
+
+    [Theory]
+    [InlineData("", "https://site.example", "hoboman", OAuthProblem.MissingAuthorizeUrl)]
+    [InlineData("https://auth.site.example/login", "", "hoboman", OAuthProblem.MissingCallbackUrl)]
+    [InlineData("https://auth.site.example/login", "https://site.example", "", OAuthProblem.MissingClientId)]
+    [InlineData("https://auth.site.example/login", "not an address", "hoboman", OAuthProblem.InvalidAddress)]
+    [InlineData("http://auth.site.example/login", "https://site.example", "hoboman", OAuthProblem.InsecureAddress)]
+    [InlineData("https://auth.site.example/login", "http://site.example", "hoboman", OAuthProblem.InsecureAddress)]
+    public async Task GetTokenAsync_WhenAnImplicitFieldIsMissingOrUnsafe_ThenThrowsWithoutOpeningTheLoginWindow(string authorizeUrl, string callbackUrl, string clientId, OAuthProblem expected)
+    {
+        // Arrange
+        var window = Answering(_granted);
+
+        // Act
+        var getting = Client(loginWindow: window).GetTokenAsync(Implicit() with { AuthorizeUrl = authorizeUrl, CallbackUrl = callbackUrl, ClientId = clientId }, "", null, Cancellation);
+
+        // Assert
+        Assert.Equal(expected, (await Assert.ThrowsAsync<OAuthException>(() => getting)).Problem);
+        Assert.Null(window.Opened);
+    }
+
+    [Fact]
+    public async Task GetTokenAsync_WhenTheImplicitLoginSucceeds_ThenGivesTheTokenFromTheFragmentWithItsExpiry()
+    {
+        // Act
+        var token = await Client(loginWindow: Answering(_granted)).GetTokenAsync(Implicit(), "", null, Cancellation);
+
+        // Assert
+        Assert.Equal(new OAuthToken("implicit", "Bearer", _clock.GetUtcNow().AddHours(1), null), token);
+    }
+
+    [Theory]
+    [InlineData("#access_token=implicit&token_type=Bearer&state=forged", OAuthProblem.InvalidResponse, null)]
+    [InlineData("#access_token=implicit&token_type=Bearer", OAuthProblem.InvalidResponse, null)]
+    [InlineData("#error=access_denied&state=forged", OAuthProblem.InvalidResponse, null)]
+    [InlineData("#error=access_denied&error_description=The%20user%20said%20no&state={state}", OAuthProblem.Denied, "access_denied: The user said no")]
+    [InlineData("?error=access_denied&error_description=The%20user%20said%20no&state={state}", OAuthProblem.Denied, "access_denied: The user said no")]
+    [InlineData("#token_type=Bearer&state={state}", OAuthProblem.InvalidResponse, null)]
+    [InlineData("#access_token=implicit&state={state}", OAuthProblem.InvalidResponse, null)]
+    [InlineData("#access_token=implicit&token_type=mac&state={state}", OAuthProblem.UnsupportedTokenType, "mac")]
+    public async Task GetTokenAsync_WhenTheImplicitAnswerIsNotAGoodToken_ThenThrowsWithoutTheToken(string answer, OAuthProblem expected, string? detail)
+    {
+        // Act
+        var getting = Client(loginWindow: Answering(answer)).GetTokenAsync(Implicit(), "", null, Cancellation);
+
+        // Assert
+        var failure = await Assert.ThrowsAsync<OAuthException>(() => getting);
+        Assert.Equal((expected, detail), (failure.Problem, failure.Detail));
+    }
+
+    [Fact]
+    public async Task GetTokenAsync_WhenTheImplicitLoginTimesOutAndTheWindowClosesWithoutAnswer_ThenThrowsTimedOut()
+    {
+        // Act
+        var getting = Client(loginWindow: new FakeLoginWindow((_, _) =>
+        {
+            _clock.Advance(TimeSpan.FromMinutes(6));
+            return null;
+        })).GetTokenAsync(Implicit(), "", null, Cancellation);
+
+        // Assert
+        Assert.Equal(OAuthProblem.TimedOut, (await Assert.ThrowsAsync<OAuthException>(() => getting)).Problem);
+    }
+
+    [Fact]
+    public async Task GetTokenAsync_WhenTheImplicitLoginIsCancelledAndTheWindowClosesWithoutAnswer_ThenThrowsCancelled()
+    {
+        // Arrange
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(Cancellation);
+        var window = new FakeLoginWindow((_, _) =>
+        {
+            cancel.Cancel();
+            return null;
+        });
+
+        // Act
+        var getting = Client(loginWindow: window).GetTokenAsync(Implicit(), "", null, cancel.Token);
+
+        // Assert
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => getting);
+    }
+
+    [Fact]
+    public async Task GetTokenAsync_WhenTheUserClosesTheLoginWindow_ThenThrowsLoginClosed()
+    {
+        // Act
+        var getting = Client(loginWindow: new FakeLoginWindow((_, _) => null)).GetTokenAsync(Implicit(), "", null, Cancellation);
+
+        // Assert
+        Assert.Equal(OAuthProblem.LoginClosed, (await Assert.ThrowsAsync<OAuthException>(() => getting)).Problem);
     }
 }

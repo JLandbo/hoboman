@@ -23,7 +23,7 @@ try
     var secrets = new SecretStore(folder, NullLogger<SecretStore>.Instance);
     using var clients = new HttpClients(new SettingsStore(folder, NullLogger<SettingsStore>.Instance));
     var factory = new CliFactory(folder, secrets, new HttpRequestSender(secrets, clients, TimeProvider.System, NullLogger<HttpRequestSender>.Instance),
-        new OAuthClient(clients, new NoBrowser(), new Translator(Translation.English), TimeProvider.System, NullLogger<OAuthClient>.Instance));
+        new OAuthClient(clients, new NoBrowser(), new NoLoginWindow(), new Translator(Translation.English), TimeProvider.System, NullLogger<OAuthClient>.Instance));
     var command = new CommandLine().Parse(args);
     // MCP talks over stdin and stdout itself, so each call gets its own output and input instead of the console's.
     if (command.IsMcp)

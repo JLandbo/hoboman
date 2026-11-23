@@ -19,6 +19,7 @@ public sealed class UnaskedTokensTests : IDisposable
     [Theory]
     [InlineData(AuthKind.OAuth2, OAuthGrant.ClientCredentials, true)]
     [InlineData(AuthKind.OAuth2, OAuthGrant.AuthorizationCode, false)]
+    [InlineData(AuthKind.OAuth2, OAuthGrant.Implicit, false)]
     [InlineData(AuthKind.Bearer, OAuthGrant.ClientCredentials, false)]
     public void CanFetch_WhenGivenAnAuth_ThenOnlyAllowsClientCredentials(AuthKind kind, OAuthGrant grant, bool expected)
     {

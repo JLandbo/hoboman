@@ -4,6 +4,7 @@ public enum OAuthProblem
 {
     MissingTokenUrl,
     MissingAuthorizeUrl,
+    MissingCallbackUrl,
     MissingClientId,
     MissingClientSecret,
     InvalidAddress,
@@ -11,6 +12,8 @@ public enum OAuthProblem
     PortUnavailable,
     Denied,
     TimedOut,
+    LoginClosed,
+    LoginUnavailable,
     Rejected,
     InvalidResponse,
     UnsupportedTokenType,

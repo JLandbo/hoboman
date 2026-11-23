@@ -49,6 +49,11 @@ public sealed class AuthRefreshService(IOAuthClient oauth, RequestLibrary librar
             var token = await oauth.GetTokenAsync(source.Settings.OAuth ?? new(), clientSecret, environment, cancellationToken);
             return await SaveAsync(() => accept(token, refresh.Environment), cancellationToken);
         }
+        // Closing the login window is how the user stops a login, so it ends like a cancellation, without an error.
+        catch (OAuthException exception) when (exception.Problem == OAuthProblem.LoginClosed)
+        {
+            return false;
+        }
         finally
         {
             _refreshes.Remove(refresh);

@@ -1,3 +1,3 @@
 namespace Hoboman.Core.Auth;
 
-public enum OAuthGrant { ClientCredentials, AuthorizationCode }
+public enum OAuthGrant { ClientCredentials, AuthorizationCode, Implicit }

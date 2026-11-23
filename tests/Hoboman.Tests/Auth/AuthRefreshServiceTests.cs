@@ -67,6 +67,21 @@ public sealed class AuthRefreshServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task FetchAsync_WhenTheUserClosesTheLoginWindow_ThenReturnsFalseWithoutAccepting()
+    {
+        // Arrange
+        var service = Service(new(_ => Task.FromException<OAuthToken>(new OAuthException(OAuthProblem.LoginClosed))));
+        var source = new AuthSource(Guid.NewGuid(), new(AuthKind.OAuth2));
+        var accepted = false;
+
+        // Act
+        var fetched = await service.FetchAsync(source, "", _dev, (_, _) => Task.FromResult(accepted = true), Cancellation);
+
+        // Assert
+        Assert.Equal((false, false, false), (fetched, accepted, service.IsRefreshing(source.SecretsId, _dev.Id)));
+    }
+
+    [Fact]
     public async Task RefreshFolderAsync_WhenTheFolderHasOAuth_ThenSavesItsTokenUnderItsIdAndLeavesItsFile()
     {
         var folder = new RequestFolder { Id = Guid.NewGuid(), Name = "Users", Auth = new(AuthKind.OAuth2) };
