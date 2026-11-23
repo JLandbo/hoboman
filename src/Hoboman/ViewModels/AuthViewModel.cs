@@ -374,6 +374,8 @@ public sealed class AuthViewModel(SecretStore secrets, AuthRefreshService refres
         OAuthException { Problem: OAuthProblem.Rejected } failure => translator.Format("OAuth.Rejected", failure.Detail),
         OAuthException { Problem: OAuthProblem.InvalidResponse } => translator.Of("OAuth.InvalidResponse"),
         OAuthException { Problem: OAuthProblem.UnsupportedTokenType } failure => translator.Format("OAuth.UnsupportedTokenType", failure.Detail),
+        OAuthException { Problem: OAuthProblem.LoginUnavailable, Detail: null } => translator.Of("OAuth.LoginMissing"),
+        OAuthException { Problem: OAuthProblem.LoginUnavailable } failure => translator.Format("OAuth.LoginFailed", failure.Detail),
         _ => NetworkProblem.Of(exception, translator) ?? exception.GetBaseException().Message,
     };
 

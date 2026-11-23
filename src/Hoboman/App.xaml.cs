@@ -37,6 +37,8 @@ public partial class App : Application
         _services = Services(new AppFolder(AppContext.BaseDirectory)).BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true });
         // The browser's cache and cookies are no data of the user's to keep next to the app, so they go with the user's own.
         BrowserView.DataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), typeof(App).Assembly.GetName().Name!, "WebView2");
+        // The login keeps its cookies between runs, so a login session still valid gives a new token without logging in again.
+        LoginWindow.DataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), typeof(App).Assembly.GetName().Name!, "WebView2Login");
         var logger = _services.GetRequiredService<ILogger<App>>();
         var translator = _services.GetRequiredService<Translator>();
         AppDomain.CurrentDomain.UnhandledException += (_, args) => logger.LogCritical(args.ExceptionObject as Exception, "Unhandled exception");

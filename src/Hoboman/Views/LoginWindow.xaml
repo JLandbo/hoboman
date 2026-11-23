@@ -1,0 +1,9 @@
+<local:DialogWindow x:Class="Hoboman.Views.LoginWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:local="clr-namespace:Hoboman.Views"
+                    xmlns:webView2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+                    Title="{DynamicResource OAuth.Login}" Width="560" Height="720"
+                    AllowsTransparency="False" Background="{DynamicResource Surface}">
+    <webView2:WebView2 x:Name="Browser" />
+</local:DialogWindow>
